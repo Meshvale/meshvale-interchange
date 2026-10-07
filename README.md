@@ -1,13 +1,27 @@
 # meshvale-interchange
 
-Asset and format interchange for Meshvale.
+Asset import and export for polygon mesh workflows.
 
-**Status:** Initial project setup. Implementation and release packages are forthcoming.
+**Status:** Repository initialized. Geometry algorithms, executable tools, bindings, format adapters, and release packages are forthcoming; the items below describe planned capabilities.
 
-Planned scope: format adapters, scenes, materials, instances, and explicit reporting of conversion and preservation.
+## Planned capabilities
 
-Meshvale makes imperfect 3D assets usable with explicit guarantees about what was checked, changed, preserved, or lost.
+- Polygon face and attribute preservation where a format supports it.
+- Scene, material, instance, and resource handling with stated coverage.
+- Explicit reports for triangulation, unsupported features, and conversion loss.
+- Candidate formats: OBJ/MTL, PLY, OFF, STL, and glTF/GLB.
+- FBX, 3MF, and USD integrations remain under evaluation.
 
-**Planned polygon support:** Preservation of supported polygon face loops and corner attributes, with reported triangulation when conversion is required.
+Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.
 
-See the [Meshvale organization](https://github.com/Meshvale) for the public product repositories. Product documentation and contribution instructions will live in this repository.
+## Development
+
+Read [ENVIRONMENT.md](ENVIRONMENT.md) for portable configuration and the current checks. There is no native build or installable package yet. [AGENTS.md](AGENTS.md) provides focused instructions for work in this repository.
+
+## Contributing
+
+Use this repository's issues for reproducible problems and feature requests. Follow the public [contribution guide](https://github.com/Meshvale/.github/blob/main/CONTRIBUTING.md) and include how your change was validated. Share only assets you have permission to redistribute.
+
+## License
+
+Original material is licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for attribution; third-party material retains its own terms.
