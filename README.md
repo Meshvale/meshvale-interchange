@@ -10,4 +10,4 @@ Meshvale makes imperfect 3D assets usable with explicit guarantees about what wa
 
 **Planned polygon support:** Preservation of supported polygon face loops and corner attributes, with reported triangulation when conversion is required.
 
-See the [Meshvale organization](https://github.com/Meshvale) and [coordination repository](https://github.com/Meshvale/meshvale) for the project.
+See the [Meshvale organization](https://github.com/Meshvale) for the public product repositories. Product documentation and contribution instructions will live in this repository.
