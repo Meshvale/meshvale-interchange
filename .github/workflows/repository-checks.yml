@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: 273b6899111784bd8de5efd44361e8de32f885f0
+          ref: 519eaf2f4eda24c39eaa3ace7f213e5571239fe2
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: 273b6899111784bd8de5efd44361e8de32f885f0
+          ref: 519eaf2f4eda24c39eaa3ace7f213e5571239fe2
           fetch-depth: 0
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
