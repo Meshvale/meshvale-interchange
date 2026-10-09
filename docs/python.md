@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | ID | OBJ-PYTHON-001 |
-| Version | 0.1.0 |
+| Version | 0.2.0 |
 | Status | Development interface; no released package |
 | Owner | Python asset/result shape, ownership, callbacks and packaging |
 
-`meshvale_interchange` exposes the existing native [OBJ text contract](obj.md) and [file/bundle contract](obj-files.md) through owned Python values. It adds no format support or preservation claims beyond those contracts. Geometry meshes are canonical immutable `meshvale_geometry.Mesh` snapshots exchanged through its [record protocol](https://github.com/Meshvale/meshvale-geometry/blob/0c7b9f12148a3fdf37d7ab27f0c06ba2656b3a36/docs/python.md); no Mesh C++ object crosses extension runtimes.
+`meshvale_interchange` exposes the existing native [OBJ text contract](obj.md) and [file/bundle contract](obj-files.md) through owned Python values. It adds no format support or preservation claims beyond those contracts. Geometry meshes are canonical immutable `meshvale_geometry.Mesh` snapshots exchanged through its [record protocol](https://github.com/Meshvale/meshvale-geometry/blob/36d36cba938ab660ad25c71c0afbb0d3f5963ff3/docs/python.md); no Mesh C++ object crosses extension runtimes.
 
 ## Interfaces and values
 
@@ -16,7 +16,7 @@
 | `read_obj(obj, mtl=b"")` | `ObjImportResult(document, diagnostics)` |
 | `write_obj(document)` | `ObjExportResult(text, diagnostics)` |
 | `read_obj_file(input, *, resource_root=None, cancellation=None)` | `ObjFileResult(asset, diagnostics)` |
-| `publish_obj_bundle(asset, destination, *, cancellation=None, on_phase=None, supplemental_files=())` | `ObjBundleResult(outcome, phase, entry, diagnostics)` |
+| `publish_obj_bundle(asset, destination, *, cancellation=None, on_phase=None, supplemental_files=(), on_verified=None)` | `ObjBundleResult(outcome, phase, entry, diagnostics)` |
 
 `ObjPart(object, groups)` stores object name and a tuple of group strings. `ObjDocument(mesh, parts, material_names, material_library)` stores a canonical Mesh, tuples of parts/names and opaque material-library bytes. `ObjResource(path, bytes)` stores a relative pathlib Path and owned immutable bytes. `ObjFileAsset(document, obj_path, material_libraries, resources)` stores the document, relative OBJ path, ordered library-path tuple and resource tuple. Both document and asset have `with_mesh(mesh)` to construct a replacement carrying the same other data. Constructors normalize tuple/byte fields to owned immutable values and reject incompatible types. These frozen values do not represent arbitrary scenes or skin binding.
 
@@ -32,9 +32,11 @@ Native parse, format/subset, resource and verification failures return their nat
 
 Existing destinations are rejected. Native staging, inventory/reload verification and no-replace directory publication remain authoritative. The binding and Python wrapper prepare the successful result/relative entry before native publication and reuse it on success. `failed`/`cancelled` outcomes do not report a completed destination. Python process termination or asynchronous interpreter interruption can prevent result delivery after a filesystem commit; inspecting the destination may then be necessary. Publication does not promise crash durability or hostile concurrent filesystem safety. Supplemental files are owned `ObjResource` records subject to native path/collision/inventory checks, not a selected workflow report schema.
 
+`on_verified` is an optional callable receiving a frozen `ObjFileAsset` reloaded from verified staged content and a tuple of frozen `ObjResource` records carrying exact verified bytes, ordered by UTF-8 relative path. Return an iterable of additional `ObjResource` files. Inputs are owned copies and survive callback/native-source destruction. Returned files use the native collision/readback/inventory rules above; callback representation errors and exceptions fail publication with `obj.verified_callback_failed`. No callback runs after commit. The inventory excludes the callback's returned files, so a receipt can hash its asset payload without hashing itself. No shared report/profile is inferred from a receipt.
+
 ## Build, installation and example
 
-The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), installed Geometry native headers at revision `0c7b9f12148a3fdf37d7ab27f0c06ba2656b3a36` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev10+g0c7b9f121`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
+The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), installed Geometry native headers at revision `36d36cba938ab660ad25c71c0afbb0d3f5963ff3` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev11+g36d36cba9`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
 
 In the [configured native dependency environment](../ENVIRONMENT.md), pass installed package prefixes to the optional wheel build:
 

@@ -34,6 +34,8 @@ struct ObjBundleOptions {
     // Synchronous progress callback. Exceptions fail publication; no callback after commit.
     std::function<void(ObjBundlePhase)> on_phase;
     std::vector<ObjResource> supplemental_files;
+    // Called on verified owned content before commit; returned files are checked supplements.
+    std::function<std::vector<ObjResource>(const ObjFileAsset&, const std::vector<ObjResource>&)> on_verified;
 };
 struct ObjBundleResult {
     ObjBundleOutcome outcome{ObjBundleOutcome::failed};
