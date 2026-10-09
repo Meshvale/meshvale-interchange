@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// Preserve first-include order and repetition to check self-containment and guards.
+// Preserve first-include order and repetition to check self-containment and
+// guards.
 // clang-format off
 #include "meshvale/interchange/obj_files.hpp"
 #include "meshvale/interchange/obj_files.hpp"
