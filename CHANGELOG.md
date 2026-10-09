@@ -15,4 +15,6 @@
 
 ### Changed
 
+- Canonical C++ headers use `.h`, with legacy public `.hpp` forwarding includes retained for source compatibility; native builds disable language extensions and compile each installed header independently.
+
 - Geometry evaluation/runtime pin now uses the report-capable public candidate documented in the package and adapter contracts.

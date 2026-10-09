@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-#include "obj_file_detail.hpp"
+#include "obj_file_detail.h"
+#include <algorithm>
+#include <filesystem>
+#include <istream>
+#include <map>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 #include <tiny_obj_loader.h>
 #include <set>
 

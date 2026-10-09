@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-#pragma once
-#include <meshvale/interchange/obj_files.hpp>
+#ifndef MESHVALE_INTERCHANGE_SRC_OBJ_FILE_DETAIL_H_
+#define MESHVALE_INTERCHANGE_SRC_OBJ_FILE_DETAIL_H_
+#include "meshvale/interchange/obj_files.h"
 #include <algorithm>
 #include <fstream>
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#include <iterator>
+#include <optional>
+#include <string>
+#include <system_error>
+#include <utility>
+#include <vector>
 
 namespace meshvale::interchange::detail {
 namespace fs = std::filesystem;
@@ -110,3 +117,5 @@ inline std::string clean_line(std::string line) {
     return line;
 }
 } // namespace meshvale::interchange::detail
+
+#endif  // MESHVALE_INTERCHANGE_SRC_OBJ_FILE_DETAIL_H_

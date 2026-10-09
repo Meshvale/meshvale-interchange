@@ -1,6 +1,6 @@
 # OBJ/MTL text interchange
 
-Contract version **0.1.0**, development interface. [obj.hpp](../include/meshvale/interchange/obj.hpp) owns C++ type shapes. This contract describes the in-memory adapter; the [file/bundle contract](obj-files.md) owns filesystem import, texture resolution and staged output publication. CLI and Python remain forthcoming.
+Contract version **0.1.1**, development interface. [obj.h](../include/meshvale/interchange/obj.h) owns C++ type shapes. This contract describes the in-memory adapter; the [file/bundle contract](obj-files.md) owns filesystem import, texture resolution and staged output publication. The optional Python interface has its [own contract](python.md); CLI remains forthcoming.
 
 ## Import
 
@@ -31,3 +31,7 @@ No single-UV/four-influence limit is imposed on geometry storage. The OBJ writer
 C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `36d36cba938ab660ad25c71c0afbb0d3f5963ff3`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
 
 Use vcpkg manifest mode through its CMake toolchain, with tool locations provided through environment/configuration rather than repository paths. Install/export target `meshvale::interchange` and a separate native consumer will be tested before a release. Snapshot versions are not a released compatibility promise.
+
+## C++ header compatibility
+
+`<meshvale/interchange/obj.h>` is the canonical self-contained C++20 header. The installed `<meshvale/interchange/obj.hpp>` path remains a forwarding header to the same definitions for source compatibility. Including canonical and legacy paths together is supported. Public type/function names, data layout and behavior are unchanged; this migration does not promise a stable binary ABI or schedule legacy-header removal. New consumers should use `.h` paths.

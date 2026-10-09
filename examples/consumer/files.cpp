@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <meshvale/interchange/obj_files.hpp>
+#include "meshvale/interchange/obj_files.h"
+#include <exception>
+#include <filesystem>
+#include <ios>
+#include <string>
+#include <system_error>
+#include <utility>
 #include <chrono>
 #include <fstream>
 #include <iostream>

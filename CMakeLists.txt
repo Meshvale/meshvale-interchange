@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 project(MeshvaleInterchange LANGUAGES CXX)
+set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(MeshvaleGeometry 0.0.0 EXACT CONFIG REQUIRED)
 find_package(tinyobjloader 2.0.0 CONFIG REQUIRED)
 if(NOT TARGET tinyobjloader::tinyobjloader_double)
@@ -68,6 +69,11 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_library(meshvale_interchange_header_checks OBJECT
+    tests/headers/obj_h.cpp tests/headers/obj_hpp.cpp
+    tests/headers/obj_files_h.cpp tests/headers/obj_files_hpp.cpp)
+  target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::interchange)
+  meshvale_warnings(meshvale_interchange_header_checks)
   add_executable(meshvale_obj_tests tests/obj.cpp)
   target_link_libraries(meshvale_obj_tests PRIVATE meshvale::interchange)
   meshvale_warnings(meshvale_obj_tests)

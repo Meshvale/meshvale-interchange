@@ -1,6 +1,6 @@
 # OBJ files and verified bundles
 
-Contract version **0.2.0**, development interface. [obj_files.hpp](../include/meshvale/interchange/obj_files.hpp) owns type shapes. [The text adapter](obj.md) owns mesh/material semantics and its numerical bound. This contract owns filesystem resources and publication; it does not establish a release or CLI.
+Contract version **0.2.1**, development interface. [obj_files.h](../include/meshvale/interchange/obj_files.h) owns type shapes. [The text adapter](obj.md) owns mesh/material semantics and its numerical bound. This contract owns filesystem resources and publication; it does not establish a release or CLI.
 
 ## OBJ-FILE-001: Owned resource snapshots
 
@@ -31,3 +31,7 @@ Cancellation is cooperative before each phase and file operation. `on_phase` is 
 ## Acceptance
 
 Focused original fixtures cover multiple library directories, texture options/space-containing names, shared resources, an explicit enclosing root, missing/outside-root resources, unknown directives, source protection, malformed raw geometry and path collisions. Bundle tests cover verified reload, supplemental files, existing/racing destinations, cancellation at every phase, copy/reload failures and callback exceptions. Installed consumers must use the public header and installed target. These checks do not establish the broader format or application release matrix.
+
+## C++ header compatibility
+
+`<meshvale/interchange/obj_files.h>` is the canonical self-contained C++20 header. The installed `<meshvale/interchange/obj_files.hpp>` path remains a forwarding header to the same definitions for source compatibility. Including canonical and legacy paths together is supported. Public type/function names, data layout and behavior are unchanged; this migration does not promise a stable binary ABI or schedule legacy-header removal. New consumers should use `.h` paths.

@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <meshvale/geometry/python/record.hpp>
-#include <meshvale/interchange/obj_files.hpp>
+#include "meshvale/geometry/python/record.h"
+#include <cstddef>
+#include <cstring>
+#include <filesystem>
+#include <stop_token>
+#include <string>
+#include <utility>
+#include <vector>
+#include "meshvale/interchange/obj_files.h"
 #include <nanobind/stl/filesystem.h>
 #include <stdexcept>
 
