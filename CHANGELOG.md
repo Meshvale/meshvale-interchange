@@ -15,6 +15,8 @@
 
 ### Changed
 
+- Geometry evaluation/runtime pin uses the verified canonical-header candidate; public names and OBJ behavior retain their existing contracts.
+
 - Canonical C++ headers use `.h`, with legacy public `.hpp` forwarding includes retained for source compatibility; native builds disable language extensions and compile each installed header independently.
 
 - Geometry evaluation/runtime pin now uses the report-capable public candidate documented in the package and adapter contracts.
