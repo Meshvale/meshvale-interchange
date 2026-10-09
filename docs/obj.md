@@ -1,6 +1,6 @@
 # OBJ/MTL text interchange
 
-Contract version **0.1.0**, development interface. [obj.hpp](../include/meshvale/interchange/obj.hpp) owns C++ type shapes. This contract describes the in-memory adapter; filesystem import, texture resolution, staged output publication, CLI and Python are separate work.
+Contract version **0.1.0**, development interface. [obj.hpp](../include/meshvale/interchange/obj.hpp) owns C++ type shapes. This contract describes the in-memory adapter; the [file/bundle contract](obj-files.md) owns filesystem import, texture resolution and staged output publication. CLI and Python remain forthcoming.
 
 ## Import
 
