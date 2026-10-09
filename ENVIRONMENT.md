@@ -18,12 +18,12 @@ cmake --install .local/build --config Release --prefix "$INTERCHANGE_PREFIX"
 For a separate consumer, set `VCPKG_INSTALLED_DIR` to the manifest's dependency directory (by default inside `.local/build/vcpkg_installed`). This consumer has no manifest and consumes the already installed dependencies:
 
 ```sh
-cmake -S examples/consumer -B .local/consumer -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET" -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" -DVCPKG_MANIFEST_MODE=OFF -DCMAKE_PREFIX_PATH="$INTERCHANGE_PREFIX;$GEOMETRY_PREFIX"
+cmake -S examples/consumer -B .local/consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET" -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" -DVCPKG_MANIFEST_MODE=OFF -DCMAKE_PREFIX_PATH="$INTERCHANGE_PREFIX;$GEOMETRY_PREFIX"
 cmake --build .local/consumer --config Release
 ctest --test-dir .local/consumer -C Release --output-on-failure
 ```
 
-PowerShell callers use environment expansion such as `$env:VCPKG_ROOT` in place of shell variables. Keep actual paths in the shell or ignored configuration. CMake consumes installed dependencies, with no private repository/sibling source requirement. Native tests treat warnings as errors. Hosted checks evaluate desktop runners; they do not establish a Python wheel, stable ABI or every-architecture support matrix.
+The consumer must match the producer's build configuration and C++ runtime. These commands use Release throughout; MSVC Debug and Release are incompatible when exchanging standard-library objects through this interface. PowerShell callers use environment expansion such as `$env:VCPKG_ROOT` in place of shell variables. Keep actual paths in the shell or ignored configuration. CMake consumes installed dependencies, with no private repository/sibling source requirement. Native tests treat warnings as errors. Hosted checks evaluate desktop runners; they do not establish a Python wheel, stable ABI or every-architecture support matrix.
 
 The current checks need Git and Python 3.10 or newer, with no third-party Python packages:
 

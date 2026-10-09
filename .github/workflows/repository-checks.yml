@@ -79,7 +79,7 @@ jobs:
       - name: Install interchange
         run: cmake --install .local/build --config Release --prefix .local/install
       - name: Configure installed consumer
-        run: cmake -S examples/consumer -B .local/consumer "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET" "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies" -DVCPKG_MANIFEST_MODE=OFF "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
+        run: cmake -S examples/consumer -B .local/consumer -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET" "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies" -DVCPKG_MANIFEST_MODE=OFF "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
       - name: Build installed consumer
         run: cmake --build .local/consumer --config Release
       - name: Test installed consumer
