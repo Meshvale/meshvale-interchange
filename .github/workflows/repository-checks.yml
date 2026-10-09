@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: c298d3cd46829aed309f3152aad99101932e1ea8
+          ref: 273b6899111784bd8de5efd44361e8de32f885f0
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: c298d3cd46829aed309f3152aad99101932e1ea8
+          ref: 273b6899111784bd8de5efd44361e8de32f885f0
           fetch-depth: 0
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,9 +135,10 @@ jobs:
             } else { "x64-osx" }
           } else { "x64-linux" }
           "MESHVALE_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Build and install native Geometry headers
+      - name: Build and install native Geometry package
         run: |
           cmake -S .local/geometry-source -B .local/geometry-build -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build .local/geometry-build --config Release
           cmake --install .local/geometry-build --config Release --prefix .local/geometry-prefix
       - name: Install pinned double-precision parser
         run: |
