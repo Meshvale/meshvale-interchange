@@ -38,7 +38,8 @@ def inspect(path):
                          "include/meshvale/interchange/obj.h","include/meshvale/interchange/obj.hpp",
                          "include/meshvale/interchange/obj_files.h","include/meshvale/interchange/obj_files.hpp",
                          "src/obj_file_detail.h","tests/headers/obj_h.cpp","tests/headers/obj_hpp.cpp",
-                         "tests/headers/obj_files_h.cpp","tests/headers/obj_files_hpp.cpp"]:
+                         "tests/headers/obj_files_h.cpp","tests/headers/obj_files_hpp.cpp",
+                         "scripts/check-cpp-format.py"]:
             assert required in names,required
         assert "src/obj_file_detail.hpp" not in names
     print(f"Package content check passed: {path.name}; {len(names)} files")
