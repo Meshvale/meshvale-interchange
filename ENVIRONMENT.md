@@ -25,7 +25,9 @@ ctest --test-dir .local/consumer -C Release --output-on-failure
 
 The consumer must match the producer's build configuration and C++ runtime. These commands use Release throughout; MSVC Debug and Release are incompatible when exchanging standard-library objects through this interface. PowerShell callers use environment expansion such as `$env:VCPKG_ROOT` in place of shell variables. Keep actual paths in the shell or ignored configuration. CMake consumes installed dependencies, with no private repository/sibling source requirement. Native tests treat warnings as errors. Hosted checks evaluate desktop runners; they do not establish a Python wheel, stable ABI or every-architecture support matrix.
 
-The current checks need Git and Python 3.10 or newer, with no third-party Python packages:
+The optional [Python build](docs/python.md) additionally needs the pinned build tools and installed Geometry/tinyobjloader prefixes. Wheel builds disable native testing and install only the Python component; native-only builds do not acquire a Python dependency. Candidate wheels are tested in fresh environments outside the checkout. This is development packaging evidence, not a stable release matrix.
+
+The documentation/portability checks need Git and Python 3.10 or newer, with no third-party Python packages:
 
 ```sh
 python scripts/check-portability.py
