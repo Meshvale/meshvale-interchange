@@ -23,8 +23,9 @@ struct Stage {
     void cleanup(std::vector<geometry::Diagnostic>* diagnostics = nullptr) noexcept {
         if (path.empty()) return;
         std::error_code error;
-        fs::remove_all(path, error);
-        if (error && diagnostics) {
+        bool threw = false;
+        try { fs::remove_all(path, error); } catch (...) { threw = true; }
+        if ((error || threw) && diagnostics) {
             try { diagnostics->push_back({"obj.cleanup_failed", "staging", std::nullopt}); } catch (...) {}
         }
         path.clear();
