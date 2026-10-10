@@ -6,6 +6,14 @@ Copy [environment.example.json](environment.example.json) to `.local/environment
 
 `workspace_root` is the optional local checkout/workspace location. `vcpkg_root` is an optional existing vcpkg installation. Compiler, generator, triplet, and corpus fields remain unset until used. Relative build paths resolve from this repository. Native code needs C++20, CMake 3.24+, installed Geometry and double-precision tinyobjloader; see [the adapter contract](docs/obj.md#dependencies-and-native-consumption) and [dependency inventory](THIRD_PARTY.md).
 
+The private [glTF parser foundation](docs/gltf-foundation.md) additionally acquires
+SHA256-verified public cgltf/jsoncons archives during configuration. The installed
+Geometry package must provide `meshvale::editing` execution leases. For offline
+configuration, supply `MESHVALE_CGLTF_ARCHIVE` and `MESHVALE_JSONCONS_ARCHIVE` as
+absolute archive paths; their hashes must match [GltfDependencies.cmake](cmake/GltfDependencies.cmake).
+Arbitrary FetchContent source-directory overrides are rejected. This changes build
+inputs, with no new public glTF operation or dependency header installation.
+
 Set `VCPKG_ROOT` to a bootstrapped vcpkg installation compatible with the pinned registry. Set `GEOMETRY_PREFIX` and `INTERCHANGE_PREFIX` to chosen absolute install prefixes, and `VCPKG_TRIPLET` to the target platform (`x64-windows-static-md`, `x64-linux`, or `arm64-osx` in the evaluated desktop lanes). In a compiler environment, use CMake manifest integration:
 
 ```sh

@@ -10,6 +10,9 @@ target_link_libraries(meshvale_obj_bundle_consumer PRIVATE meshvale::interchange
 enable_testing()
 add_test(NAME installed_interchange_consumer COMMAND meshvale_interchange_consumer)
 add_test(NAME installed_obj_bundle_consumer COMMAND meshvale_obj_bundle_consumer)
+add_executable(meshvale_execution_dependency_consumer execution.cpp)
+target_link_libraries(meshvale_execution_dependency_consumer PRIVATE meshvale::interchange)
+add_test(NAME installed_execution_dependency_consumer COMMAND meshvale_execution_dependency_consumer)
 
 # Compile each installed public header first, using the canonical declarations.
 add_library(meshvale_interchange_installed_header_checks OBJECT

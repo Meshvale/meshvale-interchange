@@ -1,0 +1,70 @@
+# Native glTF parser foundation
+
+This implementation is a private foundation for the [proposed glTF asset
+contract](gltf.md). It adds no installed glTF header, asset reader, extraction,
+writer or Python operation. OBJ/MTL remains the available format adapter.
+
+The native library compiles pinned cgltf and explicitly configured jsoncons
+through private implementation files. jsoncons uses lossless number/bignum
+options, strict comments/trailing-comma handling and an explicit nesting limit;
+its syntax event counter does not retain a document. The cgltf seam accepts a
+small core projection and copies summary values before freeing its parser owner.
+Successful parsing is not metadata, graph, resource or accessor-role admission.
+Decoded-key duplicate rejection, Unicode guards, exact numeric lexemes and the
+complete retained-document view still require implementation before a public
+reader can accept supplied assets.
+
+## Allocation and execution ownership
+
+The private allocator owns a copy of Geometry's execution context and a stop
+token. Standard allocator rebinds share that ledger; copy/move assignment and
+swap propagate the allocator. Each allocation reserves its complete requested
+block before calling the backend: payload, ownership header and alignment
+padding. Count multiplication and block-size addition reject overflow before
+allocation. A growing container charges both its old and replacement blocks
+until the old storage is actually freed.
+
+Each block retains its release backend and a payload lease. Destruction releases
+storage before its charge, without allocating or checking cancellation. A block
+and its rebound shared owner can survive destruction of the caller's context or
+stop source. Expected size/budget/cancellation failures have fixed private codes;
+unexpected allocation exceptions propagate after parser cleanup. The cgltf C
+callbacks contain exceptions and report them after releasing the parser.
+
+This is requested-block accounting, not RSS or heap-overhead measurement. The
+caller-owned input, execution ledger/stop-state creation, runtime exception
+storage and unrelated Geometry result lifetimes are outside this allocator's
+charge. It does not establish a total process allocation cap. Future owned flat
+strings/events, projections, resources and decoded outputs must use the same
+checked seam before a reader can claim complete requested-payload coverage.
+There is no new product budget default or public read-limit policy in this stage.
+
+The tests exercise exact caps including headers, alignment, overflow, overlapping
+container growth, partial failure/cancellation cleanup, stateful rebind ownership,
+concurrent operations and mixed Geometry/Interchange reservations. Tiny parser
+and allocator checks run serially to inspect deterministic ownership and fault
+boundaries; the concurrent tests use two actual threads. This stage performs no
+resource/channel work and makes no parallel throughput claim. Worker leases are
+held through actual worker joins; later resource/channel partitions must use the
+same context rather than launch an independent worker budget.
+
+## Build inputs and consumption
+
+[THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) owns the exact
+cgltf/jsoncons pins and notices. [CMake acquisition](../cmake/GltfDependencies.cmake)
+checks archive SHA256 and keeps upstream headers private. Native installations
+include their notices; Python license metadata includes them even though Python
+exposes no glTF API. No parser SDK or private header is installed for consumers.
+
+The installed Geometry package must supply `meshvale::editing` and its public
+execution leases. The evaluated producer source is revision
+`026f4b169f3128b88e3d5ab08529b48ba0454c12`; native package version remains `0.0.0`.
+The [installed execution consumer](../examples/consumer/execution.cpp) links only
+`meshvale::interchange`, verifies the public shared ledger/lease dependency and
+reads an ordinary OBJ triangle. It does not exercise an unimplemented glTF API.
+
+Use [ENVIRONMENT.md](../ENVIRONMENT.md) for configuration and checks. The native
+`gltf_allocation` test uses only the selected private implementation and installed
+Geometry targets. Retained JSON/resources, all core admission guards, enumerable
+owner-bound handles, typed extraction and verified publication are separate
+implementation gates, with skin/morph/animation support still outstanding.

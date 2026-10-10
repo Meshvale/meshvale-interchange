@@ -28,9 +28,11 @@ def inspect(path):
                     ("licenses", "LICENSE"), ("licenses", "NOTICE"),
                     ("licenses", "licenses", "nanobind.txt"),
                     ("licenses", "licenses", "robin-map.txt"),
+                    ("licenses", "licenses", "cgltf.txt"),
+                    ("licenses", "licenses", "jsoncons.txt"),
                     ("licenses", "licenses", "meshvale-geometry-notice.txt"),
                     ("licenses", "licenses", "tinyobjloader.txt")], name
-        for license in ["LICENSE","NOTICE","nanobind.txt","robin-map.txt","meshvale-geometry-notice.txt","tinyobjloader.txt"]:
+        for license in ["LICENSE","NOTICE","nanobind.txt","robin-map.txt","meshvale-geometry-notice.txt","tinyobjloader.txt","cgltf.txt","jsoncons.txt"]:
             assert any(name.endswith("/"+license) and ".dist-info/licenses/" in name for name in names), license
     else:
         with tarfile.open(path,"r:gz") as archive:
@@ -52,7 +54,10 @@ def inspect(path):
                          "include/meshvale/interchange/obj_files.h",
                          "src/obj_file_detail.h","src/obj_file_detail.cpp","tests/headers/obj_h.cpp",
                          "tests/headers/obj_files_h.cpp",
-                         "scripts/check-cpp-format.py","scripts/portable-preview.py","vcpkg.json"]:
+                         "scripts/check-cpp-format.py","scripts/portable-preview.py","vcpkg.json",
+                         "cmake/GltfDependencies.cmake","src/gltf_allocation.h",
+                         "src/gltf_allocation.cpp","src/gltf_parser.cpp","src/cgltf_reader.cpp",
+                         "licenses/cgltf.txt","licenses/jsoncons.txt"]:
             assert required in names,required
         assert not any(name.endswith(".hpp") for name in names)
     print(f"Package content check passed: {path.name}; {len(names)} files")

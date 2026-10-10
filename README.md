@@ -22,7 +22,8 @@ The [Python interface](docs/python.md) exposes the same operations through canon
 
 The [proposed glTF/GLB asset contract](docs/gltf.md) defines document/resource
 ownership, primitive selection and preservation gates for the next adapter.
-Its API and runtime dependencies are not implemented; OBJ remains the available
+Its public API remains unimplemented. The [private native parser foundation](docs/gltf-foundation.md)
+now supplies checked allocation and pinned parser inputs; OBJ remains the available
 format adapter.
 
 Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.

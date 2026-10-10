@@ -4,7 +4,7 @@
 |---|---|
 | ID | GLTF-ASSET-001 |
 | Version | 0.1.0 draft |
-| Status | Proposed; adapter API and runtime dependencies are not implemented |
+| Status | Proposed; adapter API unimplemented; private parser foundation available |
 
 This contract defines the intended native document, resource and primitive
 boundaries for a glTF 2.0 adapter. The available adapters remain
@@ -198,12 +198,13 @@ The first implementation must state actual serial/worker behavior, callback
 thread ownership, cancellation boundaries and copy costs. No GPU, multicore
 throughput, thread-safety or asynchronous API capability is established here.
 
-## Dependency candidates and focused fixtures
+## Parser foundation and focused fixtures
 
-[THIRD_PARTY.md](../THIRD_PARTY.md#gltf-adapter-candidates) records evaluated
-reader/writer inputs and license obligations. They are not installed runtime
-requirements. Dependency selection must include admitted roles, bounded decoder,
-configured serializer, Unicode/duplicate/finite guards, actual notices and
+[THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) records the selected
+private parser inputs and notices. The [native foundation](gltf-foundation.md)
+implements allocation accounting and parser configuration, with no public asset
+reader yet. Admitted roles, bounded decoding, retained raw numbers, guarded
+metadata, resources and publication require their own implementation and
 installed-consumer verification.
 
 The evaluated jsoncons configuration uses `lossless_number(true)`,

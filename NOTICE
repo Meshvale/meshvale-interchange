@@ -7,3 +7,7 @@ Third-party material retains its own license and attribution notices.
 Python wheels include Meshvale Geometry header code (Apache-2.0),
 tinyobjloader (MIT; see licenses/tinyobjloader.txt), nanobind (BSD-3-Clause)
 and its robin-map dependency (MIT). Their notices accompany the distribution.
+
+Private native parser implementation uses cgltf (MIT) and jsoncons
+(Boost Software License 1.0). Their complete notices are included in
+licenses/cgltf.txt and licenses/jsoncons.txt.

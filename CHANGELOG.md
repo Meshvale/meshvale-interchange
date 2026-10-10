@@ -4,6 +4,8 @@
 
 ### Added
 
+- Private glTF parser/allocation foundation with SHA256-pinned cgltf/jsoncons inputs, shared Geometry execution accounting and bundled notices. Public asset reading, extraction and writing remain forthcoming.
+
 - Portable development wheel candidates for ordinary CPython 3.13 on Linux x86_64 manylinux_2_28 and Windows x64, with independent source-archive rebuilds, dependency inspection and clean installed OBJ checks. Candidates remain CI artifacts rather than supported releases.
 
 - Native OBJ/MTL text import/export preserving mixed polygon loops, corner UVs/normals and missingness, material bindings, object/group membership and smoothing.
@@ -19,7 +21,7 @@
 
 - The optional binding compiles Geometry's installed record implementation through its per-extension factory and links the compiled native package, with exact matched producer requirements; mesh records and operation behavior are unchanged.
 
-- The exact Python/native Geometry source requirement now uses the tested portable candidate `d1b0ec5ddf37d6ff648ddd57fe8c7caefbd78832` (`0.0.1.dev41+gd1b0ec5dd` for Python), preserving existing mesh records and OBJ behavior.
+- The exact Python/native Geometry source requirement now uses the tested portable candidate `026f4b169f3128b88e3d5ab08529b48ba0454c12` (`0.0.1.dev52+g026f4b169` for Python), preserving existing mesh records and OBJ behavior.
 
 - Geometry evaluation/runtime pin uses the native pooled-editor candidate while retaining the existing immutable mesh record protocol and OBJ behavior. Python CI builds the Geometry native package before installing it, including its compiled editing target.
 
