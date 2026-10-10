@@ -17,12 +17,14 @@
 
 ### Changed
 
-- The exact Python/native Geometry source requirement now uses the tested portable candidate `a27cae686ea4f4c6dabeebfc984f0265602e3b1d` (`0.0.1.dev35+ga27cae686` for Python), preserving existing mesh records and OBJ behavior.
+- The optional binding compiles Geometry's installed record implementation through its per-extension factory and links the compiled native package, with exact matched producer requirements; mesh records and operation behavior are unchanged.
+
+- The exact Python/native Geometry source requirement now uses the tested portable candidate `d1b0ec5ddf37d6ff648ddd57fe8c7caefbd78832` (`0.0.1.dev41+gd1b0ec5dd` for Python), preserving existing mesh records and OBJ behavior.
 
 - Geometry evaluation/runtime pin uses the native pooled-editor candidate while retaining the existing immutable mesh record protocol and OBJ behavior. Python CI builds the Geometry native package before installing it, including its compiled editing target.
 
 - Geometry evaluation/runtime pin uses the verified canonical-header candidate; public names and OBJ behavior retain their existing contracts.
 
-- Canonical C++ headers use `.h`, with legacy public `.hpp` forwarding includes retained for source compatibility; native builds disable language extensions and compile each installed header independently.
+- Canonical C++ interfaces use `.h` exclusively; the `obj.hpp` and `obj_files.hpp` forwarding headers are removed. Source callers must update their include paths. Shared non-template file helpers now compile from `obj_file_detail.cpp`, with unchanged OBJ behavior; native and installed builds compile each public header independently.
 
 - Geometry evaluation/runtime pin now uses the report-capable public candidate documented in the package and adapter contracts.

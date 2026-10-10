@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <nanobind/stl/filesystem.h>
+#include <nanobind/stl/string.h>
 
 #include <cstddef>
 #include <cstring>
