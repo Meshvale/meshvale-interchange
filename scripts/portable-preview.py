@@ -84,7 +84,8 @@ def prepare():
     run("cmake", "-S", geometry, "-B", root / "native", "-DBUILD_TESTING=OFF", "-DCMAKE_BUILD_TYPE=Release")
     run("cmake", "--build", root / "native", "--config", "Release", "--parallel", "2")
     run("cmake", "--install", root / "native", "--config", "Release", "--prefix", root / "prefix")
-    run(sys.executable, "-m", "pip", "wheel", geometry, "--no-deps", "--wheel-dir", root / "raw")
+    run(sys.executable, "-m", "pip", "wheel", geometry, "--no-deps", "--verbose",
+        "--config-settings=cmake.version===4.3.1", "--wheel-dir", root / "raw")
     wheel, = (root / "raw").glob("meshvale_geometry-*.whl")
     assert wheel.name.startswith("meshvale_geometry-" + GEOMETRY_VERSION + "-cp313-cp313-"), wheel.name
     output = Path(os.environ["MESHVALE_PREVIEW_DIR"])
@@ -114,6 +115,7 @@ def before_test():
     run(sys.executable, "-m", "pip", "install", "--no-index", "--find-links", root / "wheels",
         "meshvale-geometry==" + GEOMETRY_VERSION)
     run(sys.executable, "-m", "pip", "install", "--no-deps", root / "geometry/examples/record-consumer",
+        "--config-settings=cmake.version===4.3.1",
         "--config-settings=cmake.define.CMAKE_PREFIX_PATH=" + str(root / "prefix"))
 
 

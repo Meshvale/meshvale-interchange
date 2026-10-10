@@ -33,6 +33,7 @@ jobs:
       CIBW_ARCHS: ${{ matrix.arch }}
       CIBW_DEPENDENCY_VERSIONS: pinned
       CIBW_BUILD_FRONTEND: build
+      CIBW_CONFIG_SETTINGS: cmake.version===4.3.1
       CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64@sha256:012f4a50472412f18bb2b450c1cce7158434cfae4ae878591c2748a13a30c2be
       CIBW_ENVIRONMENT_LINUX: >-
         MESHVALE_DEPS=/tmp/meshvale-obj-preview MESHVALE_PREVIEW_DIR=/output
