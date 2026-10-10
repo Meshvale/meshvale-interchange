@@ -7,7 +7,7 @@
 | Status | Development interface; no released package |
 | Owner | Python asset/result shape, ownership, callbacks and packaging |
 
-`meshvale_interchange` exposes the existing native [OBJ text contract](obj.md) and [file/bundle contract](obj-files.md) through owned Python values. It adds no format support or preservation claims beyond those contracts. Geometry meshes are canonical immutable `meshvale_geometry.Mesh` snapshots exchanged through its [record protocol](https://github.com/Meshvale/meshvale-geometry/blob/c298d3cd46829aed309f3152aad99101932e1ea8/docs/python.md); no Mesh C++ object crosses extension runtimes.
+`meshvale_interchange` exposes the existing native [OBJ text contract](obj.md) and [file/bundle contract](obj-files.md) through owned Python values. It adds no format support or preservation claims beyond those contracts. Geometry meshes are canonical immutable `meshvale_geometry.Mesh` snapshots exchanged through its [record protocol](https://github.com/Meshvale/meshvale-geometry/blob/519eaf2f4eda24c39eaa3ace7f213e5571239fe2/docs/python.md); no Mesh C++ object crosses extension runtimes.
 
 ## Interfaces and values
 
@@ -36,7 +36,7 @@ Existing destinations are rejected. Native staging, inventory/reload verificatio
 
 ## Build, installation and example
 
-The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), installed Geometry native headers at revision `c298d3cd46829aed309f3152aad99101932e1ea8` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev19+gc298d3cd4`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
+The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), installed Geometry native headers at revision `519eaf2f4eda24c39eaa3ace7f213e5571239fe2` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev23+g519eaf2f4`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
 
 In the [configured native dependency environment](../ENVIRONMENT.md), pass installed package prefixes to the optional wheel build:
 
