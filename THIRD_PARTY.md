@@ -30,5 +30,17 @@ or publication by themselves.
 Before adoption, the owning build/package changes must pin actual dependency
 inputs, document the admitted configuration and include required notices in
 distributed source/artifacts. This candidate table is not a bundled notice or
-a redistribution grant. Current manifests and package contents remain the OBJ
+a redistribution grant. Default Python manifests and package contents remain the OBJ
 dependency set above.
+
+## Optional native USD module
+
+The opt-in [USD module](docs/usd.md) selects OpenUSD26.08 / CMake pxr0.26.8 EXACT.
+The evaluated pinned vcpkg baseline supplies oneTBB2023.1.0, hwloc2.11.2 and
+zlib1.3.2#2, with shared native libraries and optional imaging/Python disabled.
+Retained installed notices are [OpenUSD](licenses/optional/usd.txt),
+[oneTBB](licenses/optional/tbb.txt), [hwloc](licenses/optional/hwloc.txt) and
+[zlib](licenses/optional/zlib.txt). OpenUSD uses Tomorrow Open Source Technology
+License1.0 plus its upstream notices. Enabled native installs carry these four
+texts; base OBJ installs and current Python wheels do not include the optional
+SDK runtime or notices. Native consumers supply a compatible SDK/plugin runtime.

@@ -1,0 +1,31 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(MeshvaleGeometry 0.0.0 EXACT CONFIG)
+find_dependency(pxr 0.26.8 EXACT CONFIG)
+include(CMakePushCheckState)
+include(CheckCXXSourceCompiles)
+cmake_push_check_state(RESET)
+if(CMAKE_BUILD_TYPE)
+  set(CMAKE_TRY_COMPILE_CONFIGURATION "${CMAKE_BUILD_TYPE}")
+else()
+  set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+endif()
+set(CMAKE_REQUIRED_LIBRARIES meshvale::geometry)
+unset(MESHVALE_USD_GEOMETRY_POSITIONS CACHE)
+check_cxx_source_compiles("#include <meshvale/geometry/mesh.h>
+#include <meshvale/geometry/position_buffer.h>
+#include <type_traits>
+static_assert(std::is_same_v<decltype(meshvale::geometry::Mesh{}.positions),
+  meshvale::geometry::PositionBuffer>);
+int main() {
+  meshvale::geometry::Mesh mesh;
+  mesh.positions.Append({1.0, 2.0, 3.0});
+  mesh.positions.Set(0, {3.0, 2.0, 1.0});
+  return mesh.positions.Get(0)[0] == 3.0 ? 0 : 1;
+}" MESHVALE_USD_GEOMETRY_POSITIONS)
+cmake_pop_check_state()
+if(NOT MESHVALE_USD_GEOMETRY_POSITIONS)
+  message(FATAL_ERROR "MeshvaleInterchangeUsd requires Geometry Mesh positions owned by the compiled PositionBuffer Append/Set/Get interface")
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/MeshvaleInterchangeUsdTargets.cmake")
+check_required_components(MeshvaleInterchangeUsd)
