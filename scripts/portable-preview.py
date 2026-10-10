@@ -103,6 +103,7 @@ def prepare():
             subprocess.run(command, stdout=stream, check=True)
         if not windows:
             subprocess.run(["ldd", "--version"], stdout=stream, check=True)
+            subprocess.run(["rpm", "-q", "zip"], stdout=stream, check=True)
     (output / "native-inputs.json").write_text(json.dumps({"geometry_revision": GEOMETRY_REVISION,
         "geometry_version": GEOMETRY_VERSION, "geometry_native_version": "0.0.0",
         "vcpkg_revision": VCPKG_REVISION, "triplet": triplet,
