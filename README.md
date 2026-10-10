@@ -20,6 +20,11 @@ The [Python interface](docs/python.md) exposes the same operations through canon
 - Candidate formats: OBJ/MTL, PLY, OFF, STL, and glTF/GLB.
 - FBX, 3MF, and USD integrations remain under evaluation.
 
+The [proposed glTF/GLB asset contract](docs/gltf.md) defines document/resource
+ownership, primitive selection and preservation gates for the next adapter.
+Its API and runtime dependencies are not implemented; OBJ remains the available
+format adapter.
+
 Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.
 
 ## Development
