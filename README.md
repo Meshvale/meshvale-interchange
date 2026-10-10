@@ -2,13 +2,15 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development native library with OBJ/MTL text and file adapters, resource snapshots and verified bundle publication. No stable release, CLI or Python package yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, resource snapshots, verified bundle publication and an optional Python interface. No stable release or CLI yet.
 
 ## Available native adapter
 
 Import/export mixed polygon faces with separate corner UVs/normals, missingness, material assignments, object/group membership and smoothing. Export reloads and verifies its result before returning text. Extra UV sets and other unsupported channels produce an explicit failure; OBJ is an initial adapter, and the wider format plan remains below.
 
 Read the [OBJ/MTL text contract](docs/obj.md) for mesh semantics and numerical limits, and the [file/bundle contract](docs/obj-files.md) for material/texture resolution, resource boundaries and publication outcomes. Separate installed consumers demonstrate [text interchange](examples/consumer/main.cpp) and [resource-aware file publication](examples/consumer/files.cpp). Texture files retain their bytes; image decoding and shader equivalence are outside current coverage.
+
+The [Python interface](docs/python.md) exposes the same operations through canonical Geometry snapshots, frozen asset values and owned resource bytes. It supports cooperative cancellation and synchronous publication callbacks. See the [installed bundle example](examples/python/obj_bundle.py) for load → inspect → publish → reload.
 
 ## Planned capabilities
 

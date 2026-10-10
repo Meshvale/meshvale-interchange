@@ -3,3 +3,7 @@ Copyright 2026 CarlYaki and Meshvale contributors.
 
 Original material in this repository is licensed under the Apache License, Version 2.0.
 Third-party material retains its own license and attribution notices.
+
+Python wheels include Meshvale Geometry header code (Apache-2.0),
+tinyobjloader (MIT; see licenses/tinyobjloader.txt), nanobind (BSD-3-Clause)
+and its robin-map dependency (MIT). Their notices accompany the distribution.

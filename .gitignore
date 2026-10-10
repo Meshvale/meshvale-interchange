@@ -13,3 +13,6 @@
 /build/
 __pycache__/
 *.pyc
+
+# Generated Python package version
+/python/meshvale_interchange/_version.py
