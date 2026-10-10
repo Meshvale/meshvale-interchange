@@ -43,17 +43,21 @@ struct Counter {
   std::atomic<std::size_t> releases{0};
   std::atomic<bool> failure{false};
   std::atomic<bool> ordering_failure{false};
+  std::size_t fail_request = 0;
+  std::size_t cancel_request = 0;
   std::stop_source* cancel_after_allocate = nullptr;
 };
 void* Allocate(std::size_t bytes, std::size_t alignment, void* state) {
   auto& counter = *static_cast<Counter*>(state);
-  ++counter.requests;
+  const auto request = ++counter.requests;
   if (counter.context.ActiveTrackedPayload() < bytes)
     counter.ordering_failure = true;
-  if (counter.failure) throw std::bad_alloc();
+  if (counter.failure || request == counter.fail_request)
+    throw std::bad_alloc();
   auto* pointer = ::operator new(bytes, std::align_val_t(alignment));
   counter.live += bytes;
-  if (counter.cancel_after_allocate)
+  if (counter.cancel_after_allocate &&
+      (counter.cancel_request == 0 || request == counter.cancel_request))
     counter.cancel_after_allocate->request_stop();
   return pointer;
 }
@@ -250,6 +254,85 @@ void Concurrent() {
               counter.live == 0 && context.ActiveTrackedPayload() == 0,
           "shared concurrent allocator cap");
 }
+template <class Operation>
+void ParserFailures(const char* name, Operation operation) {
+  ExecutionContext baseline({2, 1, 131072});
+  Counter observed{baseline};
+  Require(operation(AllocationContext(baseline, {}, Backend(observed))), name);
+  const auto requests = observed.requests.load();
+  Require(requests > 1 && observed.live == 0 &&
+              baseline.ActiveTrackedPayload() == 0,
+          "parser fixture did not exercise partial construction");
+  for (std::size_t target = 1; target <= requests; ++target) {
+    ExecutionContext context({2, 1, 131072});
+    Counter counter{context};
+    counter.fail_request = target;
+    try {
+      (void)operation(AllocationContext(context, {}, Backend(counter)));
+      throw std::runtime_error("partial parser backend fault lost");
+    } catch (const std::bad_alloc&) {
+    }
+    Require(counter.live == 0 && context.ActiveTrackedPayload() == 0 &&
+                !counter.ordering_failure,
+            "partial parser backend fault leaked/released early");
+    counter.fail_request = 0;
+    counter.requests = 0;
+    std::stop_source stop;
+    counter.cancel_request = target;
+    counter.cancel_after_allocate = &stop;
+    Reject(AdmissionCode::kCanceled, [&] {
+      (void)operation(
+          AllocationContext(context, stop.get_token(), Backend(counter)));
+    });
+    Require(counter.live == 0 && context.ActiveTrackedPayload() == 0 &&
+                !counter.ordering_failure,
+            "partial parser cancellation leaked/released early");
+  }
+  ExecutionContext limited({2, 1, AllocationRequestBytes(0, 1) - 1});
+  Counter rejected{limited};
+  Reject(AdmissionCode::kBudgetExceeded, [&] {
+    (void)operation(AllocationContext(limited, {}, Backend(rejected)));
+  });
+  Require(rejected.requests == 0 && limited.ActiveTrackedPayload() == 0,
+          "parser cap rejection reached backend");
+  std::cout << name << ": " << requests << " allocation boundaries\n";
+}
+void PartialParsers() {
+  const auto json = [](const AllocationContext& allocation) {
+    return InspectJsonSyntax(
+               R"({"asset":{"version":"2.0"},"nodes":[{"name":"\u0061 long escaped name for parser-owned decoded string storage"},{}]})",
+               16, allocation)
+        .accepted;
+  };
+  ParserFailures("jsoncons", json);
+  const auto core = [](const AllocationContext& allocation) {
+    const auto result = InspectCoreProjection(
+        R"({"asset":{"version":"2.0"},"nodes":[{"name":"a"},{}]})", allocation);
+    return result.accepted && result.nodes == 2;
+  };
+  ParserFailures("cgltf", core);
+  ExecutionContext context({2, 1, 131072});
+  Counter counter{context};
+  AllocationContext allocation(context, {}, Backend(counter));
+  Require(!InspectJsonSyntax(R"({"nodes":[{"name":"unfinished)", 16, allocation)
+                  .accepted &&
+              !InspectCoreProjection(
+                   R"({"asset":{"version":"2.0"},"nodes":[{},)", allocation)
+                   .accepted &&
+              counter.requests > 1 && counter.live == 0 &&
+              context.ActiveTrackedPayload() == 0,
+          "malformed partial parser cleanup");
+  auto moved = context;
+  auto owner = std::move(moved);
+  try {
+    AllocationContext invalid(moved, {});
+    throw std::runtime_error("moved context accepted");
+  } catch (const meshvale::geometry::EditorError& error) {
+    Require(error.Code() == meshvale::geometry::EditorErrorCode::kInvalidObject,
+            "moved context exception changed");
+  }
+  Require(owner.ActiveTrackedPayload() == 0, "moved owner charge changed");
+}
 void MixedGeometry() {
   using namespace meshvale::geometry;
   Mesh mesh;
@@ -292,6 +375,7 @@ int main() {
     Ownership();
     Overlap();
     Parsers();
+    PartialParsers();
     Concurrent();
     MixedGeometry();
     std::cout << "allocation/parser foundation passed\n";

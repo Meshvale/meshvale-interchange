@@ -13,6 +13,13 @@ add_test(NAME installed_obj_bundle_consumer COMMAND meshvale_obj_bundle_consumer
 add_executable(meshvale_execution_dependency_consumer execution.cpp)
 target_link_libraries(meshvale_execution_dependency_consumer PRIVATE meshvale::interchange)
 add_test(NAME installed_execution_dependency_consumer COMMAND meshvale_execution_dependency_consumer)
+foreach(consumer IN ITEMS meshvale_interchange_consumer meshvale_obj_bundle_consumer meshvale_execution_dependency_consumer)
+  if(MSVC)
+    target_compile_options(${consumer} PRIVATE /W4 /WX)
+  else()
+    target_compile_options(${consumer} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+endforeach()
 
 # Compile each installed public header first, using the canonical declarations.
 add_library(meshvale_interchange_installed_header_checks OBJECT
