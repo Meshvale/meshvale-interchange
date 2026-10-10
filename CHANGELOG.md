@@ -6,6 +6,8 @@
 
 - Optional native USD mesh extraction from selected default-time USDA/USDC meshes, preserving polygon loops and supported normal/UV interpolation with owned source tables. The separate SDK-backed target reports unsupported scene features; the default Python package remains OBJ-only.
 
+- Optional native FBX static polygon import with owned source bytes, normal/UV layer tables and axis/unit metadata. The separate target requires a locally licensed Autodesk SDK and reports unsupported scene features; the default Python package remains OBJ-only.
+
 - Portable development wheel candidates for ordinary CPython 3.13 on Linux x86_64 manylinux_2_28 and Windows x64, with independent source-archive rebuilds, dependency inspection and clean installed OBJ checks. Candidates remain CI artifacts rather than supported releases.
 
 - Native OBJ/MTL text import/export preserving mixed polygon loops, corner UVs/normals and missingness, material bindings, object/group membership and smoothing.

@@ -14,6 +14,6 @@ distribution in licenses/eigen-mpl2.txt, licenses/eigen-apache.txt and
 licenses/eigen-notices.txt. Eigen source is available from
 https://gitlab.com/libeigen/eigen/-/tree/3.4.1; no source modifications are made.
 
-Optional native USD builds have a separate dependency and notice closure.
+Optional native USD and FBX builds have separate dependency and notice closures.
 Their source and enabled installation retain the notices identified in
-THIRD_PARTY.md; the default OBJ Python binary does not include this SDK.
+THIRD_PARTY.md; the default OBJ Python binary does not include either SDK.

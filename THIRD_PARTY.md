@@ -44,3 +44,13 @@ Retained installed notices are [OpenUSD](licenses/optional/usd.txt),
 License1.0 plus its upstream notices. Enabled native installs carry these four
 texts; base OBJ installs and current Python wheels do not include the optional
 SDK runtime or notices. Native consumers supply a compatible SDK/plugin runtime.
+
+## Optional native FBX module
+
+The opt-in [FBX module](docs/fbx.md) selects a locally licensed Autodesk FBX
+SDK2020.3.11 VS2022 Windows x64 shared Release SDK and dynamic MSVC CRT. Its
+proprietary packaged agreement governs SDK use separately from this repository
+Apache-2.0 source license. The required [Autodesk acknowledgement](licenses/optional/fbx-acknowledgement.txt)
+is retained in source archives and enabled native installs. Vendor SDK headers,
+libraries, DLLs and agreement are not redistributed by this project. Base OBJ
+installs and current Python wheels include no FBX runtime or optional acknowledgement.
