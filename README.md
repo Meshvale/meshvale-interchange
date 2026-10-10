@@ -27,6 +27,10 @@ format adapter.
 
 Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.
 
+The [format SDK setup guide](docs/format-sdks.md) prepares optional native
+development dependencies for STL, FBX and USD work, with current capability and
+installation requirements kept separate.
+
 ## Development
 
 Read [ENVIRONMENT.md](ENVIRONMENT.md) for portable build/install instructions and checks, [THIRD_PARTY.md](THIRD_PARTY.md) for dependencies, and [CHANGELOG.md](CHANGELOG.md) for consumer-facing changes. [AGENTS.md](AGENTS.md) provides focused contributor instructions. The installed CMake target is `meshvale::interchange`.
