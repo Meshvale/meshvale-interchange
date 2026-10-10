@@ -23,7 +23,7 @@ def inspect(path):
         with tarfile.open(path,"r:gz") as archive:
             members = archive.getmembers()
         names = []
-        roots = {"CMakeLists.txt","pyproject.toml","README.md","AGENTS.md","ENVIRONMENT.md",
+        roots = {".clang-format","CMakeLists.txt","pyproject.toml","README.md","AGENTS.md","ENVIRONMENT.md",
                  "environment.example.json","LICENSE","NOTICE","THIRD_PARTY.md","CHANGELOG.md","PKG-INFO"}
         directories = {"cmake","include","src","python","docs","examples","tests","licenses","scripts"}
         for member in members:
@@ -34,7 +34,7 @@ def inspect(path):
             assert name in roots or parts[1] in directories,name
             assert not any(part in {".local",".scratch","__pycache__","references","build",".github"} for part in parts),name
             assert not name.endswith((".pyc",".pyd",".so",".obj",".log")),name
-        for required in ["python/meshvale_interchange/_version.py","python/bindings.cpp","tests/python/test_obj.py","src/obj_read.cpp"]:
+        for required in [".clang-format","python/meshvale_interchange/_version.py","python/bindings.cpp","tests/python/test_obj.py","src/obj_read.cpp"]:
             assert required in names,required
     print(f"Package content check passed: {path.name}; {len(names)} files")
 
