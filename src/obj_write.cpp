@@ -134,9 +134,11 @@ ObjExportResult write_obj(const ObjDocument& source) {
   obj << std::setprecision(std::numeric_limits<double>::max_digits10);
   obj << "# Meshvale polygon export\n";
   if (!source.material_library.empty()) obj << "mtllib materials.mtl\n";
-  for (const auto& position : source.mesh.positions)
+  for (std::size_t row = 0; row < source.mesh.positions.size(); ++row) {
+    const auto position = source.mesh.positions.Get(row);
     obj << "v " << position[0] << ' ' << position[1] << ' ' << position[2]
         << '\n';
+  }
   std::vector<index_t> uv_indices(source.mesh.corner_vertices.size(), 0),
       normal_indices(uv_indices.size(), 0);
   for (const auto* a : {uv, normal}) {
@@ -203,10 +205,12 @@ ObjExportResult write_obj(const ObjDocument& source) {
       restored.material_library == source.material_library &&
       restored.material_names == source.material_names;
   if (verified) {
-    for (index_t v = 0; v < source.mesh.positions.size(); ++v)
+    for (index_t v = 0; v < source.mesh.positions.size(); ++v) {
+      const auto source_position = source.mesh.positions.Get(v);
+      const auto restored_position = restored.mesh.positions.Get(v);
       for (std::size_t k = 0; k < 3; ++k)
-        verified &=
-            close(source.mesh.positions[v][k], restored.mesh.positions[v][k]);
+        verified &= close(source_position[k], restored_position[k]);
+    }
     for (index_t face = 0; face < source.mesh.face_count(); ++face) {
       verified &=
           material_at(face) == std::get<std::vector<std::int32_t>>(

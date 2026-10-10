@@ -210,18 +210,20 @@ void numeric_roundtrip_and_locale() {
   require(exported.text->obj.find(',') == std::string::npos,
           "locale-dependent numeric output");
   const auto decoded = read_obj(exported.text->obj);
-  require(decoded.document && decoded.document->mesh.positions[0][0] != 0,
+  require(decoded.document && decoded.document->mesh.positions.Get(0)[0] != 0,
           "decimal scalar collapsed");
   auto within_bound = [](double source, double result) {
     return std::abs(source - result) <=
            std::max(1.0, std::abs(source)) *
                (8.0 * std::numeric_limits<double>::epsilon());
   };
-  for (std::size_t v = 0; v < document.mesh.positions.size(); ++v)
+  for (std::size_t v = 0; v < document.mesh.positions.size(); ++v) {
+    const auto source_position = document.mesh.positions.Get(v);
+    const auto restored_position = decoded.document->mesh.positions.Get(v);
     for (std::size_t k = 0; k < 3; ++k)
-      require(within_bound(document.mesh.positions[v][k],
-                           decoded.document->mesh.positions[v][k]),
+      require(within_bound(source_position[k], restored_position[k]),
               "position exceeds text roundtrip bound");
+  }
   for (std::size_t a = 0; a < 2; ++a) {
     const auto& before =
         std::get<std::vector<double>>(document.mesh.attributes[a].values);

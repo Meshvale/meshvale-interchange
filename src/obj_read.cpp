@@ -219,7 +219,7 @@ ObjImportResult read_obj(const std::string& obj, const std::string& mtl) {
   }
   const auto& data = reader.GetAttrib();
   for (std::size_t i = 0; i < data.vertices.size(); i += 3)
-    document.mesh.positions.push_back(
+    document.mesh.positions.Append(
         {data.vertices[i], data.vertices[i + 1], data.vertices[i + 2]});
   auto uv = channel(AttributeDomain::corner, "obj.uv0", "texcoord", 2);
   uv.set_index = 0;
