@@ -38,7 +38,7 @@ Public files use repository-relative links, public URLs, tool names, and symboli
 
 ## C++ formatting
 
-Use the [shared C++20 protocol](https://github.com/Meshvale/.github/blob/be9f45a147499d40dde06209dcc422b7d4fc3930/docs/cpp-development.md) and the repository `.clang-format`. Install `clang-format==23.1.3` in an isolated tooling environment, then run:
+Use the [shared C++20 protocol](https://github.com/Meshvale/.github/blob/542b03450a3e4f376ddbbaea39f1b17badd0a6f6/docs/cpp-development.md) and the repository `.clang-format`. Install `clang-format==23.1.3` in an isolated tooling environment, then run:
 
 ```sh
 python scripts/check-cpp-format.py --formatter clang-format
