@@ -24,7 +24,7 @@ wheel.packages = ["python/meshvale_interchange"]
 install.components = ["python"]
 cmake.define.MESHVALE_INTERCHANGE_PYTHON = true
 cmake.define.BUILD_TESTING = false
-sdist.include = [".clang-format", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/bindings.cpp", "python/meshvale_interchange/*.py", "docs/**", "examples/**", "tests/**", "licenses/*.txt", "scripts/*.py"]
+sdist.include = [".clang-format", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/bindings.cpp", "python/meshvale_interchange/*.py", "docs/**", "examples/**", "tests/**", "licenses/**", "scripts/*.py"]
 sdist.inclusion-mode = "explicit"
 sdist.exclude = ["**/__pycache__/**", "**/*.pyc", "**/.local/**", "**/.scratch/**", "**/build/**", "**/references/**"]
 

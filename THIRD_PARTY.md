@@ -30,5 +30,15 @@ or publication by themselves.
 Before adoption, the owning build/package changes must pin actual dependency
 inputs, document the admitted configuration and include required notices in
 distributed source/artifacts. This candidate table is not a bundled notice or
-a redistribution grant. Current manifests and package contents remain the OBJ
+a redistribution grant. Default Python manifests and package contents remain the OBJ
 dependency set above.
+
+## Optional native FBX module
+
+The opt-in [FBX module](docs/fbx.md) selects a locally licensed Autodesk FBX
+SDK2020.3.11 VS2022 Windows x64 shared Release SDK and dynamic MSVC CRT. Its
+proprietary packaged agreement governs SDK use separately from this repository
+Apache-2.0 source license. The required [Autodesk acknowledgement](licenses/optional/fbx-acknowledgement.txt)
+is retained in source archives and enabled native installs. Vendor SDK headers,
+libraries, DLLs and agreement are not redistributed by this project. Base OBJ
+installs and current Python wheels include no FBX runtime or optional acknowledgement.

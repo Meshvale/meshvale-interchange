@@ -45,3 +45,13 @@ python scripts/check-cpp-format.py --formatter clang-format
 ```
 
 The checker selects tracked and nonignored untracked `.h`, `.hpp` and `.cpp` files from Git and requires formatter version `23.1.3`; pass a tool executable through `--formatter` when it is outside the shell path. Formatting verifies layout and include ordering, not API naming, ownership or algorithm correctness. Existing public snake-case names retain their contract; a separate verified migration must address naming.
+
+## Optional FBX native module
+
+Add `-DMESHVALE_INTERCHANGE_FBX=ON -DFBXSDK_ROOT="$FBXSDK_ROOT"` to a Windows
+x64 MSVC Release native build using dynamic CRT. The SDK must be the locally
+licensed Autodesk2020.3.11 VS2022 shared configuration. Supply the matching
+runtime DLL directory on PATH and consume `MeshvaleInterchangeFbx` separately.
+The [FBX contract](docs/fbx.md) owns exact compiler/configuration admission,
+static-import coverage, SDK cleanup and notice requirements. Default native
+builds and current Python wheels leave FBX disabled.

@@ -3,14 +3,15 @@
 This guide prepares dependencies for format-adapter development. OBJ/MTL is the
 currently available adapter: its [text contract](obj.md) and [file contract](obj-files.md)
 own supported behavior. Installing a SDK does not add a Meshvale reader or writer.
-STL, FBX and USD adapters remain forthcoming; the [glTF contract](gltf.md) tracks
+STL and USD adapters remain forthcoming; optional [FBX import](fbx.md) now
+has its own bounded native interface; the [glTF contract](gltf.md) tracks
 that separate adapter. Ordinary OBJ builds need none of the FBX/USD inputs below.
 
 | Format | Development input | Configuration | Current product capability |
 |---|---|---|---|
 | OBJ/MTL | tinyobjloader 2.0.0rc13, commit `2945a967c5303b2c8c14174117c45f3302591150` | Double precision, static library, no implicit triangulation | Implemented subset; see owning contracts |
 | STL | No mandatory external SDK | ASCII/binary variants need separate admission and export proof | Adapter forthcoming |
-| FBX | Autodesk FBX SDK 2020.3.11, VS2022 Windows package | Match architecture, configuration and C++ runtime | SDK package evaluated; adapter forthcoming |
+| FBX | Autodesk FBX SDK 2020.3.11, VS2022 Windows package | Match architecture, configuration and C++ runtime | Optional static polygon import; see [FBX contract](fbx.md) |
 | USD | OpenUSD v26.08, vcpkg usd 26.8#1 | Shared native core, optional rendering/Python disabled | Native setup evaluation; adapter forthcoming |
 
 Keep installation prefixes, downloaded packages and build logs outside tracked

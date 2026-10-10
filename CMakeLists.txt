@@ -82,7 +82,8 @@ meshvale_warnings(meshvale_interchange)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 install(TARGETS meshvale_interchange EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-install(DIRECTORY include/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/meshvale/interchange")
 install(EXPORT MeshvaleInterchangeTargets NAMESPACE meshvale::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
 configure_package_config_file(cmake/MeshvaleInterchangeConfig.cmake.in
@@ -94,7 +95,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/MeshvaleInterchangeConfig.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/MeshvaleInterchangeConfigVersion.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
 install(FILES LICENSE NOTICE THIRD_PARTY.md DESTINATION "${CMAKE_INSTALL_DATADIR}/MeshvaleInterchange")
-install(DIRECTORY licenses/ DESTINATION "${CMAKE_INSTALL_DATADIR}/MeshvaleInterchange/licenses")
+file(GLOB meshvale_base_notice_files "${CMAKE_CURRENT_SOURCE_DIR}/licenses/*.txt")
+install(FILES ${meshvale_base_notice_files} DESTINATION "${CMAKE_INSTALL_DATADIR}/MeshvaleInterchange/licenses")
 option(MESHVALE_INTERCHANGE_PYTHON "Build the optional Python OBJ interface" OFF)
 if(MESHVALE_INTERCHANGE_PYTHON)
   find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
@@ -130,4 +132,10 @@ if(BUILD_TESTING)
   target_link_libraries(meshvale_obj_file_tests PRIVATE meshvale::interchange)
   meshvale_warnings(meshvale_obj_file_tests)
   add_test(NAME obj_files COMMAND meshvale_obj_file_tests)
+endif()
+
+# Optional format modules own their SDK discovery, exports and installed notices.
+option(MESHVALE_INTERCHANGE_FBX "Build optional native FBX polygon import" OFF)
+if(MESHVALE_INTERCHANGE_FBX)
+  include(cmake/fbx.cmake)
 endif()

@@ -53,7 +53,7 @@ def inspect(path):
             name = "/".join(parts[1:]); names.append(name)
             assert name in roots or parts[1] in directories,name
             assert not any(part in {".local",".scratch","__pycache__","references","build",".github"} for part in parts),name
-            assert not name.endswith((".pyc",".pyd",".so",".obj",".log")),name
+            assert not name.endswith((".pyc",".pyd",".so",".obj",".log",".dll",".lib",".exe")),name
         for required in [".clang-format","python/meshvale_interchange/_version.py","python/bindings.cpp","tests/python/test_obj.py","src/obj_read.cpp",
                          "include/meshvale/interchange/obj.h",
                          "include/meshvale/interchange/obj_files.h",
@@ -63,6 +63,8 @@ def inspect(path):
             assert required in names,required
         for license in ["eigen-mpl2.txt", "eigen-apache.txt", "eigen-notices.txt", "meshvale-geometry-notice.txt"]:
             assert "licenses/" + license in names, license
+        for required in ['include/meshvale/interchange/fbx.h', 'src/fbx_read.cpp', 'cmake/fbx.cmake', 'cmake/fbx-config.cmake.in', 'docs/fbx.md', 'licenses/optional/fbx-acknowledgement.txt']:
+            assert required in names, required
         assert not any(name.endswith(".hpp") for name in names)
     print(f"Package content check passed: {path.name}; {len(names)} files")
 
