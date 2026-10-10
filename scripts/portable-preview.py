@@ -40,7 +40,8 @@ def dependency_root():
 def repair(wheel, destination, report):
     windows = sys.platform == "win32"
     tool = [sys.executable, "-m", "delvewheel"] if windows else ["auditwheel"]
-    exclusion = ["--exclude", "msvcp140.dll"] if windows else []
+    # Both libraries belong to the documented external x64 MSVC v14 runtime.
+    exclusion = ["--exclude", "msvcp140.dll;msvcp140_atomic_wait.dll"] if windows else []
     destination.mkdir(parents=True, exist_ok=True)
     with report.open("w", encoding="utf-8") as stream:
         stream.write("Unrepaired SHA256: " + hashlib.sha256(wheel.read_bytes()).hexdigest() + "\n")
