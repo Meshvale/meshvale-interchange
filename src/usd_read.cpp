@@ -246,12 +246,27 @@ void CheckMeshFeatures(const usd::UsdPrim& prim) {
   }
   for (const auto& attribute : prim.GetAuthoredAttributes()) {
     const auto& name = attribute.GetName().GetString();
+    if (name.starts_with("primvars:")) {
+      if (usd::UsdGeomPrimvar::IsPrimvar(attribute)) {
+        continue;
+      }
+      if (name.ends_with(":indices") &&
+          attribute.GetTypeName() == usd::SdfValueTypeNames->IntArray) {
+        const auto value_name = name.substr(0, name.size() - 8);
+        const auto value = prim.GetAttribute(usd::TfToken(value_name));
+        if (value && value.IsAuthored() &&
+            usd::UsdGeomPrimvar::IsPrimvar(value)) {
+          continue;
+        }
+      }
+      Reject("usd.unsupported_attribute", attribute.GetPath().GetString());
+    }
     if (name == "points" || name == "faceVertexCounts" ||
         name == "faceVertexIndices" || name == "normals" ||
         name == "orientation" || name == "subdivisionScheme" ||
         name == "doubleSided" || name == "extent" || name == "visibility" ||
         name == "purpose" || name == "xformOpOrder" ||
-        name.starts_with("xformOp:") || name.starts_with("primvars:")) {
+        name.starts_with("xformOp:")) {
       continue;
     }
     Reject("usd.unsupported_attribute", attribute.GetPath().GetString());

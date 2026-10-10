@@ -161,6 +161,31 @@ void Interpolations() {
 }
 
 void Failures() {
+  Reject("orphan-indices", Base("int[] primvars:orphan:indices = [0,0,0]"),
+         "usd.unsupported_attribute");
+  Reject("orphan-scalar-indices", Base("int primvars:orphan:indices = 0"),
+         "usd.unsupported_attribute");
+  Reject("nested-index-sidecar",
+         Base("texCoord2f[] primvars:st = [(0,0)] "
+              "(interpolation = \"uniform\")\n"
+              "int[] primvars:st:indices = [0,0]\n"
+              "int[] primvars:st:indices:indices = [0,0]"),
+         "usd.unsupported_attribute");
+  Reject("wrong-type-index-sidecar",
+         Base("texCoord2f[] primvars:st = [(0,0)] "
+              "(interpolation = \"uniform\")\n"
+              "float[] primvars:st:indices = [0,0]"),
+         "usd.unsupported_attribute");
+  Reject("scalar-index-sidecar",
+         Base("texCoord2f[] primvars:st = [(0,0)] "
+              "(interpolation = \"uniform\")\n"
+              "int primvars:st:indices = 0"),
+         "usd.unsupported_attribute");
+  Reject("unsupported-value-with-indices",
+         Base("float3[] primvars:color = [(1,0,0)] "
+              "(interpolation = \"uniform\")\n"
+              "int[] primvars:color:indices = [0,0]"),
+         "usd.unsupported_primvar");
   Reject("unsupported", Base("float[] primvars:weight = [1]"),
          "usd.unsupported_primvar");
   Reject("half", Base("texCoord2h[] primvars:st = [(0,0)]"),
@@ -232,6 +257,33 @@ void Failures() {
          "usd.unsupported_composition");
   Reject("variant", Base({}, "(variants = { string shape = \"a\" })"),
          "usd.unsupported_composition");
+}
+
+void PrimvarProperties() {
+  auto nested = interchange::ReadUsdMesh(
+      Fixture("nested-primvar",
+              Base("float2[] primvars:st:secondary = [(0.25,0.5),(0.75,1)] "
+                   "(interpolation = \"uniform\")\n"
+                   "int[] primvars:st:secondary:indices = [1,0]")),
+      "/Mesh");
+  Check(nested.document &&
+            nested.document->primvars[0].name == "st:secondary" &&
+            nested.document->primvars[0].indices ==
+                std::vector<std::int32_t>{1, 0} &&
+            std::get<std::vector<float>>(
+                nested.document->mesh.attributes[0].values)[0] == 0.75,
+        "nested supported value/index pair retained");
+  auto blocked = interchange::ReadUsdMesh(
+      Fixture("blocked-index-sidecar",
+              Base("texCoord2f[] primvars:st = [(0.25,0.5),(0.75,1)] "
+                   "(interpolation = \"uniform\")\n"
+                   "int[] primvars:st:indices = None")),
+      "/Mesh");
+  Check(blocked.document && !blocked.document->primvars[0].indices &&
+            std::get<std::vector<float>>(
+                blocked.document->mesh.attributes[0].values) ==
+                std::vector<float>{0.25, 0.5, 0.75, 1},
+        "blocked indices retain USD unindexed semantics");
 }
 
 void FreshRoot() {
@@ -316,6 +368,7 @@ int main(int argc, char** argv) {
     Failures();
     LimitsAndPaths();
     FreshRoot();
+    PrimvarProperties();
     std::cout << "USD public adapter checks: " << checks << '\n';
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
