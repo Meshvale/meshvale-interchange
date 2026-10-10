@@ -33,6 +33,61 @@ def channel(document, semantic):
 
 
 class ObjTests(unittest.TestCase):
+    def test_verified_snapshot_inventory_receipt_and_lifetime(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch); asset = read_obj_file(fixture(root)).asset
+            captured = []
+            phases = []
+            def receipt(snapshot, files):
+                phases.append("verified")
+                self.assertIsInstance(snapshot, ObjFileAsset)
+                self.assertEqual(snapshot.resources, asset.resources)
+                self.assertEqual([r.path.as_posix() for r in files], sorted(r.path.as_posix() for r in files))
+                self.assertEqual(len(files), len(asset.resources) + 2)
+                captured.append((snapshot, files))
+                return iter([ObjResource("receipt.bin", b"actual verified receipt")])
+            result = publish_obj_bundle(asset, root / "bundle", on_phase=phases.append, on_verified=receipt,
+                                        supplemental_files=[ObjResource("static.bin", b"static")])
+            self.assertEqual(result.outcome, "published", result.diagnostics)
+            self.assertEqual(phases, ["preflight", "staging", "verification", "verified", "publication"])
+            self.assertEqual((root / "bundle/receipt.bin").read_bytes(), b"actual verified receipt")
+            for file in captured[0][1]:
+                self.assertEqual((root / "bundle" / file.path).read_bytes(), file.bytes)
+            del asset, result
+            gc.collect()
+            self.assertEqual(captured[0][0].document.mesh.face_count, 2)
+            self.assertNotIn(Path("receipt.bin"), {r.path for r in captured[0][1]})
+
+    def test_verified_callback_failures_cancellation_and_no_early_call(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch); asset = read_obj_file(fixture(root)).asset
+            for callback in [lambda *_: None, lambda *_: [None], lambda *_: [ObjResource("MODEL.OBJ", b"collision")],
+                             lambda *_: [ObjResource("../escape", b"escape")],
+                             lambda *_: (_ for _ in ()).throw(RuntimeError("caller"))]:
+                with self.subTest(callback=callback):
+                    result = publish_obj_bundle(asset, root / "failed", on_verified=callback)
+                    self.assertEqual(result.outcome, "failed")
+                    self.assertFalse((root / "failed").exists())
+                    self.assertFalse(list(root.glob(".meshvale-stage-*")))
+            cancellation = Cancellation()
+            def cancel(*_):
+                cancellation.request_stop()
+                return []
+            result = publish_obj_bundle(asset, root / "cancelled", cancellation=cancellation, on_verified=cancel)
+            self.assertEqual(result.outcome, "cancelled")
+            self.assertFalse((root / "cancelled").exists())
+            invoked = []
+            def corrupt(phase):
+                if phase == "verification":
+                    stage = next(root.glob(".meshvale-stage-*"))
+                    (stage / "model.obj").write_bytes(b"invalid directive\n")
+            result = publish_obj_bundle(asset, root / "broken", on_phase=corrupt, on_verified=lambda *_: invoked.append(True))
+            self.assertEqual(result.outcome, "failed")
+            self.assertEqual(invoked, [])
+            self.assertFalse(list(root.glob(".meshvale-stage-*")))
+            with self.assertRaises(TypeError):
+                publish_obj_bundle(asset, root / "bad", on_verified=False)
+
     def test_text_polygon_seams_missingness_and_lifetime(self):
         result = read_obj(OBJ, MTL)
         self.assertIsNotNone(result.document, result.diagnostics)

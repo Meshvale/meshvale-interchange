@@ -168,11 +168,19 @@ def read_obj_file(input, *, resource_root=None, cancellation=None):
     return ObjFileResult(asset, tuple(result["diagnostics"]))
 
 
-def publish_obj_bundle(asset, destination, *, cancellation=None, on_phase=None, supplemental_files=()):
+def publish_obj_bundle(asset, destination, *, cancellation=None, on_phase=None, supplemental_files=(), on_verified=None):
     record = _asset_record(asset)
     supplemental = [_resource_record(r) for r in supplemental_files]
     success = ObjBundleResult("published", "publication", asset.obj_path, ())
-    result = _interchange.publish(record, destination, cancellation, on_phase, supplemental)
+    verified_callback = None
+    if on_verified is not None:
+        if not callable(on_verified):
+            raise TypeError("on_verified must be callable or None")
+        def verified_callback(value, files):
+            snapshot = ObjFileAsset(_document(value["document"]), value["obj_path"], value["material_libraries"],
+                                   tuple(ObjResource(**r) for r in value["resources"]))
+            return [_resource_record(r) for r in on_verified(snapshot, tuple(ObjResource(**r) for r in files))]
+    result = _interchange.publish(record, destination, cancellation, on_phase, supplemental, verified_callback)
     if result["outcome"] == "published":
         return success
     return ObjBundleResult(result["outcome"], result["phase"], result["entry"], tuple(result["diagnostics"]))

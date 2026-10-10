@@ -262,9 +262,53 @@ void unicode_and_separator_references() {
     require(result.outcome == ObjBundleOutcome::published && get(s.root / "bundle" / texture) == "unicode texture",
             "Unicode resource publication failed");
 }
+void verified_supplements() {
+    Scratch s;
+    const auto asset = fixture(s.root);
+    ObjBundleOptions options;
+    options.supplemental_files.push_back({"static.bin", "static"});
+    bool called = false;
+    options.on_verified = [&](const auto& loaded, const auto& files) {
+        called = true;
+        require(loaded.document.mesh.corner_vertices == asset.document.mesh.corner_vertices, "verified mesh changed");
+        require(files.size() == asset.resources.size() + 2, "verified inventory incomplete");
+        for (const auto& file : files)
+            require(file.bytes == get(stage_in(s.root) / file.path), "callback bytes not staged bytes");
+        return std::vector<ObjResource>{{"receipt.json", "verified receipt\n"}};
+    };
+    auto result = publish_obj_bundle(asset, s.root / "verified", options);
+    require(called && result.outcome == ObjBundleOutcome::published &&
+            get(s.root / "verified/receipt.json") == "verified receipt\n", "verified supplement missing");
+    no_stage(s.root);
+    for (auto name : {"model.obj", "MODEL.OBJ", "materials", "../outside.json"}) {
+        options.on_verified = [=](const auto&, const auto&) { return std::vector<ObjResource>{{name, "receipt"}}; };
+        result = publish_obj_bundle(asset, s.root / "collision", options);
+        require(result.outcome == ObjBundleOutcome::failed && !fs::exists(s.root / "collision"), "dynamic collision published");
+        no_stage(s.root);
+    }
+    options.on_verified = [](const ObjFileAsset&, const std::vector<ObjResource>&) -> std::vector<ObjResource> {
+        throw std::runtime_error("caller");
+    };
+    result = publish_obj_bundle(asset, s.root / "callback", options);
+    require(result.outcome == ObjBundleOutcome::failed && has(result, "obj.verified_callback_failed"), "callback exception hidden");
+    no_stage(s.root);
+    options.on_verified = [&](const auto&, const auto&) {
+        put(stage_in(s.root) / "model.obj", "changed after verification");
+        return std::vector<ObjResource>{{"receipt.json", "receipt"}};
+    };
+    result = publish_obj_bundle(asset, s.root / "tampered", options);
+    require(result.outcome == ObjBundleOutcome::failed && !fs::exists(s.root / "tampered"), "old verified bytes not rechecked");
+    no_stage(s.root);
+    std::stop_source stop;
+    options.stop = stop.get_token();
+    options.on_verified = [&](const auto&, const auto&) { stop.request_stop(); return std::vector<ObjResource>{}; };
+    result = publish_obj_bundle(asset, s.root / "cancelled", options);
+    require(result.outcome == ObjBundleOutcome::cancelled && !fs::exists(s.root / "cancelled"), "callback cancellation published");
+    no_stage(s.root);
+}
 int main() {
     try { resource_snapshot(); enclosing_root_and_boundaries(); explicit_failures();
-          verified_publication(); publication_failures_and_cancellation(); unicode_and_separator_references(); }
+          verified_publication(); publication_failures_and_cancellation(); unicode_and_separator_references(); verified_supplements(); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
     std::cout << "OBJ resource snapshot checks passed\n";
 }

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cerrno>
+#include <new>
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
@@ -170,6 +171,25 @@ ObjBundleResult publish_obj_bundle(const ObjFileAsset& asset, const fs::path& de
         for (const auto& file : options.supplemental_files)
             if (read_bytes(stage.path, file.path, options.stop) != file.bytes) fail("obj.resource_mismatch", key(file.path));
         verify_inventory(stage.path, expected);
+        if (options.on_verified) {
+            std::vector<ObjResource> files{{asset.obj_path, output_text}};
+            files.insert(files.end(), resources.begin(), resources.end());
+            files.insert(files.end(), options.supplemental_files.begin(), options.supplemental_files.end());
+            std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) { return key(a.path) < key(b.path); });
+            std::vector<ObjResource> supplements;
+            cancelled(options.stop);
+            try { supplements = options.on_verified(*reload.asset, files); }
+            catch (const std::bad_alloc&) { throw; }
+            catch (...) { fail("obj.verified_callback_failed", "callback"); }
+            cancelled(options.stop);
+            for (const auto& file : supplements) insert_path(expected, file.path);
+            for (const auto& file : supplements) write_bytes(stage.path, file, options.stop);
+            files.insert(files.end(), supplements.begin(), supplements.end());
+            for (const auto& file : files)
+                if (read_bytes(stage.path, file.path, options.stop) != file.bytes)
+                    fail("obj.resource_mismatch", key(file.path));
+            verify_inventory(stage.path, expected);
+        }
         // Allocate the return path before committing; no fallible callback/allocation follows commit.
         result.entry = asset.obj_path;
         phase(ObjBundlePhase::publication);

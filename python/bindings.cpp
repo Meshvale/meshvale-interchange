@@ -162,10 +162,27 @@ nb::dict read_file(nb::handle input, nb::handle root, Cancellation* cancellation
     return result;
 }
 nb::dict publish(nb::handle value, nb::handle destination, Cancellation* cancellation,
-                 nb::object callback, const nb::list& supplemental) {
+                 nb::object callback, const nb::list& supplemental, nb::object verified_callback) {
     const auto input = asset(value); const auto output = path(destination);
     io::ObjBundleOptions options; options.stop = stop(cancellation);
     for (auto item : supplemental) options.supplemental_files.push_back(resource(item));
+    if (!verified_callback.is_none()) {
+        if (!PyCallable_Check(verified_callback.ptr())) throw nb::type_error("on_verified must be callable or None");
+        options.on_verified = [&verified_callback](const io::ObjFileAsset& value, const std::vector<io::ObjResource>& files) {
+            nb::gil_scoped_acquire acquire;
+            nb::list payload;
+            for (const auto& file : files) {
+                nb::dict item; item["path"] = nb::cast(file.path); item["bytes"] = binary(file.bytes);
+                payload.append(item);
+            }
+            try {
+                auto returned = verified_callback(asset(value), payload);
+                std::vector<io::ObjResource> result;
+                for (auto item : list(returned)) result.push_back(resource(item));
+                return result;
+            } catch (const nb::python_error&) { throw std::runtime_error("Python verified callback raised"); }
+        };
+    }
     if (!callback.is_none()) {
         if (!PyCallable_Check(callback.ptr())) throw nb::type_error("on_phase must be callable or None");
         options.on_phase = [&callback](io::ObjBundlePhase value) {
@@ -197,5 +214,5 @@ NB_MODULE(_interchange, module) {
     module.def("write_text",&write_text);
     module.def("read_file",&read_file,nb::arg("input"),nb::arg("root").none(),nb::arg("cancellation").none());
     module.def("publish",&publish,nb::arg("asset"),nb::arg("destination"),nb::arg("cancellation").none(),
-        nb::arg("callback").none(),nb::arg("supplemental"));
+        nb::arg("callback").none(),nb::arg("supplemental"),nb::arg("verified_callback").none());
 }
