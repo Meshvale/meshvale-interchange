@@ -3,7 +3,7 @@
 | Dependency | Pinned input | Configuration | License / notice |
 |---|---|---|---|
 | tinyobjloader | `2.0.0rc13`, source commit `2945a967c5303b2c8c14174117c45f3302591150` | Double precision; OBJ triangulation disabled | [MIT terms](https://github.com/tinyobjloader/tinyobjloader/blob/2945a967c5303b2c8c14174117c45f3302591150/LICENSE); vcpkg installs copyright under its package share directory |
-| Meshvale Geometry | Development revision `519eaf2f4eda24c39eaa3ace7f213e5571239fe2` | Installed C++20 headers and optional Python records | Apache-2.0, its installed LICENSE/[NOTICE](licenses/meshvale-geometry-notice.txt) |
+| Meshvale Geometry | Development revision `a27cae686ea4f4c6dabeebfc984f0265602e3b1d` | Installed C++20 headers and optional Python records | Apache-2.0, its installed LICENSE/[NOTICE](licenses/meshvale-geometry-notice.txt) |
 | nanobind | `3.1.0` | Optional static Python binding runtime | [BSD-3-Clause](licenses/nanobind.txt) |
 | robin-map | Included by pinned nanobind | Binding implementation dependency | [MIT](licenses/robin-map.txt) |
 | scikit-build-core / setuptools-scm | `1.1.1` / `10.3.4` | Python build/version tooling; not bundled runtime | BSD-3-Clause / MIT |

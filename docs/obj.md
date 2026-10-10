@@ -28,7 +28,7 @@ No single-UV/four-influence limit is imposed on geometry storage. The OBJ writer
 
 ## Dependencies and native consumption
 
-C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `519eaf2f4eda24c39eaa3ace7f213e5571239fe2`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
+C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `a27cae686ea4f4c6dabeebfc984f0265602e3b1d`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
 
 Use vcpkg manifest mode through its CMake toolchain, with tool locations provided through environment/configuration rather than repository paths. Install/export target `meshvale::interchange` and a separate native consumer will be tested before a release. Snapshot versions are not a released compatibility promise.
 

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Portable development wheel candidates for ordinary CPython 3.13 on Linux x86_64 manylinux_2_28 and Windows x64, with independent source-archive rebuilds, dependency inspection and clean installed OBJ checks. Candidates remain CI artifacts rather than supported releases.
+
 - Native OBJ/MTL text import/export preserving mixed polygon loops, corner UVs/normals and missingness, material bindings, object/group membership and smoothing.
 - Reload verification before export success, explicit unsupported-channel rejection and raw storage diagnostics.
 - Resource-aware OBJ file import retaining multiple MTL locations and referenced texture bytes inside an explicit resource root.
@@ -14,6 +16,8 @@
 - Verified-content callback for computing receipts from reloaded assets and exact staged bytes, with checked supplemental files included in the same no-replace publication.
 
 ### Changed
+
+- The exact Python/native Geometry source requirement now uses the tested portable candidate `a27cae686ea4f4c6dabeebfc984f0265602e3b1d` (`0.0.1.dev35+ga27cae686` for Python), preserving existing mesh records and OBJ behavior.
 
 - Geometry evaluation/runtime pin uses the native pooled-editor candidate while retaining the existing immutable mesh record protocol and OBJ behavior. Python CI builds the Geometry native package before installing it, including its compiled editing target.
 
