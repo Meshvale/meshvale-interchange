@@ -23,6 +23,6 @@
 
 - Geometry evaluation/runtime pin uses the verified canonical-header candidate; public names and OBJ behavior retain their existing contracts.
 
-- Canonical C++ headers use `.h`, with legacy public `.hpp` forwarding includes retained for source compatibility; native builds disable language extensions and compile each installed header independently.
+- Canonical C++ interfaces use `.h` exclusively; the `obj.hpp` and `obj_files.hpp` forwarding headers are removed. Source callers must update their include paths. Shared non-template file helpers now compile from `obj_file_detail.cpp`, with unchanged OBJ behavior; native and installed builds compile each public header independently.
 
 - Geometry evaluation/runtime pin now uses the report-capable public candidate documented in the package and adapter contracts.

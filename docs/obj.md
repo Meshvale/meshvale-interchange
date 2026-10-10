@@ -32,6 +32,6 @@ C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision 
 
 Use vcpkg manifest mode through its CMake toolchain, with tool locations provided through environment/configuration rather than repository paths. Install/export target `meshvale::interchange` and a separate native consumer will be tested before a release. Snapshot versions are not a released compatibility promise.
 
-## C++ header compatibility
+## C++ header interface
 
-`<meshvale/interchange/obj.h>` is the canonical self-contained C++20 header. The installed `<meshvale/interchange/obj.hpp>` path remains a forwarding header to the same definitions for source compatibility. Including canonical and legacy paths together is supported. Public type/function names, data layout and behavior are unchanged; this migration does not promise a stable binary ABI or schedule legacy-header removal. New consumers should use `.h` paths.
+Use `<meshvale/interchange/obj.h>`, the self-contained C++20 interface. The former `obj.hpp` forwarding include has been removed; existing source callers must update their include path. Public types, functions and behavior retain their contracts. Non-template operation and file-helper implementations are compiled from `.cpp` files; installed header checks and separate native consumers verify the `.h` interface. Development snapshots do not promise a stable binary ABI.

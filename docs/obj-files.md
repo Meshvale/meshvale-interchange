@@ -32,6 +32,6 @@ Cancellation is cooperative before each phase and file operation. `on_phase` is 
 
 Focused original fixtures cover multiple library directories, texture options/space-containing names, shared resources, an explicit enclosing root, missing/outside-root resources, unknown directives, source protection, malformed raw geometry and path collisions. Bundle tests cover verified reload, supplemental files, existing/racing destinations, cancellation at every phase, copy/reload failures and callback exceptions. Installed consumers must use the public header and installed target. These checks do not establish the broader format or application release matrix.
 
-## C++ header compatibility
+## C++ header interface
 
-`<meshvale/interchange/obj_files.h>` is the canonical self-contained C++20 header. The installed `<meshvale/interchange/obj_files.hpp>` path remains a forwarding header to the same definitions for source compatibility. Including canonical and legacy paths together is supported. Public type/function names, data layout and behavior are unchanged; this migration does not promise a stable binary ABI or schedule legacy-header removal. New consumers should use `.h` paths.
+Use `<meshvale/interchange/obj_files.h>`, the self-contained C++20 interface. The former `obj_files.hpp` forwarding include has been removed; existing source callers must update their include path. Public types, functions and behavior retain their contracts. Non-template operation and file-helper implementations are compiled from `.cpp` files; installed header checks and separate native consumers verify the `.h` interface. Development snapshots do not promise a stable binary ABI.

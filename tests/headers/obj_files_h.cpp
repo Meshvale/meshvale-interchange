@@ -5,5 +5,4 @@
 #include "meshvale/interchange/obj_files.h"
 #include "meshvale/interchange/obj_files.h"
 #include "meshvale/interchange/obj_files.h"
-#include "meshvale/interchange/obj_files.hpp"
 // clang-format on

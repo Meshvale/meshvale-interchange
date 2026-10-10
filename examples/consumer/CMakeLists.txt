@@ -11,10 +11,10 @@ enable_testing()
 add_test(NAME installed_interchange_consumer COMMAND meshvale_interchange_consumer)
 add_test(NAME installed_obj_bundle_consumer COMMAND meshvale_obj_bundle_consumer)
 
-# Compile each installed public header first, including legacy/canonical mixtures.
+# Compile each installed public header first, using the canonical declarations.
 add_library(meshvale_interchange_installed_header_checks OBJECT
-  ../../tests/headers/obj_h.cpp ../../tests/headers/obj_hpp.cpp
-  ../../tests/headers/obj_files_h.cpp ../../tests/headers/obj_files_hpp.cpp)
+  ../../tests/headers/obj_h.cpp
+  ../../tests/headers/obj_files_h.cpp)
 target_link_libraries(meshvale_interchange_installed_header_checks PRIVATE meshvale::interchange)
 if(MSVC)
   target_compile_options(meshvale_interchange_installed_header_checks PRIVATE /W4 /WX)
