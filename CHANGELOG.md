@@ -21,6 +21,8 @@
 
 ### Changed
 
+- Canonical numerical attribute access now uses Geometry's Eigen-owned `ScalarBuffer<T>` alternatives, with a compiled-interface configuration check. The matched Geometry producer is `ec38fabd783a578947d43856b0c7a7fd54ce8533` (Python `0.0.1.dev69+gec38fabd7`). Native variant callers must update typed access and rebuild against the matching Geometry producer; owned Python mesh records retain their existing schema and bits.
+
 - Native position access uses Geometry's owned PositionBuffer interface at `920be542502652b1d16c5f90414cec6495ff62b4` (Python `0.0.1.dev57+g920be5425`), preserving canonical mesh records and scalar bits. Linked distributions retain the producer's Eigen notices; older native snapshots are rejected during configuration.
 
 - The optional binding compiles Geometry's installed record implementation through its per-extension factory and links the compiled native package, with exact matched producer requirements; mesh records and operation behavior are unchanged.

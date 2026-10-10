@@ -102,15 +102,20 @@ void RoundTrips() {
         seam =
             source.indices == std::vector<std::int32_t>{0, 1, 2, 3, 4, 0, 0} &&
             source.unauthored_values_index == 4 &&
-            std::get<std::vector<float>>(source.values).size() == 10 &&
+            std::get<meshvale::geometry::ScalarBuffer<float>>(source.values)
+                    .size() == 10 &&
             channel.domain == meshvale::geometry::AttributeDomain::corner &&
             channel.present == std::vector<std::uint8_t>{1, 1, 1, 1, 0, 1, 1} &&
-            std::get<std::vector<float>>(channel.values).size() == 14 &&
-            std::get<std::vector<float>>(channel.values)[4] == 1 &&
-            std::get<std::vector<float>>(channel.values)[12] == 0;
+            std::get<meshvale::geometry::ScalarBuffer<float>>(channel.values)
+                    .size() == 14 &&
+            std::get<meshvale::geometry::ScalarBuffer<float>>(
+                channel.values)[4] == 1 &&
+            std::get<meshvale::geometry::ScalarBuffer<float>>(
+                channel.values)[12] == 0;
       }
       if (source.name == "detail") {
-        precise = std::get<std::vector<double>>(channel.values)[0] == 0.125 &&
+        precise = std::get<meshvale::geometry::ScalarBuffer<double>>(
+                      channel.values)[0] == 0.125 &&
                   !source.indices &&
                   channel.domain == meshvale::geometry::AttributeDomain::vertex;
       }
@@ -155,7 +160,7 @@ void Interpolations() {
                    "int[] primvars:n:indices = [1,0]")),
       "/Mesh");
   Check(normals.document &&
-            std::get<std::vector<double>>(
+            std::get<meshvale::geometry::ScalarBuffer<double>>(
                 normals.document->mesh.attributes[0].values)[1] == 1,
         "indexed float64 normal");
 }
@@ -270,7 +275,7 @@ void PrimvarProperties() {
             nested.document->primvars[0].name == "st:secondary" &&
             nested.document->primvars[0].indices ==
                 std::vector<std::int32_t>{1, 0} &&
-            std::get<std::vector<float>>(
+            std::get<meshvale::geometry::ScalarBuffer<float>>(
                 nested.document->mesh.attributes[0].values)[0] == 0.75,
         "nested supported value/index pair retained");
   auto blocked = interchange::ReadUsdMesh(
@@ -280,7 +285,7 @@ void PrimvarProperties() {
                    "int[] primvars:st:indices = None")),
       "/Mesh");
   Check(blocked.document && !blocked.document->primvars[0].indices &&
-            std::get<std::vector<float>>(
+            std::get<meshvale::geometry::ScalarBuffer<float>>(
                 blocked.document->mesh.attributes[0].values) ==
                 std::vector<float>{0.25, 0.5, 0.75, 1},
         "blocked indices retain USD unindexed semantics");

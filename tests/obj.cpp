@@ -78,17 +78,17 @@ void mixed_roundtrip() {
   require(document.mesh.corner_vertices ==
               std::vector<index_t>({0, 1, 2, 1, 3, 4, 2, 5, 6, 7, 8, 9}),
           "source/negative indices changed");
-  const auto& uv =
-      std::get<std::vector<double>>(document.mesh.attributes[0].values);
+  const auto& uv = std::get<meshvale::geometry::ScalarBuffer<double>>(
+      document.mesh.attributes[0].values);
   require(uv[2] == 1 && uv[6] == 0.25, "UV seam at shared vertex lost");
   require(document.parts[0] == ObjPart{"main object", {"sheet", "seam"}} &&
               document.parts[2].object == "separate",
           "object/group state not retained");
-  require(
-      std::get<std::vector<std::int32_t>>(document.mesh.attributes[2].values) ==
-          std::vector<std::int32_t>({0, 1, 2}),
-      "material bindings changed");
-  require(std::get<std::vector<std::uint32_t>>(
+  require(std::get<meshvale::geometry::ScalarBuffer<std::int32_t>>(
+              document.mesh.attributes[2].values) ==
+              std::vector<std::int32_t>({0, 1, 2}),
+          "material bindings changed");
+  require(std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
               document.mesh.attributes[4].values) ==
               std::vector<std::uint32_t>({2, 2, 0}),
           "smoothing groups changed");
@@ -102,7 +102,7 @@ void mixed_roundtrip() {
   require(restored.document && restored.document->mesh.corner_vertices ==
                                    document.mesh.corner_vertices,
           "reloaded loops differ");
-  require(std::get<std::vector<double>>(
+  require(std::get<meshvale::geometry::ScalarBuffer<double>>(
               restored.document->mesh.attributes[0].values) == uv,
           "dyadic corner UVs differ");
   require(write_obj(document).text->obj == exported.text->obj,
@@ -121,10 +121,11 @@ void missing_values_and_unbound_faces() {
   require(*mesh.attributes[1].present ==
               std::vector<std::uint8_t>({1, 1, 0, 0, 0, 0}),
           "normal missingness changed");
-  require(std::get<std::vector<double>>(mesh.attributes[0].values)[1] == 0,
+  require(std::get<meshvale::geometry::ScalarBuffer<double>>(
+              mesh.attributes[0].values)[1] == 0,
           "one-component UV default changed");
-  require(std::get<std::vector<std::int32_t>>(mesh.attributes[2].values) ==
-              std::vector<std::int32_t>({0, -1}),
+  require(std::get<meshvale::geometry::ScalarBuffer<std::int32_t>>(
+              mesh.attributes[2].values) == std::vector<std::int32_t>({0, -1}),
           "unbound material became bound");
   require(write_obj(*loaded.document).text.has_value(),
           "missing/unbound roundtrip failed");
@@ -170,7 +171,8 @@ void export_limits() {
   require(has(write_obj(document).diagnostics, "obj.material_library_mismatch"),
           "material names disconnected from library");
   document = *loaded.document;
-  std::get<std::vector<double>>(document.mesh.attributes[0].values)[0] =
+  std::get<meshvale::geometry::ScalarBuffer<double>>(
+      document.mesh.attributes[0].values)[0] =
       std::numeric_limits<double>::infinity();
   require(has(write_obj(document).diagnostics, "obj.nonfinite_attribute"),
           "infinite UV exported");
@@ -225,9 +227,9 @@ void numeric_roundtrip_and_locale() {
               "position exceeds text roundtrip bound");
   }
   for (std::size_t a = 0; a < 2; ++a) {
-    const auto& before =
-        std::get<std::vector<double>>(document.mesh.attributes[a].values);
-    const auto& after = std::get<std::vector<double>>(
+    const auto& before = std::get<meshvale::geometry::ScalarBuffer<double>>(
+        document.mesh.attributes[a].values);
+    const auto& after = std::get<meshvale::geometry::ScalarBuffer<double>>(
         decoded.document->mesh.attributes[a].values);
     for (std::size_t i = 0; i < before.size(); ++i)
       require(within_bound(before[i], after[i]),
