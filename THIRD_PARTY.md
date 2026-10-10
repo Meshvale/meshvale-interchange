@@ -3,7 +3,7 @@
 | Dependency | Pinned input | Configuration | License / notice |
 |---|---|---|---|
 | tinyobjloader | `2.0.0rc13`, source commit `2945a967c5303b2c8c14174117c45f3302591150` | Double precision; OBJ triangulation disabled | [MIT terms](https://github.com/tinyobjloader/tinyobjloader/blob/2945a967c5303b2c8c14174117c45f3302591150/LICENSE); vcpkg installs copyright under its package share directory |
-| Meshvale Geometry | Development revision `5ad9642911d36c9f81f242a3012ac0e77df919e5` | Compiled C++20 library and optional per-extension Python records | Apache-2.0, its installed LICENSE/[NOTICE](licenses/meshvale-geometry-notice.txt) |
+| Meshvale Geometry | Development revision `0851e693a2be42deeba0b328b6f1b75205adf48f` | Compiled C++20 library and optional per-extension Python records | Apache-2.0, its installed LICENSE/[NOTICE](licenses/meshvale-geometry-notice.txt) |
 | Eigen | `3.4.1`, through the exact compiled Geometry producer | Private unmodified Core implementation; `EIGEN_MPL2_ONLY`, internal threading disabled, fast-math disabled; [MPL-2.0](licenses/eigen-mpl2.txt), [Apache-2.0](licenses/eigen-apache.txt) and [included upstream notices](licenses/eigen-notices.txt); [source](https://gitlab.com/libeigen/eigen/-/tree/3.4.1). No Eigen types or headers are required by installed consumers |
 | nanobind | `3.1.0` | Optional static Python binding runtime | [BSD-3-Clause](licenses/nanobind.txt) |
 | robin-map | Included by pinned nanobind | Binding implementation dependency | [MIT](licenses/robin-map.txt) |
