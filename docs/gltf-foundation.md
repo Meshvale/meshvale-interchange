@@ -76,6 +76,21 @@ resource/channel work and makes no parallel throughput claim. Worker leases are
 held through actual worker joins; later resource/channel partitions must use the
 same context rather than launch an independent worker budget.
 
+The native `gltf_json_snapshot` test checks owned lifetimes, exact caps, malformed
+and duplicate input, overlapping retained charges and every observed allocation
+boundary for failure and cancellation. An independent standard-library Python
+oracle compares original fixtures against the compiled capture executable:
+
+```sh
+python tests/gltf_json_oracle.py "$GLTF_JSON_TEST" .local/json-oracle
+```
+
+Set `GLTF_JSON_TEST` to the built `meshvale_gltf_json_tests` executable, including
+the configuration directory and platform suffix where required. Use the same
+compiler/runtime environment as the native build, including the sanitizer
+runtime when evaluating an instrumented executable. This tests lexical JSON
+retention, decoded Unicode and exact Decimal values, not glTF schema legality.
+
 ## Build inputs and consumption
 
 [THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) owns the exact
