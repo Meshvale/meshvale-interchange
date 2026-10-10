@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "licenses/*.txt"]
 authors = [{name = "Meshvale contributors"}]
-dependencies = ["meshvale-geometry==0.0.1.dev41+gd1b0ec5dd"]
+dependencies = ["meshvale-geometry==0.0.1.dev57+g920be5425"]
 
 [project.urls]
 Repository = "https://github.com/Meshvale/meshvale-interchange"

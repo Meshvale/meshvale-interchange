@@ -14,8 +14,8 @@ import tempfile
 import sysconfig
 import zipfile
 
-GEOMETRY_REVISION = "d1b0ec5ddf37d6ff648ddd57fe8c7caefbd78832"
-GEOMETRY_VERSION = "0.0.1.dev41+gd1b0ec5dd"
+GEOMETRY_REVISION = "920be542502652b1d16c5f90414cec6495ff62b4"
+GEOMETRY_VERSION = "0.0.1.dev57+g920be5425"
 VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 PACKAGE = Path(__file__).resolve().parents[1]
 
@@ -84,6 +84,9 @@ def prepare():
     run("cmake", "-S", geometry, "-B", root / "native", "-DBUILD_TESTING=OFF", "-DCMAKE_BUILD_TYPE=Release")
     run("cmake", "--build", root / "native", "--config", "Release", "--parallel", "2")
     run("cmake", "--install", root / "native", "--config", "Release", "--prefix", root / "prefix")
+    for notice in ["eigen-mpl2.txt", "eigen-apache.txt", "eigen-notices.txt"]:
+        installed = root / "prefix/share/MeshvaleGeometry/licenses" / notice
+        assert installed.read_text() == (PACKAGE / "licenses" / notice).read_text(), notice
     run(sys.executable, "-m", "pip", "wheel", geometry, "--no-deps", "--verbose",
         "--config-settings=cmake.version===4.3.1", "--wheel-dir", root / "raw")
     wheel, = (root / "raw").glob("meshvale_geometry-*.whl")

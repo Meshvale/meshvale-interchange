@@ -28,10 +28,12 @@ No single-UV/four-influence limit is imposed on geometry storage. The OBJ writer
 
 ## Dependencies and native consumption
 
-C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `d1b0ec5ddf37d6ff648ddd57fe8c7caefbd78832`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
+C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `920be542502652b1d16c5f90414cec6495ff62b4`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
 
 Use vcpkg manifest mode through its CMake toolchain, with tool locations provided through environment/configuration rather than repository paths. Install/export target `meshvale::interchange` and a separate native consumer will be tested before a release. Snapshot versions are not a released compatibility promise.
 
 ## C++ header interface
 
 Use `<meshvale/interchange/obj.h>`, the self-contained C++20 interface. The former `obj.hpp` forwarding include has been removed; existing source callers must update their include path. Public types, functions and behavior retain their contracts. Non-template operation and file-helper implementations are compiled from `.cpp` files; installed header checks and separate native consumers verify the `.h` interface. Development snapshots do not promise a stable binary ABI.
+
+The documented Geometry producer provides the compiled owned `PositionBuffer` interface. The build checks that seam because native development version `0.0.0` alone does not identify a compatible source interface, and verifies retained notices against the installed producer. Geometry keeps Eigen private: consuming this installed package requires neither Eigen headers nor a source checkout. Native installs and wheels include the producer's retained Eigen license and attribution files.

@@ -3,6 +3,52 @@ cmake_minimum_required(VERSION 3.24)
 project(MeshvaleInterchange LANGUAGES CXX)
 set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(MeshvaleGeometry 0.0.0 EXACT CONFIG REQUIRED)
+
+# Development snapshots share 0.0.0; require the owned-position producer seam.
+include(CMakePushCheckState)
+include(CheckCXXSourceCompiles)
+function(meshvale_require_geometry_positions)
+  cmake_push_check_state(RESET)
+  if(CMAKE_BUILD_TYPE)
+    set(CMAKE_TRY_COMPILE_CONFIGURATION "${CMAKE_BUILD_TYPE}")
+  else()
+    set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+  endif()
+  unset(MESHVALE_GEOMETRY_OWNED_POSITIONS CACHE)
+  set(CMAKE_REQUIRED_LIBRARIES meshvale::geometry)
+  check_cxx_source_compiles("#include <meshvale/geometry/position_buffer.h>
+  int main() {
+    meshvale::geometry::PositionBuffer positions;
+    positions.Append({1.0, 2.0, 3.0});
+    positions.Set(0, {3.0, 2.0, 1.0});
+    return positions.Get(0)[0] == 3.0 ? 0 : 1;
+  }" MESHVALE_GEOMETRY_OWNED_POSITIONS)
+  cmake_pop_check_state()
+  if(NOT MESHVALE_GEOMETRY_OWNED_POSITIONS)
+    message(FATAL_ERROR "Geometry must provide the compiled PositionBuffer Append/Set/Get interface; use the documented producer revision")
+  endif()
+endfunction()
+meshvale_require_geometry_positions()
+
+# These notices accompany the Geometry code linked into native/Python outputs.
+get_filename_component(meshvale_geometry_notice_root "${MeshvaleGeometry_RECORD_SOURCE}" DIRECTORY)
+get_filename_component(meshvale_geometry_notice_root "${meshvale_geometry_notice_root}" DIRECTORY)
+function(meshvale_require_geometry_notice installed retained)
+  file(READ "${installed}" meshvale_installed_notice)
+  file(READ "${retained}" meshvale_retained_notice)
+  # Git checkouts and installed source archives may use different line endings.
+  string(REPLACE "\r\n" "\n" meshvale_installed_notice "${meshvale_installed_notice}")
+  string(REPLACE "\r\n" "\n" meshvale_retained_notice "${meshvale_retained_notice}")
+  if(NOT meshvale_installed_notice STREQUAL meshvale_retained_notice)
+    message(FATAL_ERROR "Installed Geometry notice differs from retained ${retained}")
+  endif()
+endfunction()
+foreach(meshvale_notice IN ITEMS eigen-mpl2.txt eigen-apache.txt eigen-notices.txt)
+  meshvale_require_geometry_notice("${meshvale_geometry_notice_root}/licenses/${meshvale_notice}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/licenses/${meshvale_notice}")
+endforeach()
+meshvale_require_geometry_notice("${meshvale_geometry_notice_root}/NOTICE"
+  "${CMAKE_CURRENT_SOURCE_DIR}/licenses/meshvale-geometry-notice.txt")
 find_package(tinyobjloader 2.0.0 CONFIG REQUIRED)
 if(NOT TARGET tinyobjloader::tinyobjloader_double)
   message(FATAL_ERROR "tinyobjloader must be built with double precision")
@@ -48,6 +94,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/MeshvaleInterchangeConfig.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/MeshvaleInterchangeConfigVersion.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
 install(FILES LICENSE NOTICE THIRD_PARTY.md DESTINATION "${CMAKE_INSTALL_DATADIR}/MeshvaleInterchange")
+install(DIRECTORY licenses/ DESTINATION "${CMAKE_INSTALL_DATADIR}/MeshvaleInterchange/licenses")
 option(MESHVALE_INTERCHANGE_PYTHON "Build the optional Python OBJ interface" OFF)
 if(MESHVALE_INTERCHANGE_PYTHON)
   find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
