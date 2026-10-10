@@ -272,11 +272,13 @@ ObjImportResult read_obj(const std::string& obj, const std::string& mtl) {
         document.parts.push_back(context.part);
         member = document.parts.end() - 1;
       }
-      std::get<std::vector<std::int32_t>>(material.values).push_back(assigned);
-      std::get<std::vector<std::uint32_t>>(part.values)
+      std::get<meshvale::geometry::ScalarBuffer<std::int32_t>>(material.values)
+          .push_back(assigned);
+      std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(part.values)
           .push_back(
               static_cast<std::uint32_t>(member - document.parts.begin()));
-      std::get<std::vector<std::uint32_t>>(smoothing.values)
+      std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
+          smoothing.values)
           .push_back(context.smoothing);
       for (std::size_t c = 0; c < size; ++c) {
         const auto& index = shape.mesh.indices[cursor++];
@@ -297,8 +299,10 @@ ObjImportResult read_obj(const std::string& obj, const std::string& mtl) {
             static_cast<index_t>(index.vertex_index));
         uv.present->push_back(static_cast<std::uint8_t>(has_uv));
         normal.present->push_back(static_cast<std::uint8_t>(has_normal));
-        auto& uv_values = std::get<std::vector<double>>(uv.values);
-        auto& normal_values = std::get<std::vector<double>>(normal.values);
+        auto& uv_values =
+            std::get<meshvale::geometry::ScalarBuffer<double>>(uv.values);
+        auto& normal_values =
+            std::get<meshvale::geometry::ScalarBuffer<double>>(normal.values);
         for (std::size_t i = 0; i < 2; ++i)
           uv_values.push_back(
               has_uv

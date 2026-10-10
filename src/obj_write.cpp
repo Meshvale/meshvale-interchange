@@ -55,25 +55,29 @@ ObjExportResult write_obj(const ObjDocument& source) {
       slot = &uv;
       valid = a.domain == AttributeDomain::corner && a.semantic == "texcoord" &&
               a.set_index == 0 && a.components == 2 &&
-              std::holds_alternative<std::vector<double>>(a.values);
+              std::holds_alternative<meshvale::geometry::ScalarBuffer<double>>(
+                  a.values);
     } else if (a.name == "obj.normal") {
       slot = &normal;
       valid = a.domain == AttributeDomain::corner && a.semantic == "normal" &&
               !a.set_index && a.components == 3 &&
-              std::holds_alternative<std::vector<double>>(a.values);
+              std::holds_alternative<meshvale::geometry::ScalarBuffer<double>>(
+                  a.values);
     } else if (a.name == "obj.material") {
       slot = &material;
       valid = a.domain == AttributeDomain::face &&
               a.semantic == "material_index" && !a.set_index &&
               a.components == 1 &&
-              std::holds_alternative<std::vector<std::int32_t>>(a.values) &&
+              std::holds_alternative<
+                  meshvale::geometry::ScalarBuffer<std::int32_t>>(a.values) &&
               !a.present;
     } else if (a.name == "obj.part" || a.name == "obj.smoothing_group") {
       const bool is_part = a.name == "obj.part";
       slot = is_part ? &part : &smoothing;
       valid = a.domain == AttributeDomain::face && a.semantic == "label" &&
               !a.set_index && a.components == 1 &&
-              std::holds_alternative<std::vector<std::uint32_t>>(a.values) &&
+              std::holds_alternative<
+                  meshvale::geometry::ScalarBuffer<std::uint32_t>>(a.values) &&
               !a.present;
     }
     if (!slot || !valid || a.offsets || !a.metadata.empty() || (slot && *slot))
@@ -96,18 +100,20 @@ ObjExportResult write_obj(const ObjDocument& source) {
       material_check.document->material_names != source.material_names)
     issue("obj.material_library_mismatch", "materials");
   auto material_at = [&](index_t face) -> std::int32_t {
-    return material
-               ? std::get<std::vector<std::int32_t>>(material->values)[face]
-               : -1;
+    return material ? std::get<meshvale::geometry::ScalarBuffer<std::int32_t>>(
+                          material->values)[face]
+                    : -1;
   };
   auto part_at = [&](index_t face) -> ObjPart {
     if (!part) return {};
-    const auto id = std::get<std::vector<std::uint32_t>>(part->values)[face];
+    const auto id = std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
+        part->values)[face];
     return id < source.parts.size() ? source.parts[id] : ObjPart{};
   };
   auto smoothing_at = [&](index_t face) -> std::uint32_t {
     return smoothing
-               ? std::get<std::vector<std::uint32_t>>(smoothing->values)[face]
+               ? std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
+                     smoothing->values)[face]
                : 0;
   };
   for (index_t face = 0; face < source.mesh.face_count(); ++face) {
@@ -115,13 +121,14 @@ ObjExportResult write_obj(const ObjDocument& source) {
     if (id < -1 || (id >= 0 && static_cast<std::size_t>(id) >=
                                    source.material_names.size()))
       issue("obj.material_range", "obj.material", face);
-    if (part && std::get<std::vector<std::uint32_t>>(part->values)[face] >=
-                    source.parts.size())
+    if (part && std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
+                    part->values)[face] >= source.parts.size())
       issue("obj.part_range", "obj.part", face);
   }
   for (const auto* a : {uv, normal}) {
     if (!a) continue;
-    const auto& values = std::get<std::vector<double>>(a->values);
+    const auto& values =
+        std::get<meshvale::geometry::ScalarBuffer<double>>(a->values);
     for (index_t c = 0; c < source.mesh.corner_vertices.size(); ++c)
       if (authored(a, c))
         for (std::uint32_t k = 0; k < a->components; ++k)
@@ -144,7 +151,8 @@ ObjExportResult write_obj(const ObjDocument& source) {
   for (const auto* a : {uv, normal}) {
     if (!a) continue;
     auto& indices = a == uv ? uv_indices : normal_indices;
-    const auto& values = std::get<std::vector<double>>(a->values);
+    const auto& values =
+        std::get<meshvale::geometry::ScalarBuffer<double>>(a->values);
     index_t next = 1;
     for (index_t c = 0; c < indices.size(); ++c) {
       if (!authored(a, c)) continue;
@@ -212,15 +220,17 @@ ObjExportResult write_obj(const ObjDocument& source) {
         verified &= close(source_position[k], restored_position[k]);
     }
     for (index_t face = 0; face < source.mesh.face_count(); ++face) {
+      verified &= material_at(face) ==
+                  std::get<meshvale::geometry::ScalarBuffer<std::int32_t>>(
+                      restored.mesh.attributes[2].values)[face];
       verified &=
-          material_at(face) == std::get<std::vector<std::int32_t>>(
-                                   restored.mesh.attributes[2].values)[face];
-      verified &=
-          part_at(face) == restored.parts[std::get<std::vector<std::uint32_t>>(
-                               restored.mesh.attributes[3].values)[face]];
-      verified &=
-          smoothing_at(face) == std::get<std::vector<std::uint32_t>>(
-                                    restored.mesh.attributes[4].values)[face];
+          part_at(face) ==
+          restored
+              .parts[std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
+                  restored.mesh.attributes[3].values)[face]];
+      verified &= smoothing_at(face) ==
+                  std::get<meshvale::geometry::ScalarBuffer<std::uint32_t>>(
+                      restored.mesh.attributes[4].values)[face];
     }
     for (std::size_t ordinal = 0; ordinal < 2; ++ordinal) {
       const auto* before = ordinal == 0 ? uv : normal;
@@ -228,8 +238,10 @@ ObjExportResult write_obj(const ObjDocument& source) {
       for (index_t c = 0; c < source.mesh.corner_vertices.size(); ++c) {
         verified &= authored(before, c) == authored(&after, c);
         if (!authored(before, c)) continue;
-        const auto& a = std::get<std::vector<double>>(before->values);
-        const auto& b = std::get<std::vector<double>>(after.values);
+        const auto& a =
+            std::get<meshvale::geometry::ScalarBuffer<double>>(before->values);
+        const auto& b =
+            std::get<meshvale::geometry::ScalarBuffer<double>>(after.values);
         for (std::uint32_t k = 0; k < before->components; ++k)
           verified &= close(a[c * before->components + k],
                             b[c * before->components + k]);

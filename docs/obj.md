@@ -1,6 +1,6 @@
 # OBJ/MTL text interchange
 
-Contract version **0.1.2**, development interface. [obj.h](../include/meshvale/interchange/obj.h) owns C++ type shapes. This contract describes the in-memory adapter; the [file/bundle contract](obj-files.md) owns filesystem import, texture resolution and staged output publication. The optional Python interface has its [own contract](python.md); CLI remains forthcoming.
+Contract version **0.1.3**, development interface. [obj.h](../include/meshvale/interchange/obj.h) owns C++ type shapes. This contract describes the in-memory adapter; the [file/bundle contract](obj-files.md) owns filesystem import, texture resolution and staged output publication. The optional Python interface has its [own contract](python.md); CLI remains forthcoming.
 
 ## Import
 
@@ -28,7 +28,7 @@ No single-UV/four-influence limit is imposed on geometry storage. The OBJ writer
 
 ## Dependencies and native consumption
 
-C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `920be542502652b1d16c5f90414cec6495ff62b4`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
+C++20, CMake 3.24+, installed `MeshvaleGeometry` snapshot `0.0.0` from revision `ec38fabd783a578947d43856b0c7a7fd54ce8533`, and tinyobjloader `2.0.0rc13` with its `double` feature are required. [vcpkg.json](../vcpkg.json) pins the registry and version. The build consumes installed dependencies and does not fetch source directly. Tinyobjloader types stay out of the public headers. Dependencies retain their own licenses; see [THIRD_PARTY.md](../THIRD_PARTY.md).
 
 Use vcpkg manifest mode through its CMake toolchain, with tool locations provided through environment/configuration rather than repository paths. Install/export target `meshvale::interchange` and a separate native consumer will be tested before a release. Snapshot versions are not a released compatibility promise.
 
@@ -36,4 +36,6 @@ Use vcpkg manifest mode through its CMake toolchain, with tool locations provide
 
 Use `<meshvale/interchange/obj.h>`, the self-contained C++20 interface. The former `obj.hpp` forwarding include has been removed; existing source callers must update their include path. Public types, functions and behavior retain their contracts. Non-template operation and file-helper implementations are compiled from `.cpp` files; installed header checks and separate native consumers verify the `.h` interface. Development snapshots do not promise a stable binary ABI.
 
-The documented Geometry producer provides the compiled owned `PositionBuffer` interface. The build checks that seam because native development version `0.0.0` alone does not identify a compatible source interface, and verifies retained notices against the installed producer. Geometry keeps Eigen private: consuming this installed package requires neither Eigen headers nor a source checkout. Native installs and wheels include the producer's retained Eigen license and attribution files.
+The documented Geometry producer provides compiled owned `PositionBuffer` and typed `ScalarBuffer<T>` interfaces. The build checks both seams because native development version `0.0.0` alone does not identify a compatible source interface, and verifies retained notices against the installed producer. Geometry keeps Eigen private: consuming this installed package requires neither Eigen headers nor a source checkout. Native installs and wheels include the producer's retained Eigen license and attribution files.
+
+Canonical numerical attributes use Geometry's Eigen-owned `ScalarBuffer<T>` alternatives. Native callers that inspect `AttributeValues` must replace `std::get<std::vector<T>>` with `std::get<meshvale::geometry::ScalarBuffer<T>>`; contiguous values remain available through spans or `data()`/`size()`. Structural offsets and presence metadata keep their existing representation. Rebuild this library and all native consumers against the same Geometry producer: the changed variant is a source and binary interface migration. The canonical Python mesh record remains `meshvale.mesh/1`, with independent owned payloads and unchanged scalar bits.

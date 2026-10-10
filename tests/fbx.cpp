@@ -253,8 +253,8 @@ void Verify(const interchange::FbxAsset& asset) {
   Check(mesh.attributes[0].domain == geometry::AttributeDomain::corner &&
             mesh.attributes[0].components == 3,
         "Normal corner domain");
-  const auto& normals =
-      std::get<std::vector<double>>(mesh.attributes[0].values);
+  const auto& normals = std::get<meshvale::geometry::ScalarBuffer<double>>(
+      mesh.attributes[0].values);
   Check(normals[2] == 2 && normals[5] == -3, "Normals not normalized");
   const auto& source = polygon.attribute_sources[0];
   Check(source.direct_values ==
@@ -262,7 +262,8 @@ void Verify(const interchange::FbxAsset& asset) {
         "Unused normal source row and fourth components");
   Check(source.indices.size() == 12 && source.indices[1] == 1,
         "Normal source indices");
-  const auto& uv = std::get<std::vector<double>>(mesh.attributes[1].values);
+  const auto& uv = std::get<meshvale::geometry::ScalarBuffer<double>>(
+      mesh.attributes[1].values);
   Check(uv[0] == 0 && uv[8] == 1 && uv[14] == 1.75,
         "Independent UV corner seams");
   Check(polygon.attribute_sources[1].direct_values.size() == 26 &&
@@ -271,7 +272,9 @@ void Verify(const interchange::FbxAsset& asset) {
   Check(mesh.attributes[2].domain == geometry::AttributeDomain::vertex &&
             mesh.attributes[3].domain == geometry::AttributeDomain::face,
         "Vertex/face attribute domains");
-  Check(std::get<std::vector<double>>(mesh.attributes[4].values).size() == 6 &&
+  Check(std::get<meshvale::geometry::ScalarBuffer<double>>(
+            mesh.attributes[4].values)
+                    .size() == 6 &&
             polygon.attribute_sources[4].mapping ==
                 interchange::FbxMapping::kAllSame,
         "All-same attribute expansion");
@@ -369,9 +372,10 @@ int main(int argc, char** argv) {
                       .attribute_sources[0]
                       .reference == interchange::FbxReference::kDirect,
           "Direct normal reference");
-    Check(std::get<std::vector<double>>(direct_normal_result.asset->meshes[0]
-                                            .mesh.attributes[0]
-                                            .values)[5] == -3,
+    Check(std::get<meshvale::geometry::ScalarBuffer<double>>(
+              direct_normal_result.asset->meshes[0]
+                  .mesh.attributes[0]
+                  .values)[5] == -3,
           "Direct normal value preservation");
     // The SDK exporter omits direct UV tables. Derive an original ASCII fixture
     // with valid direct tables from our indexed fixture.
