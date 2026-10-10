@@ -22,3 +22,65 @@ jobs:
         run: python scripts/check-portability.py
       - name: Check documentation and environment template
         run: python scripts/check-docs.py
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/.local/vcpkg-runtime
+      VCPKG_DISABLE_METRICS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Meshvale/meshvale-geometry
+          ref: 8f85480f6ac02f661508c2f4316cb8721f81ee08
+          path: .local/geometry-source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: microsoft/vcpkg
+          ref: cb5a41b03cde4086d554b3f3e2eac39206b16eda
+          path: .local/vcpkg-runtime
+      - name: Bootstrap pinned dependency tooling
+        run: |
+          if ($IsWindows) {
+            & .local/vcpkg-runtime/bootstrap-vcpkg.bat -disableMetrics
+          } else {
+            & bash .local/vcpkg-runtime/bootstrap-vcpkg.sh -disableMetrics
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $triplet = if ($IsWindows) { "x64-windows-static-md" } elseif ($IsMacOS) {
+            if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") {
+              "arm64-osx"
+            } else { "x64-osx" }
+          } else { "x64-linux" }
+          "MESHVALE_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Configure geometry dependency
+        run: cmake -S .local/geometry-source -B .local/geometry-build -DCMAKE_BUILD_TYPE=Release
+      - name: Build geometry dependency
+        run: cmake --build .local/geometry-build --config Release
+      - name: Test geometry dependency
+        run: ctest --test-dir .local/geometry-build -C Release --output-on-failure
+      - name: Install geometry dependency
+        run: cmake --install .local/geometry-build --config Release --prefix .local/install
+      - name: Configure interchange and manifest dependencies
+        run: cmake -S . -B .local/build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET" "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies" "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
+      - name: Build interchange
+        run: cmake --build .local/build --config Release
+      - name: Test OBJ round trip
+        run: ctest --test-dir .local/build -C Release --output-on-failure
+      - name: Install interchange
+        run: cmake --install .local/build --config Release --prefix .local/install
+      - name: Configure installed consumer
+        run: cmake -S examples/consumer -B .local/consumer -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET" "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies" -DVCPKG_MANIFEST_MODE=OFF "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
+      - name: Build installed consumer
+        run: cmake --build .local/consumer --config Release
+      - name: Test installed consumer
+        run: ctest --test-dir .local/consumer -C Release --output-on-failure
