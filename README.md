@@ -12,18 +12,26 @@ Read the [OBJ/MTL text contract](docs/obj.md) for mesh semantics and numerical l
 
 The [Python interface](docs/python.md) exposes the same operations through canonical Geometry snapshots, frozen asset values and owned resource bytes. It supports cooperative cancellation and synchronous publication callbacks. A verified-content callback can prepare receipts from reloaded assets and exact staged bytes for checked inclusion in the same bundle. See the [installed bundle example](examples/python/obj_bundle.py) for load → inspect → publish → reload.
 
+## Optional native USD extraction
+
+The opt-in [USD module](docs/usd.md) extracts one selected static polygon cage
+from USDA or USDC, with owned normal/UV channels and original primvar indexing.
+It uses a separate installed `MeshvaleInterchangeUsd` package. Scene composition,
+skinning, animation, materials, Python bindings and writing remain outside this
+subset. Default OBJ builds need no OpenUSD.
+
 ## Planned capabilities
 
 - Polygon face and attribute preservation where a format supports it.
 - Scene, material, instance, and resource handling with stated coverage.
 - Explicit reports for triangulation, unsupported features, and conversion loss.
 - Candidate formats: OBJ/MTL, PLY, OFF, STL, and glTF/GLB.
-- FBX, 3MF, and USD integrations remain under evaluation.
+- Broader FBX/USD scene coverage and 3MF integration remain under evaluation.
 
 The [proposed glTF/GLB asset contract](docs/gltf.md) defines document/resource
 ownership, primitive selection and preservation gates for the next adapter.
-Its API and runtime dependencies are not implemented; OBJ remains the available
-format adapter.
+Its API and runtime dependencies are not implemented; see the implemented
+native adapters above for current format coverage.
 
 Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.
 
