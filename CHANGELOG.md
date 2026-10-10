@@ -17,7 +17,7 @@
 
 ### Changed
 
-- Native position access uses Geometry's owned PositionBuffer interface at `848fe6b4fb3300a2feb7db53ccd703a644eb7aa8` (Python `0.0.1.dev54+g848fe6b4f`), preserving canonical mesh records and scalar bits. Linked distributions retain the producer's Eigen notices; older native snapshots are rejected during configuration.
+- Native position access uses Geometry's owned PositionBuffer interface at `5ad9642911d36c9f81f242a3012ac0e77df919e5` (Python `0.0.1.dev55+g5ad964291`), preserving canonical mesh records and scalar bits. Linked distributions retain the producer's Eigen notices; older native snapshots are rejected during configuration.
 
 - The optional binding compiles Geometry's installed record implementation through its per-extension factory and links the compiled native package, with exact matched producer requirements; mesh records and operation behavior are unchanged.
 
