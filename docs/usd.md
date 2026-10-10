@@ -66,6 +66,9 @@ negative indices and invalid sentinel declarations fail; nothing is repaired.
 
 `SdfLayer::OpenAsAnonymous` reads a fresh root rather than consuming a previously
 cached root layer. The caller must keep the file stable throughout the call.
+An internal `UsdBlockStageCaches` context prevents both reading and populating
+caller-bound stage caches, so a surrounding application cache cannot retain the
+adapter's stage after return.
 `source_bytes` admits the file size observed before SDK parsing; it is not an
 immutable byte capture or a hard parser/read limit if another actor changes the
 file. There is no source mutation or export. An installed native test replaces a

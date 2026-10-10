@@ -16,6 +16,7 @@
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/stage.h>
+#include <pxr/usd/usd/stageCacheContext.h>
 #include <pxr/usd/usd/timeCode.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/metrics.h>
@@ -449,6 +450,7 @@ UsdMeshImportResult ReadUsdMesh(const std::filesystem::path& path,
       Reject("usd.unsupported_format", "source");
     }
     CheckLayer(layer);
+    const usd::UsdStageCacheContext cache_block(usd::UsdBlockStageCaches);
     auto stage = usd::UsdStage::Open(layer, usd::UsdStage::LoadNone);
     if (!stage || !errors.IsClean()) {
       Reject("usd.parse_failed", "stage");

@@ -5,6 +5,8 @@
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/layer.h>
 #include <pxr/usd/usd/stage.h>
+#include <pxr/usd/usd/stageCache.h>
+#include <pxr/usd/usd/stageCacheContext.h>
 
 #include <cstdint>
 #include <filesystem>
@@ -235,14 +237,18 @@ void Failures() {
 void FreshRoot() {
   for (const std::string extension : {".usda", ".usdc"}) {
     const auto path = Fixture("fresh-root", Base(), extension);
+    usd::UsdStageCache cache;
+    const usd::UsdStageCacheContext application_context(cache);
     auto cached_layer = usd::SdfLayer::FindOrOpen(path.string());
     auto cached_stage = usd::UsdStage::Open(cached_layer);
     Check(cached_layer && cached_stage, "persistent SDK cache exists");
     auto original = interchange::ReadUsdMesh(path, "/Mesh");
+    Check(cache.Size() == 1, "adapter did not populate caller stage cache");
     auto changed = Base();
     changed.replace(changed.find("(0,0,0)"), 7, "(-2,0,0)");
     Fixture("fresh-root", changed, extension);
     auto current = interchange::ReadUsdMesh(path, "/Mesh");
+    Check(cache.Size() == 1, "replacement did not populate caller stage cache");
     Check(original.document && current.document &&
               original.document->mesh.positions.Get(0)[0] == 0 &&
               current.document->mesh.positions.Get(0)[0] == -2,
