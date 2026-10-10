@@ -45,3 +45,12 @@ python scripts/check-cpp-format.py --formatter clang-format
 ```
 
 The checker selects tracked and nonignored untracked `.h`, `.hpp` and `.cpp` files from Git and requires formatter version `23.1.3`; pass a tool executable through `--formatter` when it is outside the shell path. Formatting verifies layout and include ordering, not API naming, ownership or algorithm correctness. Existing public snake-case names retain their contract; a separate verified migration must address naming.
+
+## Optional USD native module
+
+Add `-DMESHVALE_INTERCHANGE_USD=ON` to the native build, supply the exact
+OpenUSD26.08 package and compatible dependencies, then consume the separately
+installed `MeshvaleInterchangeUsd` package. The [USD contract](docs/usd.md)
+owns supported inputs, loading limits, SDK ownership, runtime/plugin layout and
+notice-root configuration. Default native builds and current Python wheels
+leave USD disabled. See the [SDK guide](docs/format-sdks.md) for preparation.
