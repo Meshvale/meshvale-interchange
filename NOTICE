@@ -4,6 +4,12 @@ Copyright 2026 CarlYaki and Meshvale contributors.
 Original material in this repository is licensed under the Apache License, Version 2.0.
 Third-party material retains its own license and attribution notices.
 
-Python wheels include Meshvale Geometry header code (Apache-2.0),
+Python wheels include Meshvale Geometry compiled code and record adapters (Apache-2.0),
 tinyobjloader (MIT; see licenses/tinyobjloader.txt), nanobind (BSD-3-Clause)
 and its robin-map dependency (MIT). Their notices accompany the distribution.
+
+Statically linked Geometry position storage incorporates unmodified Eigen 3.4.1
+Core code. Its MPL-2.0, Apache-2.0 and permissive notices accompany this
+distribution in licenses/eigen-mpl2.txt, licenses/eigen-apache.txt and
+licenses/eigen-notices.txt. Eigen source is available from
+https://gitlab.com/libeigen/eigen/-/tree/3.4.1; no source modifications are made.

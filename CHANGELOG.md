@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Native position access uses Geometry's owned PositionBuffer interface at `848fe6b4fb3300a2feb7db53ccd703a644eb7aa8` (Python `0.0.1.dev54+g848fe6b4f`), preserving canonical mesh records and scalar bits. Linked distributions retain the producer's Eigen notices; older native snapshots are rejected during configuration.
+
 - The optional binding compiles Geometry's installed record implementation through its per-extension factory and links the compiled native package, with exact matched producer requirements; mesh records and operation behavior are unchanged.
 
 - The exact Python/native Geometry source requirement now uses the tested portable candidate `d1b0ec5ddf37d6ff648ddd57fe8c7caefbd78832` (`0.0.1.dev41+gd1b0ec5dd` for Python), preserving existing mesh records and OBJ behavior.
