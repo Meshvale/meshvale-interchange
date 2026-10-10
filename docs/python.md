@@ -7,7 +7,7 @@
 | Status | Development interface; no released package |
 | Owner | Python asset/result shape, ownership, callbacks and packaging |
 
-`meshvale_interchange` exposes the existing native [OBJ text contract](obj.md) and [file/bundle contract](obj-files.md) through owned Python values. It adds no format support or preservation claims beyond those contracts. Geometry meshes are canonical immutable `meshvale_geometry.Mesh` snapshots exchanged through its [record protocol](https://github.com/Meshvale/meshvale-geometry/blob/519eaf2f4eda24c39eaa3ace7f213e5571239fe2/docs/python.md); no Mesh C++ object crosses extension runtimes.
+`meshvale_interchange` exposes the existing native [OBJ text contract](obj.md) and [file/bundle contract](obj-files.md) through owned Python values. It adds no format support or preservation claims beyond those contracts. Geometry meshes are canonical immutable `meshvale_geometry.Mesh` snapshots exchanged through its [record protocol](https://github.com/Meshvale/meshvale-geometry/blob/a27cae686ea4f4c6dabeebfc984f0265602e3b1d/docs/python.md); no Mesh C++ object crosses extension runtimes.
 
 ## Interfaces and values
 
@@ -36,7 +36,7 @@ Existing destinations are rejected. Native staging, inventory/reload verificatio
 
 ## Build, installation and example
 
-The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), installed Geometry native headers at revision `519eaf2f4eda24c39eaa3ace7f213e5571239fe2` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev23+g519eaf2f4`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
+The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), installed Geometry native headers at revision `a27cae686ea4f4c6dabeebfc984f0265602e3b1d` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev35+ga27cae686`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
 
 In the [configured native dependency environment](../ENVIRONMENT.md), pass installed package prefixes to the optional wheel build:
 
@@ -60,3 +60,23 @@ if loaded.asset is not None:
 ```
 
 See [the runnable bundle example](../examples/python/obj_bundle.py), [focused Python tests](../tests/python/test_obj.py) and [changelog](../CHANGELOG.md).
+
+## Portable development candidates
+
+The [candidate workflow](../.github/workflows/portable-candidates.yml) evaluates ordinary GIL-enabled CPython 3.13 on Linux x86_64 with a manylinux_2_28 floor and Windows x64 on `windows-2022`. These are development CI artifacts, retained for 14 days; they do not establish a supported release matrix. macOS, other interpreters/architectures and a clean Windows 11 consumer floor remain unevaluated by this workflow. Windows candidates require the official x64 Microsoft Visual C++ v14 runtime at least as recent as the recorded build toolset.
+
+Each lane rebuilds public Geometry revision `a27cae686ea4f4c6dabeebfc984f0265602e3b1d` as Python `0.0.1.dev35+ga27cae686` and native `0.0.0`, with full source history. It installs double-precision, static tinyobjloader `2.0.0rc13` using the unchanged [manifest baseline](../vcpkg.json). No earlier CI download is a build dependency. Linux builds run inside an immutable manylinux image; cibuildwheel `4.2.0`, product CMake `4.3.1`, backend pins and action revisions are recorded in the workflow. vcpkg's pinned registry owns its host helper tools.
+
+The workflow builds Interchange from its exact source revision and independently from its source archive without Git, then inspects and tests both repaired wheels. Dependency reports include actual Linux dynamic symbols, including floating-point parsing requirements; no binary is manually retagged. Package checks reject unexpected native files. Clean installed checks cover Geometry snapshots/reports, the independent native record consumer, both extension import orders, OBJ text/file/publication tests, the runnable bundle example and `pip check`. Artifacts contain exact source/version identities, SHA256 manifests and bundled dependency notices.
+
+Download the artifact for your evaluated interpreter/platform, extract it to a chosen `CANDIDATE_ROOT`, and install one final pair into a fresh environment. The final Interchange wheel is under `wheels`, with its exact rebuilt Geometry wheel under `wheels/upstream`:
+
+```sh
+python -m venv "$PREVIEW_ENV"
+# Activate PREVIEW_ENV using your shell's normal virtual-environment activation.
+python -m pip install --no-index --find-links "$CANDIDATE_ROOT/wheels" --find-links "$CANDIDATE_ROOT/wheels/upstream" meshvale-interchange
+python -m pip check
+python -I -c "from meshvale_interchange import read_obj; result = read_obj('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'); assert result.document.mesh.face_count == 1"
+```
+
+Run the [bundle example](../examples/python/obj_bundle.py) from the matching public checkout to inspect file publication. Retain the artifact's manifest with your evaluation results. Package-index installation and stable release publication are not available through this candidate workflow.

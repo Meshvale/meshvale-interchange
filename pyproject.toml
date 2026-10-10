@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "licenses/*.txt"]
 authors = [{name = "Meshvale contributors"}]
-dependencies = ["meshvale-geometry==0.0.1.dev23+g519eaf2f4"]
+dependencies = ["meshvale-geometry==0.0.1.dev35+ga27cae686"]
 
 [project.urls]
 Repository = "https://github.com/Meshvale/meshvale-interchange"
@@ -24,7 +24,7 @@ wheel.packages = ["python/meshvale_interchange"]
 install.components = ["python"]
 cmake.define.MESHVALE_INTERCHANGE_PYTHON = true
 cmake.define.BUILD_TESTING = false
-sdist.include = [".clang-format", "CMakeLists.txt", "pyproject.toml", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/bindings.cpp", "python/meshvale_interchange/*.py", "docs/**", "examples/**", "tests/**", "licenses/*.txt", "scripts/*.py"]
+sdist.include = [".clang-format", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/bindings.cpp", "python/meshvale_interchange/*.py", "docs/**", "examples/**", "tests/**", "licenses/*.txt", "scripts/*.py"]
 sdist.inclusion-mode = "explicit"
 sdist.exclude = ["**/__pycache__/**", "**/*.pyc", "**/.local/**", "**/.scratch/**", "**/build/**", "**/references/**"]
 
