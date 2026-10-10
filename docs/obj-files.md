@@ -1,6 +1,6 @@
 # OBJ files and verified bundles
 
-Contract version **0.2.1**, development interface. [obj_files.h](../include/meshvale/interchange/obj_files.h) owns type shapes. [The text adapter](obj.md) owns mesh/material semantics and its numerical bound. This contract owns filesystem resources and publication; it does not establish a release or CLI.
+Contract version **0.2.2**, development interface. [obj_files.h](../include/meshvale/interchange/obj_files.h) owns type shapes. [The text adapter](obj.md) owns mesh/material semantics and its numerical bound. This contract owns filesystem resources and publication; it does not establish a release or CLI.
 
 ## OBJ-FILE-001: Owned resource snapshots
 
