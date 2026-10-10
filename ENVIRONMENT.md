@@ -54,3 +54,13 @@ installed `MeshvaleInterchangeUsd` package. The [USD contract](docs/usd.md)
 owns supported inputs, loading limits, SDK ownership, runtime/plugin layout and
 notice-root configuration. Default native builds and current Python wheels
 leave USD disabled. See the [SDK guide](docs/format-sdks.md) for preparation.
+
+## Optional FBX native module
+
+Add `-DMESHVALE_INTERCHANGE_FBX=ON -DFBXSDK_ROOT="$FBXSDK_ROOT"` to a Windows
+x64 MSVC Release native build using dynamic CRT. The SDK must be the locally
+licensed Autodesk2020.3.11 VS2022 shared configuration. Supply the matching
+runtime DLL directory on PATH and consume `MeshvaleInterchangeFbx` separately.
+The [FBX contract](docs/fbx.md) owns exact compiler/configuration admission,
+static-import coverage, SDK cleanup and notice requirements. Default native
+builds and current Python wheels leave FBX disabled.

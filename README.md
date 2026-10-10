@@ -2,9 +2,9 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, resource snapshots, verified bundle publication and an optional Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, optional native USD and FBX imports, resource snapshots, verified bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
-## Available native adapter
+## OBJ native adapter
 
 Import/export mixed polygon faces with separate corner UVs/normals, missingness, material assignments, object/group membership and smoothing. Export reloads and verifies its result before returning text. Extra UV sets and other unsupported channels produce an explicit failure; OBJ is an initial adapter, and the wider format plan remains below.
 
@@ -19,6 +19,15 @@ from USDA or USDC, with owned normal/UV channels and original primvar indexing.
 It uses a separate installed `MeshvaleInterchangeUsd` package. Scene composition,
 skinning, animation, materials, Python bindings and writing remain outside this
 subset. Default OBJ builds need no OpenUSD.
+
+## Optional native FBX import
+
+The opt-in [FBX module](docs/fbx.md) imports the documented static polygon subset,
+with owned normal/UV channels and original layer mapping metadata. Its separate
+`MeshvaleInterchangeFbx` package requires a locally licensed Autodesk2020.3.11 SDK
+on the evaluated Windows x64 Release configuration. Transformed/animated/skinned
+and material-bearing assets are rejected explicitly. No FBX writer or Python
+binding is provided; default OBJ builds need no FBX SDK.
 
 ## Planned capabilities
 

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(MeshvaleGeometry 0.0.0 EXACT CONFIG)
+include(CMakePushCheckState)
+include(CheckCXXSourceCompiles)
+function(meshvale_fbx_require_geometry_positions)
+  cmake_push_check_state(RESET)
+  set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+  unset(MESHVALE_FBX_GEOMETRY_OWNED_POSITIONS CACHE)
+  set(CMAKE_REQUIRED_LIBRARIES meshvale::geometry)
+  check_cxx_source_compiles("#include <meshvale/geometry/mesh.h>
+  #include <meshvale/geometry/position_buffer.h>
+  #include <type_traits>
+  static_assert(std::is_same_v<decltype(meshvale::geometry::Mesh{}.positions),
+                meshvale::geometry::PositionBuffer>);
+  int main() {
+    meshvale::geometry::PositionBuffer positions;
+    positions.Append({1.0, 2.0, 3.0});
+    positions.Set(0, {3.0, 2.0, 1.0});
+    return positions.Get(0)[0] == 3.0 ? 0 : 1;
+  }" MESHVALE_FBX_GEOMETRY_OWNED_POSITIONS)
+  cmake_pop_check_state()
+  if(NOT MESHVALE_FBX_GEOMETRY_OWNED_POSITIONS)
+    message(FATAL_ERROR "FBX requires the compiled Geometry PositionBuffer Append/Set/Get interface and matching Mesh storage")
+  endif()
+endfunction()
+meshvale_fbx_require_geometry_positions()
+include("${CMAKE_CURRENT_LIST_DIR}/MeshvaleFbxSdk.cmake")
+meshvale_find_fbx_sdk()
+include("${CMAKE_CURRENT_LIST_DIR}/MeshvaleInterchangeFbxTargets.cmake")
+check_required_components(MeshvaleInterchangeFbx)

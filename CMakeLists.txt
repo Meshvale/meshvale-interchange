@@ -136,3 +136,8 @@ endif()
 
 # Optional format modules own their SDK discovery, exports and installed notices.
 include(cmake/usd.cmake)
+
+option(MESHVALE_INTERCHANGE_FBX "Build optional native FBX polygon import" OFF)
+if(MESHVALE_INTERCHANGE_FBX)
+  include(cmake/fbx.cmake)
+endif()

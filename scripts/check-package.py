@@ -65,6 +65,8 @@ def inspect(path):
             assert "licenses/" + license in names, license
         for required in ['include/meshvale/interchange/usd.h', 'src/usd_read.cpp', 'cmake/usd.cmake', 'cmake/usd-config.cmake.in', 'docs/usd.md', 'licenses/optional/usd.txt', 'licenses/optional/tbb.txt', 'licenses/optional/hwloc.txt', 'licenses/optional/zlib.txt']:
             assert required in names, required
+        for required in ['include/meshvale/interchange/fbx.h', 'src/fbx_read.cpp', 'cmake/fbx.cmake', 'cmake/fbx-config.cmake.in', 'docs/fbx.md', 'licenses/optional/fbx-acknowledgement.txt']:
+            assert required in names, required
         assert not any(name.endswith(".hpp") for name in names)
     print(f"Package content check passed: {path.name}; {len(names)} files")
 
