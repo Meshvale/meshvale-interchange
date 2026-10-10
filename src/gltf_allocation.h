@@ -53,6 +53,8 @@ class AllocationContext {
                     std::stop_token stop,
                     AllocationBackend backend = DefaultAllocationBackend());
   [[nodiscard]] void* Allocate(std::size_t bytes, std::size_t alignment) const;
+  // Nonallocating operation checkpoint; cleanup must never call it.
+  void Checkpoint() const;
   static void Deallocate(void* pointer) noexcept;
   [[nodiscard]] bool SharesBudget(
       const AllocationContext& other) const noexcept;

@@ -95,6 +95,10 @@ void* AllocationContext::Allocate(std::size_t bytes,
   (void)header;
   return payload;
 }
+void AllocationContext::Checkpoint() const {
+  if (!context_) throw AdmissionFailure(AdmissionCode::kInvalidObject);
+  if (stop_.stop_requested()) throw AdmissionFailure(AdmissionCode::kCanceled);
+}
 void AllocationContext::Deallocate(void* pointer) noexcept {
   if (!pointer) return;
   auto* header = reinterpret_cast<Header*>(static_cast<std::byte*>(pointer) -

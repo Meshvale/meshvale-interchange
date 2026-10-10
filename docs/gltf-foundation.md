@@ -7,12 +7,40 @@ writer or Python operation. OBJ/MTL remains the available format adapter.
 The native library compiles pinned cgltf and explicitly configured jsoncons
 through private implementation files. jsoncons uses lossless number/bignum
 options, strict comments/trailing-comma handling and an explicit nesting limit;
-its syntax event counter does not retain a document. The cgltf seam accepts a
+its syntax event counter does not retain a document. A separate private capture
+seam now owns a flat immutable JSON snapshot. The cgltf seam accepts a
 small core projection and copies summary values before freeing its parser owner.
 Successful parsing is not metadata, graph, resource or accessor-role admission.
-Decoded-key duplicate rejection, Unicode guards, exact numeric lexemes and the
-complete retained-document view still require implementation before a public
-reader can accept supplied assets.
+The capture seam retains original bytes, exact numeric lexemes, decoded scalar-
+valid UTF8 strings and keys, source order and parent/child/sibling relationships.
+It rejects malformed syntax, invalid UTF8, lone escaped surrogates and duplicate
+decoded keys. Number-looking strings remain strings; huge numbers and nonzero
+tiny exponents remain their authored lexemes, with no double conversion.
+
+Capture is JSON retention only. It accepts scalar/array roots and arbitrary JSON
+fields; it does not admit glTF asset versions, integer metadata, enums, required
+extensions or core field/graph/resource/accessor semantics. No captured document
+is passed to cgltf before those later guards exist. There is no installed DOM,
+asset reader or selection handle yet.
+
+## Immutable capture ownership
+
+The private capture requires nonzero source-byte, node-count, decoded-byte and
+nesting-depth limits; zero is an invalid caller configuration. Well-formed JSON
+exceeding these limits returns a size-limit failure. Source bytes, flat nodes,
+decoded text, raw-number ranges, parser temporaries, traversal stack and shared
+owner/control block use the checked allocator. Copies share a const owner and
+remain charged until the final copy dies. Borrowed text views require a visible
+snapshot owner. Input bytes remain unchanged and alive until capture returns;
+the successful snapshot survives their destruction and the caller context's
+destruction. Moved-from wrappers reject access.
+
+Expected syntax, duplicate-key, size-limit, payload-budget and cancellation
+failures return no partial snapshot; actual allocation/runtime exceptions
+propagate. Capture copies source bytes in bounded chunks and checks cancellation
+during scanning, Unicode/duplicate checks and parser events. This ordered parse
+runs on its calling thread. Resource-copy and accessor-row workers belong to
+later operations; this stage makes no parallel throughput claim.
 
 ## Allocation and execution ownership
 
@@ -34,8 +62,8 @@ callbacks contain exceptions and report them after releasing the parser.
 This is requested-block accounting, not RSS or heap-overhead measurement. The
 caller-owned input, execution ledger/stop-state creation, runtime exception
 storage and unrelated Geometry result lifetimes are outside this allocator's
-charge. It does not establish a total process allocation cap. Future owned flat
-strings/events, projections, resources and decoded outputs must use the same
+charge. It does not establish a total process allocation cap. Future owned
+projections, resources and decoded outputs must use the same
 checked seam before a reader can claim complete requested-payload coverage.
 There is no new product budget default or public read-limit policy in this stage.
 
