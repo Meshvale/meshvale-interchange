@@ -10,6 +10,7 @@ from decimal import Decimal
 from fractions import Fraction
 import json
 from pathlib import Path
+import random
 import struct
 import subprocess
 import sys
@@ -149,6 +150,18 @@ def channel_case(component, shape="SCALAR", normalized=False, sparse=False, sema
 
 
 def cases():
+    generator = random.Random(0x4E4F524D)
+    for component, minimum, maximum in (
+        (5120, -128, 127), (5121, 0, 255),
+        (5122, -32768, 32767), (5123, 0, 65535)):
+        for sample in range(20):
+            doc, original = channel_case(component, normalized=True)
+            data = bytearray(original)
+            values = [generator.randint(minimum, maximum) for _ in range(3)]
+            for row, value in enumerate(values):
+                struct.pack_into("<" + FORMATS[component], data, row * 4, value)
+            doc["accessors"][1].update({"min": [min(values)], "max": [max(values)]})
+            yield f"normalized-fraction-{component}-{sample}", doc, bytes(data), 0
     for component in (5120, 5121, 5122, 5123, 5126):
         for sparse in (False, True):
             for normalized in ((False, True) if component != 5126 else (False,)):

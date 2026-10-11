@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cfenv>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -117,6 +118,82 @@ void RawAndNormalized() {
       std::get<detail::ChargedValues<float>>(floats.values->raw);
   Require(std::bit_cast<std::uint32_t>(raw_float[0]) == 0x80000000U);
   Require(std::bit_cast<std::uint32_t>(raw_float[1]) == 1);
+}
+void NormalizedRoundingEnvironment() {
+  struct EnvironmentRestore {
+    std::fenv_t saved;
+    EnvironmentRestore() { Require(std::fegetenv(&saved) == 0); }
+    ~EnvironmentRestore() { std::fesetenv(&saved); }
+  } restore;
+  struct Case {
+    mv::GltfComponentType type;
+    std::array<std::int64_t, 8> values;
+    std::array<std::uint64_t, 8> expected;
+  };
+  // Expected bits independently rounded from Python Fraction(value, divisor).
+  const std::array<Case, 4> cases{{
+      {mv::GltfComponentType::kInt8,
+       {-128, -127, -63, -1, 0, 1, 63, 127},
+       {0xbff0000000000000ULL, 0xbff0000000000000ULL, 0xbfdfbf7efdfbf7f0ULL,
+        0xbf80204081020408ULL, 0, 0x3f80204081020408ULL, 0x3fdfbf7efdfbf7f0ULL,
+        0x3ff0000000000000ULL}},
+      {mv::GltfComponentType::kUint8,
+       {0, 1, 2, 63, 127, 128, 254, 255},
+       {0, 0x3f70101010101010ULL, 0x3f80101010101010ULL, 0x3fcf9f9f9f9f9fa0ULL,
+        0x3fdfdfdfdfdfdfe0ULL, 0x3fe0101010101010ULL, 0x3fefdfdfdfdfdfe0ULL,
+        0x3ff0000000000000ULL}},
+      {mv::GltfComponentType::kInt16,
+       {-32768, -32767, -16383, -1, 0, 1, 16383, 32767},
+       {0xbff0000000000000ULL, 0xbff0000000000000ULL, 0xbfdfffbfff7fff00ULL,
+        0xbf00002000400080ULL, 0, 0x3f00002000400080ULL, 0x3fdfffbfff7fff00ULL,
+        0x3ff0000000000000ULL}},
+      {mv::GltfComponentType::kUint16,
+       {0, 1, 2, 16383, 32767, 32768, 65534, 65535},
+       {0, 0x3ef0001000100010ULL, 0x3f00001000100010ULL, 0x3fcfff9fff9fffa0ULL,
+        0x3fdfffdfffdfffe0ULL, 0x3fe0001000100010ULL, 0x3fefffdfffdfffe0ULL,
+        0x3ff0000000000000ULL}},
+  }};
+  for (const auto rounding :
+       {FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO}) {
+    Require(std::fesetround(rounding) == 0);
+    for (const auto& test : cases) {
+      meshvale::geometry::ExecutionContext context({4, 1, 10000000});
+      {
+        detail::AllocationContext allocation(context, {});
+        detail::AccessorSource source;
+        source.component_type = test.type;
+        source.count = test.values.size();
+        source.normalized = true;
+        const auto width =
+            detail::DescribeAccessorLayout(test.type, source.shape)
+                .component_bytes;
+        std::vector<std::byte> bytes(source.count * width);
+        for (std::size_t row = 0; row < source.count; ++row)
+          for (std::size_t byte = 0; byte < width; ++byte)
+            bytes[row * width + byte] = static_cast<std::byte>(
+                static_cast<std::uint64_t>(test.values[row]) >> (byte * 8));
+        source.base = detail::AccessorByteView{0, 0, 0, bytes};
+        detail::AccessorExecutionStats stats;
+        auto parallel = detail::DecodeAccessor(source, true, Limits(), Policy(),
+                                               context, allocation, {}, &stats);
+        Require(parallel.values && stats.launched == 4 && stats.joined == 4);
+        auto occupied = meshvale::geometry::TryReserveWorkers(context, 4);
+        auto serial = detail::DecodeAccessor(source, true, Limits(), Policy(),
+                                             context, allocation, {}, &stats);
+        Require(serial.values && stats.launched == 0 && stats.joined == 0);
+        Require(serial.values->raw == parallel.values->raw);
+        for (std::size_t row = 0; row < source.count; ++row) {
+          Require(std::bit_cast<std::uint64_t>(
+                      parallel.values->normalized[row]) == test.expected[row]);
+          Require(std::bit_cast<std::uint64_t>(
+                      serial.values->normalized[row]) == test.expected[row]);
+        }
+        Require(std::fegetround() == rounding);
+      }
+      Require(context.ActiveWorkers() == 0 &&
+              context.ActiveTrackedPayload() == 0);
+    }
+  }
 }
 void OtherMatrixLayouts() {
   meshvale::geometry::ExecutionContext context({4, 1, 10000000});
@@ -328,6 +405,7 @@ int main() {
   try {
     LayoutAndSparse();
     RawAndNormalized();
+    NormalizedRoundingEnvironment();
     OtherMatrixLayouts();
     FailureAndLifetime();
     WorkerFailuresAndCancellation();

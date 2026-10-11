@@ -176,10 +176,56 @@ double Normalize(T value) {
   if constexpr (std::is_floating_point_v<T>) {
     return value;
   } else {
-    const auto converted = static_cast<double>(value) /
-                           static_cast<double>(std::numeric_limits<T>::max());
-    if constexpr (std::is_signed_v<T>) return std::max(-1.0, converted);
-    return converted;
+    // Integer division constructs nearest-even binary64 without consulting the
+    // caller's or worker's floating environment. Raw source values stay intact.
+    static_assert(std::numeric_limits<double>::is_iec559 &&
+                  std::numeric_limits<double>::digits == 53 &&
+                  sizeof(double) == sizeof(std::uint64_t));
+    constexpr unsigned kFractionBits = 52;
+    constexpr std::int64_t kExponentBias = 1023;
+    constexpr auto kHiddenBit = std::uint64_t{1} << kFractionBits;
+    constexpr auto kSignBit = std::uint64_t{1} << 63;
+    bool negative = false;
+    std::uint64_t numerator;
+    if constexpr (std::is_signed_v<T>) {
+      if (value == std::numeric_limits<T>::min()) return -1.0;
+      const auto wide = static_cast<std::int64_t>(value);
+      negative = wide < 0;
+      numerator = static_cast<std::uint64_t>(negative ? -wide : wide);
+    } else {
+      numerator = value;
+    }
+    if (numerator == 0) return 0.0;
+    const auto denominator =
+        static_cast<std::uint64_t>(std::numeric_limits<T>::max());
+    std::int64_t exponent = 0;
+    while (numerator < denominator) {
+      numerator <<= 1;
+      --exponent;
+    }
+    auto remainder = numerator - denominator;
+    auto significand = kHiddenBit;
+    for (unsigned bit = kFractionBits; bit != 0;) {
+      --bit;
+      remainder <<= 1;
+      if (remainder >= denominator) {
+        remainder -= denominator;
+        significand |= std::uint64_t{1} << bit;
+      }
+    }
+    const auto twice_remainder = remainder << 1;
+    if (twice_remainder > denominator ||
+        (twice_remainder == denominator && (significand & 1)))
+      ++significand;
+    if (significand == (kHiddenBit << 1)) {
+      significand >>= 1;
+      ++exponent;
+    }
+    const auto bits = (negative ? kSignBit : 0) |
+                      (static_cast<std::uint64_t>(exponent + kExponentBias)
+                       << kFractionBits) |
+                      (significand - kHiddenBit);
+    return std::bit_cast<double>(bits);
   }
 }
 template <class T>
