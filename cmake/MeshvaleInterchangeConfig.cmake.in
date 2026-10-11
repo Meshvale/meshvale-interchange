@@ -2,6 +2,11 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
 find_dependency(MeshvaleGeometry 0.0.0 EXACT CONFIG)
+if(NOT TARGET meshvale::materialization)
+  set(MeshvaleInterchange_FOUND FALSE)
+  set(MeshvaleInterchange_NOT_FOUND_MESSAGE "Geometry must provide meshvale::materialization; use the documented producer revision")
+  return()
+endif()
 find_dependency(tinyobjloader 2.0.0 CONFIG)
 include("${CMAKE_CURRENT_LIST_DIR}/MeshvaleInterchangeTargets.cmake")
 check_required_components(MeshvaleInterchange)

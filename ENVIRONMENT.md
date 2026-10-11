@@ -74,34 +74,91 @@ The [FBX contract](docs/fbx.md) owns exact compiler/configuration admission,
 static-import coverage, SDK cleanup and notice requirements. Default native
 builds and current Python wheels leave FBX disabled.
 
+## Explicit native materialization profiles
+
+The [repository workflow](.github/workflows/repository-checks.yml) selects explicit
+Geometry and Interchange materialization test profiles. Every native build passes
+`MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=qualified` or `unsupported`;
+the installed examples use the same value. The
+[inventory checker](scripts/check-native-tests.py) verifies that the declared
+profile matches both CMake caches, the actual configured compiler identity/version,
+build configuration and complete native/installed test sets. No profile selects
+an empty suite or silently skips unsupported numerical capture.
+
+The workflow pins Geometry to
+`48bb348112f49a07aec03bc69b9875ea6b62128a`, independently of its development
+package version. Its [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/48bb348112f49a07aec03bc69b9875ea6b62128a/docs/materialization.md#compiled-allocation-profiles)
+owns the numerical admission tuple. Geometry is configured as a standalone
+producer without the Interchange/vcpkg toolchain. Native lanes disable system
+Eigen discovery so Geometry acquires its pinned official source dependency.
+
+| Native row | Configuration and declared profile | Required inventory |
+|---|---|---|
+| Windows x64 MSVC | Release, qualified | Geometry 16; Interchange 13; installed 7 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified | Geometry 16; Interchange 13; installed 7 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified | Geometry 16; Interchange 13; installed 7 |
+| Linux GNU | Release, unsupported | Geometry 13; Interchange 12; installed 7 |
+| macOS AppleClang | Release, unsupported | Geometry 13; Interchange 12; installed 7 |
+
+Qualified rows include the focused materialization and independent semantic
+suites. Unsupported rows exercise actual nonempty delegated unsupported-profile
+outcomes, with an installed public fixture. Existing eleven native suites, six
+installed consumers and lexical/accessor/Read/Write oracles remain required in
+both profiles. The additional materialization oracle runs in qualified rows.
+These are configured gates; only completed actual runs establish acceptance of
+the candidate's implementation. The [draft transfer contract](docs/gltf-materialization.md)
+owns interface availability and scope.
+
+Native rows use Ninja and record their compile-command inventories and test
+results. Windows loads the installed Visual Studio x64 compiler environment.
+Its AddressSanitizer row applies `/fsanitize=address /Zi` to Geometry, Interchange
+and all installed consumers. The separate
+[Windows sanitizer triplet](cmake/sanitizer-triplets/x64-windows-static-md-asan.cmake)
+builds only the matching Release tinyobjloader library with dynamic CRT and static
+library linkage; it does not qualify a Debug dependency or mixed CRT consumer.
+Binary-cache reuse is disabled, and build/dependency concurrency is bounded to
+two. This lane is separate from Linux ASan/UBSan and TSan.
+
+The six ordinary Python rows retain the Release OBJ interface and matching
+Geometry wheel/native prefix. They do not qualify a glTF Python operation,
+charged transfer or Linux Release materialization profile. The separate portable
+OBJ candidate workflow retains its own package/dependency preparation checks.
+
 ## Linux native sanitizer evaluation
 
-The [repository workflow](.github/workflows/repository-checks.yml) defines separate
-Linux x64 Clang lanes for AddressSanitizer plus UndefinedBehaviorSanitizer and for
-ThreadSanitizer. A completed run is required to establish execution evidence;
-configuration alone does not establish sanitizer coverage or platform support.
-The [runner](scripts/run-native-sanitizers.py) builds the same pinned Geometry and
-vcpkg revisions as the ordinary native job without changing the Python cohort.
+The workflow defines separate Ubuntu 24.04 Linux x64 Clang 18.1.3 lanes for
+AddressSanitizer plus UndefinedBehaviorSanitizer and for ThreadSanitizer. A
+completed run is required to establish execution evidence; configuration alone
+does not establish sanitizer coverage or platform support. The
+[runner](scripts/run-native-sanitizers.py) requires clean exact Geometry and vcpkg
+revisions matching the ordinary native job, without changing the Python cohort.
 
-Each lane uses matching Debug Clang compilation and sanitizer link/runtime flags
-for Geometry, Interchange and its six installed consumers. The existing manifest
-selects double-precision tinyobjloader; the [custom triplets](cmake/sanitizer-triplets/x64-linux-asan-ubsan.cmake)
-rebuild its Debug and Release configurations with the same instrumentation, and
-consumers select Debug. Tracked flag environment values participate in vcpkg's
-port ABI; binary-cache reuse is disabled. Build concurrency is bounded to two.
-Compiled-command inventories verify compiler, instrumentation and Meshvale Werror.
-See the [vcpkg triplet variables](https://learn.microsoft.com/en-us/vcpkg/users/triplets)
-for flag and tracked-environment behavior.
+Each lane uses matching Debug compilation and sanitizer link/runtime flags for
+Geometry, Interchange and all seven installed consumers. Geometry's owning
+allocation-profile contract admits only its observed compiler, libc/libstdc++,
+Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
+fail the qualified suite rather than relabel it unsupported. The ordinary native
+and ASan/UBSan Geometry owners remain unoptimized. TSan uses exactly
+`-fsanitize=thread -O1 -g -fno-omit-frame-pointer` with matching thread-sanitizer
+link inputs. That optimization does not qualify optimized native or ASan builds.
 
-The lanes assert all eleven native suites and six installed test entries, use
-Geometry's own allocation-profile inventory checker, and execute the independent
-lexical, accessor, actual Read/extraction and actual Write/reload oracles. Geometry's
-ordinary replacement-new allocation probes remain enabled for ASan/UBSan and are
-disabled for TSan because that runtime owns its allocation interceptors. The glTF
-backend-failure and joined-worker cases remain in both lanes. Failures propagate;
-no sanitizer suppressions, retry-to-success or reduced oracle substitutions apply.
+The manifest selects double-precision tinyobjloader. The
+[custom triplets](cmake/sanitizer-triplets/x64-linux-asan-ubsan.cmake) rebuild its
+Debug and Release configurations with matching instrumentation; consumers select
+Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
+reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
+inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-To run on a compatible Linux x64 environment, prepare the workflow's exact public
+Both lanes require Interchange's qualified 13 suites and seven installed test
+entries. Geometry requires 16 suites with allocation probes enabled under
+ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
+materialization worker/cancellation/partial-launch/shared-budget tests; an
+unsupported fixture or serial allocation observation cannot substitute for them.
+The runner executes independent lexical, accessor, actual Read/extraction,
+Write/reload and materialization oracles. Failures propagate; there are no
+sanitizer suppressions, retry-to-success or reduced oracle substitutions.
+
+To run on the matching Linux x64 environment, prepare the workflow's exact public
 Geometry/vcpkg checkouts and supply their locations:
 
 ```sh
@@ -111,10 +168,10 @@ python scripts/run-native-sanitizers.py --profile tsan --geometry-source "$GEOME
 
 Each profile requires a fresh `.local/native-sanitizers/<profile>` directory.
 Commands, identities, compiler flags, test inventories, oracle observations and
-CTest output remain ignored; hosted jobs upload these as separate artifacts,
-including partial failure evidence. The completion marker is written only after
-all actual commands pass. Parser headers and Eigen code compile into instrumented
-Meshvale targets. System libraries, thread/runtime internals and dependency tooling
-are not comprehensively instrumented. Optional FBX/USD and Python bindings remain
-disabled in these lanes; they do not qualify those SDKs, full glTF semantics,
-allocation-request planning or any unexecuted architecture.
+CTest output remain ignored; hosted jobs upload separate artifacts, including
+partial failure evidence. A completion marker is written only after every actual
+command passes. Parser headers and Eigen code compile into instrumented Meshvale
+targets. System libraries, thread/runtime internals and dependency tooling are
+not comprehensively instrumented. Optional FBX/USD and Python bindings remain
+disabled; these lanes do not qualify those SDKs, complete glTF semantics, original
+allocation-request planning or an unexecuted architecture.

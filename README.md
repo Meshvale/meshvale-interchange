@@ -30,8 +30,16 @@ documents its finite metadata/graph/resource profile and explicit unsupported
 capabilities. The [installed consumer](examples/consumer/gltf.cpp) demonstrates
 the public interface and owned lifetimes. The [retained memory writer](docs/gltf_write.md)
 emits exact unchanged JSON and shares full immutable resource ownership; its
-[installed example](examples/consumer/gltf_write.cpp) reloads the output. Geometry transfer, edited asset writing,
-filesystem publication and Python glTF operations remain forthcoming.
+[installed example](examples/consumer/gltf_write.cpp) reloads the output.
+
+The [static raw transfer](docs/gltf-materialization.md) copies an
+extracted primitive into inspected canonical Geometry storage through the
+separate `meshvale::gltf_materialization` target. It retains source ownership,
+channel correspondence and normalization declarations; canonical attributes
+remain raw. Its [installed example](examples/consumer/gltf_materialization.cpp)
+composes transfer, inspection and face selection. The transfer contract owns
+numerical-profile and lifetime limits. Edited asset writing, filesystem
+publication and Python glTF operations remain forthcoming.
 
 ## Optional native USD extraction
 
