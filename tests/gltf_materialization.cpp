@@ -180,7 +180,9 @@ void LimitsCancellationAndDelegation() {
               inspection_limit.diagnostic.stage ==
                   mv::GltfMaterializationStage::kInspection &&
               inspection_limit.diagnostic.geometry_status ==
-                  geo::MaterializationStatus::kLimitExceeded,
+                  geo::MaterializationStatus::kBudgetExceeded &&
+              inspection_limit.diagnostic.geometry_diagnostic->code ==
+                  geo::MaterializationDiagnosticCode::kRequestBudget,
           "inspection failure must retain actual Geometry outcome");
   std::stop_source fresh_stop;
   fresh_stop.request_stop();
