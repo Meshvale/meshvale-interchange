@@ -117,3 +117,13 @@ Use [ENVIRONMENT.md](../ENVIRONMENT.md) for configuration and checks. The native
 Geometry targets. Retained JSON/resources, all core admission guards, enumerable
 owner-bound handles, typed extraction and verified publication are separate
 implementation gates, with skin/morph/animation support still outstanding.
+
+## Exact metadata preparation
+
+Private metadata helpers compare authored decimal numbers without allocation or
+locale-dependent conversion. Unsigned/signed integer ingress preserves exact
+64-bit boundaries and rejects fractional values before narrowing; binary32
+conversion preserves signed zero and admits finite subnormals. Legal values
+outside a native representation return an unsupported outcome. These helpers
+and private immutable asset ownership prepare metadata admission; they do not
+yet provide a callable installed asset reader or extraction interface.
