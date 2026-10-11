@@ -71,6 +71,7 @@ constexpr std::string_view kNormal = "NORMAL";
 constexpr std::string_view kTangent = "TANGENT";
 constexpr std::string_view kTexcoordPrefix = "TEXCOORD_";
 constexpr std::string_view kColorPrefix = "COLOR_";
+constexpr std::string_view kCustomPrefix = "_";
 std::optional<std::uint64_t> Index(const JsonSnapshot& doc, std::size_t node,
                                    std::string_view key) {
   const auto member = FindMember(doc, node, key);
@@ -207,7 +208,8 @@ GltfCapabilityReason Capability(const AssetState& state,
     if (key.starts_with(kJointPrefix) || key.starts_with(kWeightPrefix))
       return GltfCapabilityReason::kJointWeightChannels;
     if (key != kPosition && key != kNormal && key != kTangent &&
-        !key.starts_with(kTexcoordPrefix) && !key.starts_with(kColorPrefix))
+        !key.starts_with(kTexcoordPrefix) && !key.starts_with(kColorPrefix) &&
+        !key.starts_with(kCustomPrefix))
       unknown = true;
   }
   const auto mesh = TableRow(doc, kMeshes, primitive.mesh_index);

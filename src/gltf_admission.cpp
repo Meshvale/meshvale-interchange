@@ -774,9 +774,10 @@ OwnedVector<char> BuildCoreProjection(const AssetState& state) {
     std::size_t node;
     std::optional<std::size_t> next;
     bool opened;
+    bool emitted;
   };
   OwnedVector<Frame> stack{Allocator<Frame>(state.allocation)};
-  stack.push_back({0, {}, false});
+  stack.push_back({0, {}, false, false});
   while (!stack.empty()) {
     state.allocation.Checkpoint();
     auto& frame = stack.back();
@@ -787,19 +788,26 @@ OwnedVector<char> BuildCoreProjection(const AssetState& state) {
         frame.opened = true;
         frame.next = document.FirstChild(frame.node);
       }
+      while (kind == JsonKind::kObject && frame.next) {
+        const auto rule = state.guard_rules[*frame.next];
+        if (rule != kNoGuard && kCoreRules[rule].kind != GuardKind::kOpaque)
+          break;
+        frame.next = document.NextSibling(*frame.next);
+      }
       if (!frame.next) {
         append(kind == JsonKind::kObject ? "}" : "]");
         stack.pop_back();
         continue;
       }
       const auto child = *frame.next;
-      if (document.FirstChild(frame.node) != frame.next) append(",");
+      if (frame.emitted) append(",");
+      frame.emitted = true;
       if (kind == JsonKind::kObject) {
         string(document.Key(child));
         append(":");
       }
       frame.next = document.NextSibling(child);
-      stack.push_back({child, {}, false});
+      stack.push_back({child, {}, false, false});
       continue;
     }
     switch (kind) {

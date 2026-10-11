@@ -49,6 +49,21 @@ int main() {
             R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"DATA:application/octet-stream;base64,AA=="}]})",
             {}, context)
             .diagnostic.status == GltfStatus::kUnsupportedProfile);
+    Require(
+        Read(
+            R"({"asset":{"version":"2.0"},"images":[{"uri":"data:image/png;base64,iVBORw0KGgo="}]})",
+            {}, context)
+            .asset.has_value());
+    Require(
+        Read(
+            R"({"asset":{"version":"2.0"},"images":[{"uri":"data:image/png;base64,iVBORw0KGgo=","mimeType":"image/jpeg"}]})",
+            {}, context)
+            .diagnostic.code == GltfDiagnosticCode::kEmbeddedMediaMismatch);
+    Require(
+        Read(
+            R"({"asset":{"version":"2.0"},"images":[{"uri":"data:image/png;base64,iVBORw0KGgo=","mimeType":"image/future"}]})",
+            {}, context)
+            .diagnostic.code == GltfDiagnosticCode::kEmbeddedMediaMismatch);
     std::array<std::byte, 40> buffer{};
     buffer.back() = std::byte{42};
     const SuppliedGltfResource supplied{GltfResourceKind::kBuffer, 0, buffer};

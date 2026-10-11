@@ -31,7 +31,9 @@ void Free(void*, void* pointer) noexcept {
 }
 }  // namespace
 CoreParserSummary InspectCoreProjection(std::string_view input,
-                                        const AllocationContext& allocation) {
+                                        const AllocationContext& allocation,
+                                        CoreProjectionObserver observer,
+                                        void* observer_state) {
   Memory memory{allocation, {}, {}};
   cgltf_options options{};
   options.memory = {Allocate, Free, &memory};
@@ -42,6 +44,8 @@ CoreParserSummary InspectCoreProjection(std::string_view input,
       result == cgltf_result_success,
       data ? static_cast<std::size_t>(data->meshes_count) : 0,
       data ? static_cast<std::size_t>(data->nodes_count) : 0};
+  if (result == cgltf_result_success && observer)
+    observer(*data, observer_state);
   owner.reset();
   if (memory.exception) std::rethrow_exception(memory.exception);
   if (memory.failure) throw AdmissionFailure(*memory.failure);

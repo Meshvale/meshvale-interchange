@@ -19,10 +19,18 @@ constexpr std::string_view kBufferKey = "buffer";
 constexpr std::string_view kByteOffsetKey = "byteOffset";
 constexpr std::string_view kMimeTypeKey = "mimeType";
 constexpr std::string_view kDataScheme = "data:";
-constexpr std::array<std::string_view, 4> kDataPrefixes = {
-    "data:application/octet-stream;base64,",
-    "data:application/gltf-buffer;base64,", "data:image/png;base64,",
-    "data:image/jpeg;base64,"};
+constexpr std::string_view kPngMime = "image/png";
+constexpr std::string_view kJpegMime = "image/jpeg";
+struct EmbeddedRepresentation {
+  std::string_view prefix;
+  GltfResourceKind kind;
+  std::string_view mime;
+};
+constexpr std::array<EmbeddedRepresentation, 4> kEmbeddedRepresentations = {
+    {{"data:application/octet-stream;base64,", GltfResourceKind::kBuffer, {}},
+     {"data:application/gltf-buffer;base64,", GltfResourceKind::kBuffer, {}},
+     {"data:image/png;base64,", GltfResourceKind::kImage, kPngMime},
+     {"data:image/jpeg;base64,", GltfResourceKind::kImage, kJpegMime}}};
 constexpr std::string_view kBase64Alphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 constexpr std::size_t kBase64GroupCharacters = 4;
@@ -152,8 +160,6 @@ void DecodeBase64(std::string_view text, std::span<std::byte> destination,
   }
 }
 void ImageSignature(const GltfResourceView& resource, std::string_view mime) {
-  constexpr std::string_view kPngMime = "image/png";
-  constexpr std::string_view kJpegMime = "image/jpeg";
   constexpr std::array<unsigned char, 8> kPngSignature = {137, 80, 78, 71,
                                                           13,  10, 26, 10};
   constexpr std::array<unsigned char, 3> kJpegSignature = {255, 216, 255};
@@ -217,6 +223,7 @@ void AdmitResources(AssetState& state,
       GltfResourceView resource{kind, index, GltfResourceOrigin::kCallerBinding,
                                 uri,  {},    logical,
                                 {},   {}};
+      std::string_view embedded_mime;
       if (view) {
         if (binding)
           ResourceFailure(GltfStatus::kResourceBindingMismatch,
@@ -258,21 +265,22 @@ void AdmitResources(AssetState& state,
         std::string_view encoded;
         std::optional<std::size_t> prefix;
         if (DataLike(uri)) {
-          for (std::size_t i = 0; i < kDataPrefixes.size(); ++i)
-            if (uri.starts_with(kDataPrefixes[i])) prefix = i;
+          for (std::size_t i = 0; i < kEmbeddedRepresentations.size(); ++i)
+            if (uri.starts_with(kEmbeddedRepresentations[i].prefix)) prefix = i;
           if (!prefix)
             ResourceFailure(
                 GltfStatus::kUnsupportedProfile,
                 GltfDiagnosticCode::kUnsupportedResourceRepresentation, kind,
                 index);
-          if ((kind == GltfResourceKind::kBuffer) != (*prefix < 2))
+          if (kind != kEmbeddedRepresentations[*prefix].kind)
             ResourceFailure(GltfStatus::kMalformed,
                             GltfDiagnosticCode::kEmbeddedMediaMismatch, kind,
                             index);
           if (binding)
             ResourceFailure(GltfStatus::kResourceBindingMismatch,
                             GltfDiagnosticCode::kExtraResource, kind, index);
-          encoded = uri.substr(kDataPrefixes[*prefix].size());
+          encoded = uri.substr(kEmbeddedRepresentations[*prefix].prefix.size());
+          embedded_mime = kEmbeddedRepresentations[*prefix].mime;
           resource.origin = GltfResourceOrigin::kDecodedDataUri;
         } else if (!binding) {
           ResourceFailure(GltfStatus::kResourceBindingMismatch,
@@ -297,12 +305,15 @@ void AdmitResources(AssetState& state,
       }
       if (kind == GltfResourceKind::kImage) {
         const auto mime = FindMember(document, *node, kMimeTypeKey);
+        if (mime && !embedded_mime.empty() &&
+            document.String(*mime) != embedded_mime)
+          ResourceFailure(GltfStatus::kMalformed,
+                          GltfDiagnosticCode::kEmbeddedMediaMismatch, kind,
+                          index);
         if (mime)
           ImageSignature(resource, document.String(*mime));
-        else if (uri.starts_with(kDataPrefixes[2]))
-          ImageSignature(resource, "image/png");
-        else if (uri.starts_with(kDataPrefixes[3]))
-          ImageSignature(resource, "image/jpeg");
+        else if (!embedded_mime.empty())
+          ImageSignature(resource, embedded_mime);
       }
       state.resources.push_back(resource);
     }
