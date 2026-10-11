@@ -40,6 +40,28 @@ struct AllocationBackend {
                      void* state) noexcept;
   void* state;
 };
+struct OperationBudget;
+// Intrusive ownership avoids an uncharged shared-pointer control block. The
+// budget itself is a single charged allocation; blocks retain it until freed.
+class OperationOwner {
+ public:
+  OperationOwner() noexcept;
+  OperationOwner(const OperationOwner&) noexcept;
+  OperationOwner& operator=(const OperationOwner&) noexcept;
+  OperationOwner(OperationOwner&&) noexcept;
+  OperationOwner& operator=(OperationOwner&&) noexcept;
+  ~OperationOwner() noexcept;
+  [[nodiscard]] bool Reserve(std::size_t bytes) const noexcept;
+  void Release(std::size_t bytes) const noexcept;
+  [[nodiscard]] std::size_t ActiveBytes() const noexcept;
+  [[nodiscard]] bool SameOwner(const OperationOwner& other) const noexcept;
+
+ private:
+  friend class AllocationContext;
+  explicit OperationOwner(OperationBudget* budget) noexcept;
+  void Reset() noexcept;
+  OperationBudget* budget_ = nullptr;
+};
 [[nodiscard]] AllocationBackend DefaultAllocationBackend() noexcept;
 [[nodiscard]] std::size_t AllocationRequestBytes(std::size_t bytes,
                                                  std::size_t alignment);
@@ -55,6 +77,12 @@ class AllocationContext {
   [[nodiscard]] void* Allocate(std::size_t bytes, std::size_t alignment) const;
   // Nonallocating operation checkpoint; cleanup must never call it.
   void Checkpoint() const;
+  // A new operation cap includes its charged accounting state, full aligned
+  // block requests and overlapping replacements. Root ledger remains shared.
+  // Calling on an already capped context is invalid. Actual backend exceptions
+  // preserve both counters. Copies/rebounds retain the same operation cap.
+  [[nodiscard]] AllocationContext WithRequestLimit(std::size_t bytes) const;
+  [[nodiscard]] std::size_t OperationActiveBytes() const noexcept;
   static void Deallocate(void* pointer) noexcept;
   [[nodiscard]] bool SharesBudget(
       const AllocationContext& other) const noexcept;
@@ -63,6 +91,7 @@ class AllocationContext {
   std::optional<geometry::ExecutionContext> context_;
   std::stop_token stop_;
   AllocationBackend backend_;
+  OperationOwner operation_;
 };
 
 // Only standard allocator templates live here. Block ownership, arithmetic,

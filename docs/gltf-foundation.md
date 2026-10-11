@@ -127,3 +127,11 @@ conversion preserves signed zero and admits finite subnormals. Legal values
 outside a native representation return an unsupported outcome. These helpers
 and private immutable asset ownership prepare metadata admission; they do not
 yet provide a callable installed asset reader or extraction interface.
+
+An internal per-operation request cap retains the shared Geometry ledger while
+additionally accounting one operation’s live aligned requests. Its accounting
+state is itself charged; rebound containers and retained blocks keep it alive.
+Overlapping replacements count both blocks. Admission and rollback use atomic
+counters, and cleanup frees each block before releasing its charges. Distinct
+operation allocators are unequal even when their root execution ledger matches.
+This prepares the extraction output cap; it does not expose an extraction API.

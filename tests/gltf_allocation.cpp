@@ -367,6 +367,85 @@ void MixedGeometry() {
   workers.Reset();
   Require(context.ActiveWorkers() == 0, "joined workers leaked slots");
 }
+void OperationCaps() {
+  ExecutionContext context({2, 1, 1048576});
+  AllocationContext root(context, {});
+  {
+    auto probe = root.WithRequestLimit(65536);
+    const auto seed = probe.OperationActiveBytes();
+    Require(seed != 0 && context.ActiveTrackedPayload() == seed,
+            "operation accounting state was not charged");
+    const auto charge = AllocationRequestBytes(256, 64);
+    auto capped = root.WithRequestLimit(seed + charge);
+    auto* block = capped.Allocate(256, 64);
+    Require(reinterpret_cast<std::uintptr_t>(block) % 64 == 0 &&
+                capped.OperationActiveBytes() == seed + charge,
+            "operation cap omitted alignment/header");
+    Reject(AdmissionCode::kSizeLimit, [&] { (void)capped.Allocate(1, 1); });
+    Require(capped.OperationActiveBytes() == seed + charge,
+            "rejected operation request changed charge");
+    auto copy = capped;
+    Require(copy.SharesBudget(capped) && !copy.SharesBudget(root),
+            "allocator equality lost operation identity");
+    AllocationContext::Deallocate(block);
+    Require(capped.OperationActiveBytes() == seed,
+            "operation free retained payload");
+    Reject(AdmissionCode::kInvalidObject,
+           [&] { (void)capped.WithRequestLimit(65536); });
+  }
+  Require(context.ActiveTrackedPayload() == 0,
+          "operation accounting state leaked");
+  // Containers and their operation accounting outlive the creating wrappers.
+  std::vector<std::byte, Allocator<std::byte>> retained;
+  {
+    auto capped = root.WithRequestLimit(65536);
+    retained = decltype(retained)(Allocator<std::byte>(capped));
+    retained.resize(32);
+  }
+  Require(context.ActiveTrackedPayload() != 0,
+          "retained capped container lost owner");
+  retained = decltype(retained)();
+  Require(context.ActiveTrackedPayload() == 0,
+          "capped owner survived final free");
+  Counter counter{context};
+  AllocationContext injected(context, {}, {Allocate, Free, &counter});
+  {
+    auto capped = injected.WithRequestLimit(65536);
+    const auto seed = capped.OperationActiveBytes();
+    counter.failure = true;
+    try {
+      (void)capped.Allocate(64, 16);
+      throw std::runtime_error("backend fault not observed");
+    } catch (const std::bad_alloc&) {
+      Require(capped.OperationActiveBytes() == seed &&
+                  context.ActiveTrackedPayload() == seed,
+              "backend fault did not roll back both counters");
+    }
+    counter.failure = false;
+  }
+  Require(context.ActiveTrackedPayload() == 0 && counter.live == 0,
+          "injected operation budget leaked");
+  {
+    auto capped = root.WithRequestLimit(65536);
+    std::barrier start(3);
+    std::atomic<bool> bad{false};
+    auto work = [&] {
+      start.arrive_and_wait();
+      for (int i = 0; i < 100; ++i) {
+        auto* block = capped.Allocate(64, 16);
+        if (capped.OperationActiveBytes() > 65536) bad = true;
+        AllocationContext::Deallocate(block);
+      }
+    };
+    std::jthread first(work), second(work);
+    start.arrive_and_wait();
+    first.join();
+    second.join();
+    Require(!bad, "concurrent operation cap overflowed");
+  }
+  Require(context.ActiveTrackedPayload() == 0,
+          "concurrent operation budget leaked");
+}
 }  // namespace
 int main() {
   try {
@@ -378,6 +457,7 @@ int main() {
     PartialParsers();
     Concurrent();
     MixedGeometry();
+    OperationCaps();
     std::cout << "allocation/parser foundation passed\n";
     return 0;
   } catch (const std::exception& error) {
