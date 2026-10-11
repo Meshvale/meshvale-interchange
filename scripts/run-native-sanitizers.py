@@ -5,11 +5,22 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
+from runpy import run_path
 import shlex
 import shutil
 import subprocess
 
+INVENTORY_CHECKER = Path(__file__).with_name("check-native-tests.py")
+expected_inventory = run_path(str(INVENTORY_CHECKER))["expected_inventory"]
+
 BUILD_CONFIGURATION = "Debug"
+CLANG_CXX = "clang++-18"
+CLANG_C = "clang-18"
+CLANG_VERSION = "18.1.3"
+GEOMETRY_REVISION = "48bb348112f49a07aec03bc69b9875ea6b62128a"
+VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
+MATERIALIZATION_PROFILE = "qualified"
 BUILD_WORKERS = 2
 DEPENDENCY_CONFIGURATIONS = {"Debug": "dbg", "Release": "rel"}
 PROFILES = {
@@ -26,16 +37,6 @@ PROFILES = {
         "allocation_probe": "disabled",
         "runtime": {"TSAN_OPTIONS": "halt_on_error=1"},
     },
-}
-NATIVE_TESTS = {
-    "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
-    "gltf_read", "gltf_resources", "gltf_write", "gltf_metadata",
-    "gltf_accessor", "gltf_extract", "gltf_json_snapshot",
-}
-INSTALLED_TESTS = {
-    "installed_interchange_consumer", "installed_obj_bundle_consumer",
-    "installed_execution_dependency_consumer", "installed_gltf_consumer",
-    "installed_glb_consumer", "installed_gltf_write_consumer",
 }
 
 
@@ -74,7 +75,7 @@ class Runner:
         entries = json.loads(database.read_text(encoding="utf-8"))
         if not entries:
             raise RuntimeError(f"No compilation commands in {database}")
-        compiler = Path(shutil.which("clang++")).resolve()
+        compiler = Path(shutil.which(CLANG_CXX)).resolve()
         for entry in entries:
             arguments = entry.get("arguments") or shlex.split(entry["command"])
             actual_compiler = shutil.which(arguments[0])
@@ -109,7 +110,8 @@ def main():
     work.mkdir(parents=True, exist_ok=False)
     evidence.mkdir()
     environment = os.environ.copy()
-    environment.update({"CC": "clang", "CXX": "clang++", "VCPKG_ROOT": str(vcpkg),
+    environment.update({"CC": CLANG_C, "CXX": CLANG_CXX,
+                        "CFLAGS": "", "CXXFLAGS": "", "LDFLAGS": "", "VCPKG_ROOT": str(vcpkg),
                         "VCPKG_BINARY_SOURCES": "clear", "VCPKG_DISABLE_METRICS": "1",
                         "VCPKG_MAX_CONCURRENCY": str(BUILD_WORKERS),
                         "CMAKE_BUILD_PARALLEL_LEVEL": str(BUILD_WORKERS),
@@ -128,11 +130,19 @@ def main():
                 "vcpkg": runner.run("git", "-C", vcpkg, "rev-parse", "HEAD").strip()}
     (evidence / "inputs.json").write_text(json.dumps(identity, indent=2) + "\n",
                                          encoding="utf-8")
-    runner.run("clang++", "--version")
+    if identity["geometry"] != GEOMETRY_REVISION or identity["vcpkg"] != VCPKG_REVISION:
+        raise RuntimeError("Dependency source revision differs from the selected cohort")
+    for source in (geometry, vcpkg):
+        if runner.run("git", "-C", source, "status", "--porcelain").strip():
+            raise RuntimeError("Dependency source checkout must be clean: " + str(source))
+    compiler_identity = runner.run(CLANG_CXX, "--version")
+    compiler_version = re.search(r"clang version ([0-9.]+)", compiler_identity)
+    if compiler_version is None or compiler_version.group(1) != CLANG_VERSION:
+        raise RuntimeError("Clang version differs from the admitted cohort")
     runner.run("cmake", "--version")
     runner.run("bash", vcpkg / "bootstrap-vcpkg.sh", "-disableMetrics")
     common = [f"-DCMAKE_BUILD_TYPE={BUILD_CONFIGURATION}",
-              "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_C_COMPILER=clang",
+              f"-DCMAKE_CXX_COMPILER={CLANG_CXX}", f"-DCMAKE_C_COMPILER={CLANG_C}",
               f"-DCMAKE_CXX_FLAGS={profile['flags']}",
               f"-DCMAKE_C_FLAGS={profile['flags']}",
               f"-DCMAKE_EXE_LINKER_FLAGS={profile['link_flags']}",
@@ -141,7 +151,9 @@ def main():
     geometry_build, prefix = work / "geometry-build", work / "prefix"
     allocation_probe = "OFF" if profile["allocation_probe"] == "disabled" else "ON"
     runner.run("cmake", "-S", geometry, "-B", geometry_build, *common,
-               f"-DMESHVALE_GEOMETRY_ALLOCATION_PROBE={allocation_probe}")
+               f"-DMESHVALE_GEOMETRY_ALLOCATION_PROBE={allocation_probe}",
+               "-DCMAKE_DISABLE_FIND_PACKAGE_Eigen3=ON",
+               f"-DMESHVALE_GEOMETRY_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", geometry_build, "--parallel", BUILD_WORKERS)
     runner.instrumented(geometry_build / "compile_commands.json", profile["flags"], True)
     geometry_inventory = runner.run("ctest", "--test-dir", geometry_build, "-C",
@@ -149,7 +161,9 @@ def main():
     (evidence / "geometry-inventory.json").write_text(geometry_inventory, encoding="utf-8")
     runner.run("python", geometry / "scripts/check-native-tests.py", "--build-dir",
                geometry_build, "--configuration", BUILD_CONFIGURATION,
-               "--allocation-probe", profile["allocation_probe"])
+               "--allocation-probe", profile["allocation_probe"],
+               "--materialization-profile", MATERIALIZATION_PROFILE,
+               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
     runner.run("ctest", "--test-dir", geometry_build, "-C", BUILD_CONFIGURATION,
                "--output-on-failure")
     runner.run("cmake", "--install", geometry_build, "--config", BUILD_CONFIGURATION,
@@ -162,14 +176,19 @@ def main():
                  f"-DCMAKE_PREFIX_PATH={prefix}"]
     runner.run("cmake", "-S", root, "-B", build, *common, *toolchain,
                "-DMESHVALE_INTERCHANGE_USD=OFF", "-DMESHVALE_INTERCHANGE_FBX=OFF",
-               "-DMESHVALE_INTERCHANGE_PYTHON=OFF")
+               "-DMESHVALE_INTERCHANGE_PYTHON=OFF",
+               f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     for suffix in DEPENDENCY_CONFIGURATIONS.values():
         parser_database = (vcpkg / "buildtrees/tinyobjloader" /
                            f"{triplet}-{suffix}/compile_commands.json")
         runner.instrumented(parser_database, profile["flags"], False)
     runner.run("cmake", "--build", build, "--parallel", BUILD_WORKERS)
     runner.instrumented(build / "compile_commands.json", profile["flags"], True)
-    runner.inventory(build, NATIVE_TESTS, "interchange")
+    runner.inventory(build, expected_inventory(MATERIALIZATION_PROFILE), "interchange")
+    runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
+               "--configuration", BUILD_CONFIGURATION,
+               "--materialization-profile", MATERIALIZATION_PROFILE,
+               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
     runner.run("ctest", "--test-dir", build, "-C", BUILD_CONFIGURATION,
                "--output-on-failure")
     runner.run("python", "tests/gltf_json_oracle.py", build / "meshvale_gltf_json_tests",
@@ -179,14 +198,23 @@ def main():
                    build / "meshvale_gltf_extract_tests", work / name, *mode)
     runner.run("python", "tests/gltf_write_oracle.py", build / "meshvale_gltf_write_oracle",
                work / "write-reload-oracle")
+    runner.run("python", "tests/gltf_materialization_oracle.py",
+               "--exe", build / "meshvale_gltf_materialization_tests",
+               "--output", work / "materialization-oracle")
     runner.run("cmake", "--install", build, "--config", BUILD_CONFIGURATION,
                "--prefix", prefix)
     consumer = work / "installed-build"
     runner.run("cmake", "-S", "examples/consumer", "-B", consumer, *common,
-               *toolchain, "-DVCPKG_MANIFEST_MODE=OFF")
+               *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
+               f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", consumer, "--parallel", BUILD_WORKERS)
     runner.instrumented(consumer / "compile_commands.json", profile["flags"], True)
-    runner.inventory(consumer, INSTALLED_TESTS, "installed")
+    runner.inventory(consumer, expected_inventory(MATERIALIZATION_PROFILE, installed=True),
+                     "installed")
+    runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
+               "--installed-build-dir", consumer, "--configuration", BUILD_CONFIGURATION,
+               "--materialization-profile", MATERIALIZATION_PROFILE,
+               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
     runner.run("ctest", "--test-dir", consumer, "-C", BUILD_CONFIGURATION,
                "--output-on-failure")
     (evidence / "completed.json").write_text(json.dumps(identity, indent=2) + "\n",
