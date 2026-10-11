@@ -92,6 +92,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/gltf_accessor_oracle.py $test .local/read-extract-oracle read
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check unchanged retained writer through actual reload
+        run: |
+          $test = if ($IsWindows) { ".local/build/Release/meshvale_gltf_write_oracle.exe" } else { ".local/build/meshvale_gltf_write_oracle" }
+          python tests/gltf_write_oracle.py $test .local/write-reload-oracle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install interchange
         run: cmake --install .local/build --config Release --prefix .local/install
       - name: Configure installed consumer

@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, optional native USD and FBX imports, resource snapshots, verified OBJ bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction and unchanged memory output, optional native USD and FBX imports, resource snapshots, verified OBJ bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -28,7 +28,9 @@ triangle primitives with typed raw/normalized channels, sparse provenance and
 strip/fan source corner maps. The [native reader contract](docs/gltf-read.md)
 documents its finite metadata/graph/resource profile and explicit unsupported
 capabilities. The [installed consumer](examples/consumer/gltf.cpp) demonstrates
-the public interface and owned lifetimes. Geometry transfer, edited asset writing,
+the public interface and owned lifetimes. The [retained memory writer](docs/gltf_write.md)
+emits exact unchanged JSON and shares full immutable resource ownership; its
+[installed example](examples/consumer/gltf_write.cpp) reloads the output. Geometry transfer, edited asset writing,
 filesystem publication and Python glTF operations remain forthcoming.
 
 ## Optional native USD extraction

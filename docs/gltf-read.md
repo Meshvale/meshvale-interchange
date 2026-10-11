@@ -6,7 +6,8 @@ primitive into owned typed channels. Link `meshvale::interchange`; no parser SDK
 header or JSON DOM is exposed. The [installed consumer](../examples/consumer/gltf.cpp)
 demonstrates ownership, fresh cancellation tokens, sparse channels and source
 corner maps. The broader [asset proposal](gltf.md) includes future Geometry
-transfer, editing, writing and publication. Python remains OBJ-only.
+transfer, editing and publication. The [retained memory writer](gltf_write.md)
+preserves an unchanged admitted asset. Python remains OBJ-only.
 
 ## Read and ownership
 
@@ -46,8 +47,10 @@ remain outside this processing subset.
 
 ## Resource bindings and embedded data
 
-Every external or URI-less buffer/image needs one caller binding by resource kind
-and table index, including unused records. Missing, duplicate, extra and too-short
+Every buffer with an external URI or no URI, and every image with an external URI,
+needs one caller binding by resource kind and table index, including unused
+records. Data-URI resources and buffer-view images reject caller bindings.
+An image with neither URI nor bufferView is malformed. Missing, duplicate, extra and too-short
 bindings report `kResourceBindingMismatch`. Full supplied buffer spans are owned,
 including trailing bytes beyond declared logical length. Buffer-view images alias
 the owned buffer range without a duplicate copy. Filesystem and network resolution

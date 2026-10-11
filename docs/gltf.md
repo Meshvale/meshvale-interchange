@@ -4,11 +4,12 @@
 |---|---|
 | ID | GLTF-ASSET-001 |
 | Version | 0.1.0 draft |
-| Status | Broader proposal; supplied-memory retention/static primitive extraction implemented |
+| Status | Broader proposal; supplied-memory retention/static primitive extraction and unchanged output implemented |
 
 This contract defines the intended native document, resource and primitive
 boundaries for a glTF 2.0 adapter. The [native reader contract](gltf-read.md)
-describes the implemented finite retention and static primitive subset; clauses
+describes the implemented finite retention and static primitive subset. The
+[retained memory writer](gltf_write.md) emits unchanged owned JSON/resources; clauses
 below do not imply that broader edited export or publication is implemented.
 Other available adapters include [OBJ/MTL text](obj.md) and
 [OBJ files and bundles](obj-files.md). The separate
@@ -211,10 +212,12 @@ throughput, thread-safety or asynchronous API capability is established here.
 [THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) records the selected
 private parser inputs and notices. The [native foundation](gltf-foundation.md)
 implements allocation accounting, parser configuration and private lexical JSON
-retention, including exact raw number lexemes, with no public asset reader yet.
-Full asset snapshots, admitted roles, bounded decoding, guarded metadata,
-resources and publication require their own implementation and installed-consumer
-verification.
+retention, including exact raw number lexemes. The [native reader](gltf-read.md)
+adds supplied-memory asset ownership, selected metadata/graph guards, bounded
+resources and static typed extraction. The [memory writer](gltf_write.md)
+preserves unchanged JSON and resources. Their installed examples exercise these
+finite interfaces; complete semantic admission, Geometry transfer, edited asset
+writeback and filesystem publication require further implementation and evidence.
 
 The evaluated jsoncons configuration uses `lossless_number(true)`,
 `lossless_bignum(true)`, raw bignum serialization, `allow_comments(false)` and

@@ -4,6 +4,10 @@
 
 ### Added
 
+- Native unchanged glTF memory output preserving exact original JSON bytes and
+  full immutable resource identities/bytes through retained ownership, explicit
+  operation limits, fresh cancellation and joined shared-budget copy workers.
+
 - Native supplied-memory glTF retention and selected static primitive extraction
   with owner-bound handles, exact original numbers, owned resources, typed raw/
   normalized channels, sparse provenance and triangle strip/fan corner maps.
