@@ -4,7 +4,7 @@
 |---|---|
 | ID | GLTF-WRITE-001 |
 | Version | 0.1.0 |
-| Status | Selected interface; implementation pending |
+| Status | Selected unchanged native-memory implementation |
 | Interface | [gltf_write.h](../include/meshvale/interchange/gltf_write.h) |
 | Related | [Asset contract](gltf.md), [build/install](../ENVIRONMENT.md) |
 
@@ -94,3 +94,20 @@ This interface supplies memory output for unchanged retained glTF assets.
 Primitive replacement, Geometry transfer, resource/container conversion, GLB
 assembly, filesystem staging/publication, Python bindings and processing workflows
 require their separate contracts and acceptance evidence.
+
+## Exercising the interface
+
+The [installed example](../examples/consumer/gltf_write.cpp) captures supplied
+JSON/resources, emits a bundle, releases caller/source/context wrappers and reloads
+the retained output through the public reader. Build it using the
+[installed consumer instructions](../ENVIRONMENT.md).
+
+The `gltf_write` native test exercises output accounting, exact serial/parallel
+caps, occupied worker slots, backend and partial-launch failure rollback,
+source-order worker errors and fresh cancellation tokens. The independent
+[round-trip oracle](../tests/gltf_write_oracle.py) computes original JSON tokens,
+graph/resource identities and numerical bit expectations outside the native
+writer. From a configured build with tests enabled, run
+`python tests/gltf_write_oracle.py <build>/meshvale_gltf_write_oracle <new-output-directory>`.
+Use the executable's platform suffix where needed. The oracle requires a fresh
+output directory and preserves input/output fixtures for inspection.
