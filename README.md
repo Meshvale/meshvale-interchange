@@ -39,8 +39,9 @@ binding is provided; default OBJ builds need no FBX SDK.
 
 The [proposed glTF/GLB asset contract](docs/gltf.md) defines document/resource
 ownership, primitive selection and preservation gates for the next adapter.
-Its API and runtime dependencies are not implemented; see the implemented
-native adapters above for current format coverage.
+Its public API remains unimplemented. The [private native parser foundation](docs/gltf-foundation.md)
+supplies immutable JSON capture, checked allocation and pinned parser inputs;
+see the implemented native adapters above for current format coverage.
 
 Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.
 

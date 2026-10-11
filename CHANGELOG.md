@@ -8,6 +8,14 @@
 
 - Optional native FBX static polygon import with owned source bytes, normal/UV layer tables and axis/unit metadata. The separate target requires a locally licensed Autodesk SDK and reports unsupported scene features; the default Python package remains OBJ-only.
 
+- Private immutable JSON capture retains original bytes, exact number spellings,
+  decoded Unicode strings and ordered relationships under charged shared
+  ownership. Duplicate keys, malformed input, explicit limits and cancellation
+  fail without returning partial data. This does not add a public glTF reader or
+  admit glTF metadata, resources or primitive roles.
+
+- Private glTF parser/allocation foundation with SHA256-pinned cgltf/jsoncons inputs, shared Geometry execution accounting and bundled notices. Public asset reading, extraction and writing remain forthcoming.
+
 - Portable development wheel candidates for ordinary CPython 3.13 on Linux x86_64 manylinux_2_28 and Windows x64, with independent source-archive rebuilds, dependency inspection and clean installed OBJ checks. Candidates remain CI artifacts rather than supported releases.
 
 - Native OBJ/MTL text import/export preserving mixed polygon loops, corner UVs/normals and missingness, material bindings, object/group membership and smoothing.
