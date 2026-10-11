@@ -4,11 +4,11 @@
 
 ### Added
 
-- Static raw glTF transfer candidate with explicit operation limits, shared
+- Static raw glTF transfer with explicit operation limits, shared
   Geometry accounting, inspected canonical storage and retained source/channel
   correspondence. The separate `meshvale::gltf_materialization` target requires
-  Geometry's materialization target; native, sanitizer and platform qualification
-  remain pending. This does not add edited writing or Python glTF operations.
+  Geometry's materialization target and its compiled numerical allocation profile.
+  This does not add edited writing or Python glTF operations.
 
 - Native unchanged glTF memory output preserving exact original JSON bytes and
   full immutable resource identities/bytes through retained ownership, explicit

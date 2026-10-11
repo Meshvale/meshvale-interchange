@@ -4,16 +4,18 @@
 |---|---|
 | ID | GLTF-MATERIALIZATION-001 |
 | Version | 0.2.0 |
-| Status | Implementation candidate; qualification pending |
+| Status | Development interface |
 | Owner | Interchange |
 
 This contract specifies
 [`gltf_materialization.h`](../include/meshvale/interchange/gltf_materialization.h).
-The `meshvale::gltf_materialization` implementation is a candidate awaiting native,
-sanitizer and installed-consumer qualification. The
+The separately installed `meshvale::gltf_materialization` target transfers
+admitted static raw primitives into inspected canonical Geometry storage. The
 [reader/extractor](gltf-read.md) retains its current behavior. This contract defines
-the adapter's additional behavior without changing glTF admission or establishing
-a qualified release capability.
+the adapter's additional behavior without changing glTF admission. Numerical
+capture follows the linked Geometry compiled allocation profile; unsupported
+producers retain explicit delegated failure. This is a development interface,
+without a stable release guarantee.
 
 ## GTM-INPUT-001: Operation and required policy
 

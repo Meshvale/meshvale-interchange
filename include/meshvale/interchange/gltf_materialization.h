@@ -18,8 +18,8 @@ struct PrimitiveState;
 struct Access;
 }  // namespace gltf_materialization_detail
 
-// Implementation candidate; native and installed qualification remain pending.
-// Every limit is required and positive. Channels includes POSITION.
+// Static raw transfer; numerical admission follows the compiled Geometry
+// profile. Every limit is required and positive. Channels includes POSITION.
 struct GltfMaterializationLimits {
   std::uint64_t max_channels = 0;
   std::uint64_t max_bridge_new_requested_bytes = 0;
