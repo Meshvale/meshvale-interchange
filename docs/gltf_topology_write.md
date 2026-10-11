@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-TOPOLOGY-WRITE-001 |
-| Version | 0.1.1 |
-| Status | Native development implementation; full sanitizer/hosted qualification pending |
+| Version | 0.1.2 |
+| Status | Qualified native development candidate; no stable API/ABI or release |
 | Interface | [gltf_topology_write.h](../include/meshvale/interchange/gltf_topology_write.h) |
 
 This contract selects supplied-memory output for an ordered triangle subset of
@@ -314,11 +314,18 @@ prior output alive, fresh/old tokens, real joined workers in all four payload
 phases, partial launch and deterministic first failure after late cancellation.
 These observations are separate from RSS or cumulative allocation traffic.
 
-Exact source/archive/package correspondence, matching Windows and Linux
-sanitizer profiles, unsupported producer coverage and hosted native/installed
-gates remain necessary before full qualification. The local native result does
-not establish those pending gates, stable API compatibility or a release. No
-performance guarantee is made.
+The [tested development revision](https://github.com/Meshvale/meshvale-interchange/commit/2119506a38cf75955ed25a66e9f34fe7c1db3a58)
+passes [native and package checks](https://github.com/Meshvale/meshvale-interchange/actions/runs/38158711623)
+and [PR checks](https://github.com/Meshvale/meshvale-interchange/actions/runs/38158714986).
+Qualified Windows x64 MSVC Ninja Release and Linux x64 Clang 18.1.3 Debug
+builds execute all 17 native and 9 installed tests. Matching Windows ASan,
+Linux ASan/UBSan and real-worker TSan lanes likewise execute their required
+suites; GNU and AppleClang unsupported profiles verify explicit refusal and
+installed linking. Git-free source packaging preserves all 173 selected source
+files plus two generated metadata files, and a fresh build from that package
+executes all 17 native and 9 relocated installed tests. These bounded results
+do not establish stable API compatibility, Python writer bindings, every
+compiler configuration or a supported release. No performance guarantee is made.
 
 This increment excludes arbitrary channel/vertex mutation, selected
 skin/morph/animation processing, GLB asset conversion, filesystem publication,
