@@ -106,17 +106,22 @@ include their notices; Python license metadata includes them even though Python
 exposes no glTF API. No parser SDK or private header is installed for consumers.
 
 The installed Geometry package must supply `meshvale::editing` and its public
-execution leases. The evaluated producer source is revision
-`920be542502652b1d16c5f90414cec6495ff62b4`; native package version remains `0.0.0`.
+execution leases. The native container/foundation candidate was evaluated with
+Geometry source `cc030f3669f81b8eac5924fc2eeb71b48fcd280a`; native package version
+remains `0.0.0`. Its compiled scalar/position interfaces are checked during
+configuration. The separate [Python cohort](python.md#build-installation-and-example)
+retains its exact documented producer pin; native evaluation does not change that
+runtime pin.
 The [installed execution consumer](../examples/consumer/execution.cpp) links only
 `meshvale::interchange`, verifies the public shared ledger/lease dependency and
 reads an ordinary OBJ triangle. It does not exercise an unimplemented glTF API.
 
 Use [ENVIRONMENT.md](../ENVIRONMENT.md) for configuration and checks. The native
 `gltf_allocation` test uses only the selected private implementation and installed
-Geometry targets. Retained JSON/resources, all core admission guards, enumerable
-owner-bound handles, typed extraction and verified publication are separate
-implementation gates, with skin/morph/animation support still outstanding.
+Geometry targets. Full asset snapshots and admitted resources, all core admission
+guards, enumerable owner-bound handles, typed extraction and verified publication
+are separate implementation gates, with skin/morph/animation support still
+outstanding.
 
 ## Exact metadata preparation
 

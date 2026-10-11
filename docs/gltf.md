@@ -8,8 +8,9 @@
 
 This contract defines the intended native document, resource and primitive
 boundaries for a glTF 2.0 adapter. The available adapters remain
-[OBJ/MTL text](obj.md) and [OBJ files and bundles](obj-files.md). No glTF/GLB
-header, Python interface or supported-format claim follows from this draft.
+[OBJ/MTL text](obj.md) and [OBJ files and bundles](obj-files.md). The separate
+[GLB wire-container interface](glb.md) is implemented without asset admission.
+No glTF asset header, Python interface or complete-format claim follows from this draft.
 Complete core semantic admission is also unimplemented: successful parsing,
 layout checks or a valid fixture do not establish every graph, accessor-role,
 skin, morph or animation constraint.
@@ -110,6 +111,10 @@ capabilities.
 
 ## GLTF-CONTAINER-001: Container bindings and provenance
 
+The implemented [GLB-CONTAINER-001](glb.md) owns supplied-byte wire validation and
+assembly. The asset-version, logical buffer and conversion guarantees below
+belong to this proposed full asset adapter and remain unimplemented.
+
 The GLB reader validates magic, container and asset versions, total length,
 checked chunk bounds, four-byte alignment, first/unique JSON and second/unique
 BIN when present. JSON output padding is spaces; BIN output padding is zeros.
@@ -202,10 +207,11 @@ throughput, thread-safety or asynchronous API capability is established here.
 
 [THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) records the selected
 private parser inputs and notices. The [native foundation](gltf-foundation.md)
-implements allocation accounting and parser configuration, with no public asset
-reader yet. Admitted roles, bounded decoding, retained raw numbers, guarded
-metadata, resources and publication require their own implementation and
-installed-consumer verification.
+implements allocation accounting, parser configuration and private lexical JSON
+retention, including exact raw number lexemes, with no public asset reader yet.
+Full asset snapshots, admitted roles, bounded decoding, guarded metadata,
+resources and publication require their own implementation and installed-consumer
+verification.
 
 The evaluated jsoncons configuration uses `lossless_number(true)`,
 `lossless_bignum(true)`, raw bignum serialization, `allow_comments(false)` and

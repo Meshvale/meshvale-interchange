@@ -97,7 +97,7 @@ if(Git_FOUND)
   endif()
 endif()
 add_library(meshvale_interchange STATIC src/obj_read.cpp src/obj_write.cpp src/obj_file_read.cpp src/obj_file_publish.cpp src/obj_file_detail.cpp
-  src/gltf_accessor.cpp src/gltf_extract.cpp src/gltf_admission.cpp src/gltf_read.cpp src/gltf_resources.cpp src/gltf_graph.cpp src/gltf_graph_declarations.cpp src/gltf_asset.cpp src/gltf_metadata.cpp src/gltf_allocation.cpp src/gltf_parser.cpp src/gltf_json_snapshot.cpp src/cgltf_reader.cpp)
+  src/gltf_accessor.cpp src/gltf_extract.cpp src/gltf_admission.cpp src/gltf_read.cpp src/gltf_resources.cpp src/gltf_graph.cpp src/gltf_graph_declarations.cpp src/gltf_asset.cpp src/gltf_metadata.cpp src/gltf_allocation.cpp src/gltf_parser.cpp src/gltf_json_snapshot.cpp src/cgltf_reader.cpp src/glb.cpp)
 add_library(meshvale::interchange ALIAS meshvale_interchange)
 set_target_properties(meshvale_interchange PROPERTIES EXPORT_NAME interchange POSITION_INDEPENDENT_CODE ON)
 target_compile_features(meshvale_interchange PUBLIC cxx_std_20)
@@ -118,7 +118,7 @@ meshvale_warnings(meshvale_interchange)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 install(TARGETS meshvale_interchange EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h
+install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/glb.h
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/meshvale/interchange")
 install(EXPORT MeshvaleInterchangeTargets NAMESPACE meshvale::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
@@ -158,9 +158,14 @@ if(BUILD_TESTING)
   add_library(meshvale_interchange_header_checks OBJECT
     tests/headers/gltf_h.cpp
     tests/headers/obj_h.cpp
-    tests/headers/obj_files_h.cpp)
+    tests/headers/obj_files_h.cpp tests/headers/glb_h.cpp)
   target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::interchange)
   meshvale_warnings(meshvale_interchange_header_checks)
+  add_executable(meshvale_glb_tests tests/glb.cpp)
+  target_include_directories(meshvale_glb_tests PRIVATE src)
+  target_link_libraries(meshvale_glb_tests PRIVATE meshvale::interchange meshvale::editing)
+  meshvale_warnings(meshvale_glb_tests)
+  add_test(NAME glb_container COMMAND meshvale_glb_tests)
   add_executable(meshvale_obj_tests tests/obj.cpp)
   target_link_libraries(meshvale_obj_tests PRIVATE meshvale::interchange)
   meshvale_warnings(meshvale_obj_tests)
