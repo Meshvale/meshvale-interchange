@@ -67,6 +67,15 @@ AllocationContext::AllocationContext(const geometry::ExecutionContext& context,
   if (!backend_.allocate || !backend_.deallocate)
     throw AdmissionFailure(AdmissionCode::kInvalidObject);
 }
+AllocationContext::AllocationContext(const AllocationContext& other) noexcept =
+    default;
+AllocationContext::AllocationContext(AllocationContext&& other) noexcept =
+    default;
+AllocationContext& AllocationContext::operator=(
+    const AllocationContext& other) noexcept = default;
+AllocationContext& AllocationContext::operator=(
+    AllocationContext&& other) noexcept = default;
+AllocationContext::~AllocationContext() noexcept = default;
 void* AllocationContext::Allocate(std::size_t bytes,
                                   std::size_t alignment) const {
   if (!context_) throw AdmissionFailure(AdmissionCode::kInvalidObject);
