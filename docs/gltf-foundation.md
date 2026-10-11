@@ -144,3 +144,12 @@ remain opaque after their object envelope check; extras and unknown properties
 remain uninterpreted. A charged projection emits admitted integer/binary32 values
 without changing original source. Complete path coverage and parser correspondence
 remain validation gates; focused boundary tests are not full glTF validation.
+
+A developing supplied-memory reader now combines core guards, owned resources,
+node forests, scene instances and owner-bound primitive selection. Successful
+reads retain original source and exact numbers after the parser owner is freed.
+Canonical data URI decoding covers both buffer media types and PNG/JPEG, while
+large supplied-resource copies use joined shared-budget workers. The installed
+header and reader contract remain gated on full guard/projection correspondence,
+resource/graph fault and independent installed-consumer qualification. Current
+focused reader tests do not certify complete material, image or binary semantics.

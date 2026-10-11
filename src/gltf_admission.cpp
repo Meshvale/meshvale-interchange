@@ -509,7 +509,9 @@ constexpr std::string_view kWildcardKey = "*";
 constexpr std::string_view kVersionPath = "/asset/version";
 constexpr std::string_view kMinVersionPath = "/asset/minVersion";
 constexpr std::string_view kCurrentVersion = "2.0";
-constexpr std::string_view kRequiredExtensionsPath = "/extensionsRequired";
+constexpr std::string_view kImageMimePath = "/images/*/mimeType";
+constexpr std::string_view kAccessorMinimumItemPath = "/accessors/*/min/";
+constexpr std::string_view kAccessorMaximumItemPath = "/accessors/*/max/";
 struct PendingGuard {
   std::size_t node;
   std::uint32_t rule;
@@ -584,7 +586,8 @@ void CheckRule(const JsonSnapshot& document, std::size_t node,
           Fail(GltfStatus::kUnsupportedProfile,
                GltfDiagnosticCode::kUnsupportedEnum, std::nullopt, rule_id);
       }
-      if (!rule.allowed.empty() && !Allowed(value, rule.allowed))
+      if (!rule.allowed.empty() && rule.path != kImageMimePath &&
+          !Allowed(value, rule.allowed))
         Fail(GltfStatus::kUnsupportedProfile,
              GltfDiagnosticCode::kUnsupportedEnum, std::nullopt, rule_id);
       break;
@@ -615,7 +618,8 @@ void CheckRule(const JsonSnapshot& document, std::size_t node,
             Fail(GltfStatus::kUnsupportedProfile,
                  GltfDiagnosticCode::kUnsupportedEnum, std::nullopt, rule_id);
         }
-      } else {
+      } else if (!rule.path.starts_with(kAccessorMinimumItemPath) &&
+                 !rule.path.starts_with(kAccessorMaximumItemPath)) {
         (void)ReadFloatBits(document, node);
       }
       break;
@@ -645,10 +649,6 @@ void ObjectRelationships(const JsonSnapshot& document, std::size_t node,
   constexpr std::string_view kMatrixKey = "matrix";
   constexpr std::array<std::string_view, 3> kTrsKeys = {"translation",
                                                         "rotation", "scale"};
-  constexpr std::string_view kCameraPath = "/cameras/*";
-  constexpr std::string_view kTypeKey = "type";
-  constexpr std::string_view kPerspectiveKey = "perspective";
-  constexpr std::string_view kOrthographicKey = "orthographic";
   constexpr std::string_view kMaterialPath = "/materials/*";
   constexpr std::string_view kAlphaCutoffKey = "alphaCutoff";
   constexpr std::string_view kAlphaModeKey = "alphaMode";
@@ -671,16 +671,6 @@ void ObjectRelationships(const JsonSnapshot& document, std::size_t node,
         if (FindMember(document, node, key))
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
   }
-  if (path == kCameraPath) {
-    const auto type = FindMember(document, node, kTypeKey);
-    if (type && document.Kind(*type) != JsonKind::kString)
-      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldType);
-    if (type && !FindMember(document, node, document.String(*type)))
-      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldRequired);
-    if (FindMember(document, node, kPerspectiveKey) &&
-        FindMember(document, node, kOrthographicKey))
-      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
-  }
 }
 }  // namespace
 void AdmitMetadata(AssetState& state) {
@@ -694,7 +684,19 @@ void AdmitMetadata(AssetState& state) {
     pending.pop_back();
     const auto& rule = kCoreRules[item.rule];
     state.guard_rules[item.node] = item.rule;
+    if (rule.key == kWildcardKey && rule.kind == GuardKind::kInteger &&
+        document.Key(item.node).find('\0') != std::string_view::npos)
+      Fail(GltfStatus::kUnsupportedProfile,
+           GltfDiagnosticCode::kUnsupportedCoreString, std::nullopt, item.rule);
     CheckRule(document, item.node, rule, item.rule);
+    constexpr std::string_view kAccessorCountPath = "/accessors/*/count";
+    if (rule.path == kAccessorCountPath &&
+        ReadExactUnsigned(document, item.node) >
+            state.limits.max_accessor_elements)
+      Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kLimitExceeded);
+    if (rule.kind == GuardKind::kArray &&
+        ChildCount(document, item.node) > state.limits.max_table_rows)
+      Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kLimitExceeded);
     if (rule.kind == GuardKind::kOpaque) continue;
     if (rule.key == kExtensionsKey) {
       for (auto child = document.FirstChild(item.node); child;
@@ -710,9 +712,6 @@ void AdmitMetadata(AssetState& state) {
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldRequired);
       ObjectRelationships(document, item.node, rule.path);
     }
-    if (rule.path == kRequiredExtensionsPath)
-      Fail(GltfStatus::kUnsupportedProfile,
-           GltfDiagnosticCode::kRequiredExtension);
     // Stage children in reverse source order, keeping deterministic first
     // error.
     const auto staged_start = pending.size();
@@ -732,6 +731,11 @@ void AdmitMetadata(AssetState& state) {
     }
     std::reverse(pending.begin() + staged_start, pending.end());
   }
+  CheckMetadataRelationships(state);
+  constexpr std::string_view kRequiredExtensionsKey = "extensionsRequired";
+  if (FindMember(document, 0, kRequiredExtensionsKey))
+    Fail(GltfStatus::kUnsupportedProfile,
+         GltfDiagnosticCode::kRequiredExtension);
 }
 OwnedVector<char> BuildCoreProjection(const AssetState& state) {
   OwnedVector<char> bytes{Allocator<char>(state.allocation)};
@@ -840,5 +844,9 @@ OwnedVector<char> BuildCoreProjection(const AssetState& state) {
     stack.pop_back();
   }
   return bytes;
+}
+std::string_view GuardPath(std::uint32_t rule) {
+  return rule < std::size(kCoreRules) ? kCoreRules[rule].path
+                                      : std::string_view{};
 }
 }  // namespace meshvale::interchange::gltf_detail

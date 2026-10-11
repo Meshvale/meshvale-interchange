@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "gltf_metadata.h"
 
+#include <array>
 #include <bit>
 #include <charconv>
 #include <cmath>
@@ -194,5 +195,109 @@ std::uint32_t ReadFloatBits(const JsonSnapshot& document, std::size_t node) {
     Fail(GltfStatus::kUnsupportedProfile,
          GltfDiagnosticCode::kUnsupportedNumberRepresentation);
   return std::bit_cast<std::uint32_t>(value);
+}
+void CheckMetadataRelationships(AssetState& state) {
+  constexpr std::string_view kAccessorsKey = "accessors";
+  constexpr std::string_view kTypeKey = "type";
+  constexpr std::string_view kComponentTypeKey = "componentType";
+  constexpr std::array<std::string_view, 2> kBoundKeys = {"min", "max"};
+  constexpr std::array<std::string_view, 7> kShapes = {
+      "SCALAR", "VEC2", "VEC3", "VEC4", "MAT2", "MAT3", "MAT4"};
+  constexpr std::array<std::uint64_t, 7> kWidths = {1, 2, 3, 4, 4, 9, 16};
+  constexpr std::uint64_t kInt8Component = 5120;
+  constexpr std::uint64_t kUint8Component = 5121;
+  constexpr std::uint64_t kInt16Component = 5122;
+  constexpr std::uint64_t kUint16Component = 5123;
+  constexpr std::uint64_t kUint32Component = 5125;
+  constexpr std::uint64_t kFloatComponent = 5126;
+  constexpr std::string_view kCamerasKey = "cameras";
+  constexpr std::string_view kNearKey = "znear";
+  constexpr std::string_view kFarKey = "zfar";
+  constexpr std::string_view kOrthographic = "orthographic";
+  constexpr std::string_view kPerspective = "perspective";
+  constexpr std::array<std::string_view, 2> kMagnificationKeys = {"xmag",
+                                                                  "ymag"};
+  const auto& doc = state.document;
+  const auto accessors = FindMember(doc, 0, kAccessorsKey);
+  if (accessors)
+    for (auto row = doc.FirstChild(*accessors); row;
+         row = doc.NextSibling(*row)) {
+      state.allocation.Checkpoint();
+      const auto shape = doc.String(*FindMember(doc, *row, kTypeKey));
+      std::uint64_t width = 0;
+      for (std::size_t i = 0; i < kShapes.size(); ++i)
+        if (shape == kShapes[i]) width = kWidths[i];
+      const auto component =
+          ReadExactUnsigned(doc, *FindMember(doc, *row, kComponentTypeKey));
+      for (const auto key : kBoundKeys) {
+        const auto bound = FindMember(doc, *row, key);
+        if (!bound) continue;
+        if (ChildCount(doc, *bound) != width)
+          Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreArrayLength);
+        for (auto number = doc.FirstChild(*bound); number;
+             number = doc.NextSibling(*number)) {
+          const auto value = doc.Number(*number);
+          std::string_view lower;
+          std::string_view upper;
+          if (component == kInt8Component) {
+            lower = "-128";
+            upper = "127";
+          }
+          if (component == kUint8Component) {
+            lower = "0";
+            upper = "255";
+          }
+          if (component == kInt16Component) {
+            lower = "-32768";
+            upper = "32767";
+          }
+          if (component == kUint16Component) {
+            lower = "0";
+            upper = "65535";
+          }
+          if (component == kUint32Component) {
+            lower = "0";
+            upper = "4294967295";
+          }
+          if (component == kFloatComponent) {
+            (void)ReadFloatBits(doc, *number);
+            continue;
+          }
+          if (CompareDecimal(value, lower) < 0 ||
+              CompareDecimal(value, upper) > 0)
+            Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
+          (void)ReadExactSigned(doc, *number);
+        }
+      }
+      const auto minimum = FindMember(doc, *row, kBoundKeys[0]);
+      const auto maximum = FindMember(doc, *row, kBoundKeys[1]);
+      if (minimum && maximum)
+        for (std::uint64_t i = 0; i < width; ++i)
+          if (CompareDecimal(doc.Number(*ChildAt(doc, *minimum, i)),
+                             doc.Number(*ChildAt(doc, *maximum, i))) > 0)
+            Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
+    }
+  const auto cameras = FindMember(doc, 0, kCamerasKey);
+  if (cameras)
+    for (auto row = doc.FirstChild(*cameras); row;
+         row = doc.NextSibling(*row)) {
+      const auto type = doc.String(*FindMember(doc, *row, kTypeKey));
+      const auto block_node = FindMember(doc, *row, type);
+      if (!block_node)
+        Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldRequired);
+      if (FindMember(doc, *row, kOrthographic) &&
+          FindMember(doc, *row, kPerspective))
+        Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
+      const auto block = *block_node;
+      const auto far = FindMember(doc, block, kFarKey);
+      const auto near = *FindMember(doc, block, kNearKey);
+      if (far && CompareDecimal(doc.Number(*far), doc.Number(near)) <= 0)
+        Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
+      if (type == kOrthographic)
+        for (const auto key : kMagnificationKeys)
+          if (CompareDecimal(doc.Number(*FindMember(doc, block, key)), "0") ==
+              0)
+            Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
+    }
 }
 }  // namespace meshvale::interchange::gltf_detail
