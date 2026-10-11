@@ -33,6 +33,7 @@ constexpr std::array<EmbeddedRepresentation, 4> kEmbeddedRepresentations = {
      {"data:image/jpeg;base64,", GltfResourceKind::kImage, kJpegMime}}};
 constexpr std::string_view kBase64Alphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+constexpr std::string_view kAlternativeBase64Characters = "% \t\r\n\v\f-_";
 constexpr std::size_t kBase64GroupCharacters = 4;
 constexpr std::size_t kBase64GroupBytes = 3;
 constexpr unsigned kBase64CharacterBits = 6;
@@ -117,11 +118,10 @@ bool DataLike(std::string_view uri) {
 }
 std::size_t Base64Size(std::string_view text,
                        const AllocationContext& allocation) {
-  if (text.find('%') != std::string_view::npos)
+  if (text.find_first_of(kAlternativeBase64Characters) !=
+      std::string_view::npos)
     Fail(GltfStatus::kUnsupportedProfile,
          GltfDiagnosticCode::kUnsupportedResourceRepresentation);
-  if (text.size() % kBase64GroupCharacters != 0)
-    Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kEmbeddedUriSyntax);
   std::size_t padding = 0;
   if (!text.empty() && text.back() == '=') ++padding;
   if (text.size() > 1 && text[text.size() - 2] == '=') ++padding;
@@ -131,12 +131,22 @@ std::size_t Base64Size(std::string_view text,
     if (kBase64Alphabet.find(text[at]) == std::string_view::npos)
       Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kEmbeddedUriSyntax);
   }
+  const auto remainder = text.size() % kBase64GroupCharacters;
+  if (remainder != 0) {
+    // Two or three unpadded symbols may be an alternative encoding. One
+    // symbol, or padding in an incomplete group, cannot encode a byte group.
+    if (remainder == 1 || padding != 0)
+      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kEmbeddedUriSyntax);
+    Fail(GltfStatus::kUnsupportedProfile,
+         GltfDiagnosticCode::kUnsupportedResourceRepresentation);
+  }
   constexpr unsigned kTwoPadLowBits = 0xf;
   constexpr unsigned kOnePadLowBits = 3;
   if (padding != 0) {
     const auto last = kBase64Alphabet.find(text[text.size() - padding - 1]);
     if ((last & (padding == 2 ? kTwoPadLowBits : kOnePadLowBits)) != 0)
-      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kEmbeddedUriSyntax);
+      Fail(GltfStatus::kUnsupportedProfile,
+           GltfDiagnosticCode::kUnsupportedResourceRepresentation);
   }
   return text.size() / kBase64GroupCharacters * kBase64GroupBytes - padding;
 }
@@ -265,6 +275,10 @@ void AdmitResources(AssetState& state,
         std::string_view encoded;
         std::optional<std::size_t> prefix;
         if (DataLike(uri)) {
+          if (uri.find(',') == std::string_view::npos)
+            ResourceFailure(GltfStatus::kMalformed,
+                            GltfDiagnosticCode::kEmbeddedUriSyntax, kind,
+                            index);
           for (std::size_t i = 0; i < kEmbeddedRepresentations.size(); ++i)
             if (uri.starts_with(kEmbeddedRepresentations[i].prefix)) prefix = i;
           if (!prefix)

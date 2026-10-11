@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <array>
+#include <cfenv>
 #include <cstddef>
 #include <iostream>
 #include <limits>
@@ -40,11 +41,46 @@ int main() {
     Require(data.asset.has_value());
     Require(data.asset->Resources()[0].bytes.size() == 4 &&
             data.asset->Resources()[0].bytes[3] == std::byte{3});
+    const std::array<std::string_view, 9> alternative_payloads = {
+        "AB==", "AAB=",  "AA",     "AAA",   "AA%3D%3D",
+        "AA-_", "AA== ", "AA==\t", "AA==\n"};
+    for (const auto payload : alternative_payloads) {
+      // JSON string escapes preserve the whitespace payloads in source.
+      std::string encoded;
+      for (const auto character : payload) {
+        if (character == '\t')
+          encoded += "\\t";
+        else if (character == '\n')
+          encoded += "\\n";
+        else
+          encoded += character;
+      }
+      const auto source =
+          R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"data:application/octet-stream;base64,)" +
+          encoded + R"("}]})";
+      Require(Read(source, {}, context).diagnostic.code ==
+              GltfDiagnosticCode::kUnsupportedResourceRepresentation);
+    }
+    const std::array<std::string_view, 7> malformed_payloads = {
+        "A", "A=", "AA=", "AA===", "====", "AA*A", "A=AA"};
+    for (const auto payload : malformed_payloads) {
+      const auto source =
+          std::string(
+              R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"data:application/octet-stream;base64,)") +
+          std::string(payload) + R"("}]})";
+      Require(Read(source, {}, context).diagnostic.code ==
+              GltfDiagnosticCode::kEmbeddedUriSyntax);
+    }
+    Require(
+        Read(
+            R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"data:application/octet-stream;base64AA=="}]})",
+            {}, context)
+            .diagnostic.code == GltfDiagnosticCode::kEmbeddedUriSyntax);
     Require(
         Read(
             R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"data:application/octet-stream;base64,AB=="}]})",
             {}, context)
-            .diagnostic.status == GltfStatus::kMalformed);
+            .diagnostic.status == GltfStatus::kUnsupportedProfile);
     Require(
         Read(
             R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"DATA:application/octet-stream;base64,AA=="}]})",
@@ -85,6 +121,23 @@ int main() {
     Require(asset.asset->InstanceCount() == 2 &&
             asset.asset->PrimitiveCount() == 1);
     Require(asset.asset->Nodes()[0].local_transform_bits[0] == 0x80000000u);
+    const auto original_rounding = std::fegetround();
+    constexpr std::array kRoundingModes = {FE_TONEAREST, FE_UPWARD, FE_DOWNWARD,
+                                           FE_TOWARDZERO};
+    constexpr std::array<std::uint32_t, 3> kExpectedTranslationBits = {
+        0x3f800001u, 0x80000000u, 1u};
+    for (const auto mode : kRoundingModes) {
+      Require(std::fesetround(mode) == 0);
+      const auto rounded = Read(
+          R"({"asset":{"version":"2.0"},"nodes":[{"translation":[1.0000000596046447753906251,-0,1.401298464324817e-45]}]})",
+          {}, context);
+      const auto preserved = std::fegetround() == mode;
+      Require(std::fesetround(original_rounding) == 0);
+      Require(rounded.asset.has_value() && preserved);
+      for (std::size_t axis = 0; axis < kExpectedTranslationBits.size(); ++axis)
+        Require(rounded.asset->Nodes()[0].local_transform_bits[axis] ==
+                kExpectedTranslationBits[axis]);
+    }
     Require(asset.asset->Capability(*asset.asset->Primitive(0)).reason ==
             GltfCapabilityReason::kBinaryAdmissionPending);
     auto other = Read(R"({"asset":{"version":"2.0"}})", {}, context);

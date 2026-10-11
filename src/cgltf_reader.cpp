@@ -1,8 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <charconv>
+#include <string_view>
+#include <system_error>
+
 #include "gltf_parser.h"
 
+namespace meshvale::interchange::gltf_detail {
+namespace {
+float ProjectedFloat(const char* text) noexcept {
+  // The admitted projection contains finite binary32 decimal spellings. Parse
+  // directly to that representation without locale or ambient rounding state.
+  const std::string_view number(text);
+  float value = 0;
+  const auto result =
+      std::from_chars(number.data(), number.data() + number.size(), value);
+  return result.ec == std::errc{} ? value : 0;
+}
+}  // namespace
+}  // namespace meshvale::interchange::gltf_detail
+
+#define CGLTF_ATOF(text) \
+  ::meshvale::interchange::gltf_detail::ProjectedFloat(text)
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
+#undef CGLTF_ATOF
 
 #include <exception>
 #include <memory>
