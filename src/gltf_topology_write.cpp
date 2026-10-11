@@ -65,7 +65,6 @@ constexpr std::string_view kViewsKey = "bufferViews";
 constexpr std::string_view kAccessorsKey = "accessors";
 constexpr std::string_view kIndicesKey = "indices";
 constexpr std::string_view kModeKey = "mode";
-constexpr std::string_view kPositionSemantic = "POSITION";
 constexpr std::string_view kComma = ",";
 constexpr std::string_view kBuffersMember = "\"buffers\":[";
 constexpr std::string_view kViewsMember = "\"bufferViews\":[";
