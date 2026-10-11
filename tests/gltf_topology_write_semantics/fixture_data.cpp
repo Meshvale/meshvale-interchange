@@ -11,16 +11,20 @@
 
 namespace gltf_topology_write_semantics {
 namespace {
+constexpr std::size_t kHexDigitsPerByte = 2;
+constexpr unsigned kBitsPerHexDigit = 4;
+constexpr int kAlphabeticHexDigitValue = 10;
 std::vector<std::byte> DecodeHex(std::string_view text) {
   std::vector<std::byte> bytes;
-  bytes.reserve(text.size() / 2);
-  for (std::size_t i = 0; i < text.size(); i += 2) {
+  bytes.reserve(text.size() / kHexDigitsPerByte);
+  for (std::size_t i = 0; i < text.size(); i += kHexDigitsPerByte) {
     const auto digit = [](char c) -> unsigned {
-      return c <= '9' ? static_cast<unsigned>(c - '0')
-                      : static_cast<unsigned>(c - 'a' + 10);
+      return c <= '9'
+                 ? static_cast<unsigned>(c - '0')
+                 : static_cast<unsigned>(c - 'a' + kAlphabeticHexDigitValue);
     };
-    bytes.push_back(
-        static_cast<std::byte>((digit(text[i]) << 4) | digit(text[i + 1])));
+    bytes.push_back(static_cast<std::byte>(
+        (digit(text[i]) << kBitsPerHexDigit) | digit(text[i + 1])));
   }
   return bytes;
 }
