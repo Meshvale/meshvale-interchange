@@ -26,8 +26,11 @@ enum class JsonCaptureCode {
   kDuplicateKey,
   kSizeLimit,
   kBudgetExceeded,
-  kCanceled
+  kCanceled,
+  kUnicodeScalar
 };
+[[nodiscard]] std::size_t MaximumJsonCaptureNodes() noexcept;
+
 struct JsonSnapshotData;
 class JsonSnapshot;
 struct JsonCaptureResult;

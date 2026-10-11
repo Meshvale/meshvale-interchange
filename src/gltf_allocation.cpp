@@ -2,15 +2,24 @@
 #include "gltf_allocation.h"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <limits>
 #include <new>
 #include <utility>
 
 namespace meshvale::interchange::gltf_detail {
+struct OperationBudget {
+  std::atomic<std::size_t> references{1};
+  std::atomic<std::size_t> active;
+  std::size_t maximum;
+  OperationBudget(std::size_t seed, std::size_t limit)
+      : active(seed), maximum(limit) {}
+};
 namespace {
 struct Header {
   geometry::PayloadLease lease;
+  OperationOwner operation;
   AllocationBackend backend;
   void* block;
   std::size_t request_bytes;
@@ -82,6 +91,18 @@ void* AllocationContext::Allocate(std::size_t bytes,
   const auto block_alignment = BlockAlignment(alignment);
   const auto prefix = PrefixBytes(block_alignment);
   const auto request_bytes = AllocationRequestBytes(bytes, alignment);
+  if (!operation_.Reserve(request_bytes))
+    throw AdmissionFailure(AdmissionCode::kSizeLimit);
+  // Operation admission is independent from the root ledger and takes no
+  // ledger lock. Every exceptional exit rolls back the actual requested block.
+  struct Reservation {
+    const OperationOwner& operation;
+    std::size_t bytes;
+    bool handed_off = false;
+    ~Reservation() {
+      if (!handed_off) operation.Release(bytes);
+    }
+  } reservation{operation_, request_bytes};
   auto result = geometry::TryReservePayload(*context_, request_bytes, stop_);
   switch (result.status) {
     case geometry::ReservationStatus::kBudgetExceeded:
@@ -99,9 +120,11 @@ void* AllocationContext::Allocate(std::size_t bytes,
     throw AdmissionFailure(AdmissionCode::kCanceled);
   }
   auto* payload = static_cast<std::byte*>(block) + prefix;
-  auto* header = new (payload - sizeof(Header)) Header{
-      std::move(result.lease), backend_, block, request_bytes, block_alignment};
+  auto* header = new (payload - sizeof(Header))
+      Header{std::move(result.lease), operation_,     backend_, block,
+             request_bytes,           block_alignment};
   (void)header;
+  reservation.handed_off = true;
   return payload;
 }
 void AllocationContext::Checkpoint() const {
@@ -113,17 +136,84 @@ void AllocationContext::Deallocate(void* pointer) noexcept {
   auto* header = reinterpret_cast<Header*>(static_cast<std::byte*>(pointer) -
                                            sizeof(Header));
   auto lease = std::move(header->lease);
+  auto operation = std::move(header->operation);
   const auto backend = header->backend;
   const auto block = header->block;
   const auto request_bytes = header->request_bytes;
   const auto alignment = header->alignment;
   header->~Header();
   backend.deallocate(block, request_bytes, alignment, backend.state);
+  operation.Release(request_bytes);
   lease.Reset();
 }
 bool AllocationContext::SharesBudget(
     const AllocationContext& other) const noexcept {
   if (!context_ || !other.context_) return !context_ && !other.context_;
-  return geometry::SharesExecutionBudget(*context_, *other.context_);
+  return geometry::SharesExecutionBudget(*context_, *other.context_) &&
+         operation_.SameOwner(other.operation_);
+}
+OperationOwner::OperationOwner() noexcept = default;
+OperationOwner::OperationOwner(OperationBudget* budget) noexcept
+    : budget_(budget) {}
+OperationOwner::OperationOwner(const OperationOwner& other) noexcept
+    : budget_(other.budget_) {
+  if (budget_) budget_->references.fetch_add(1, std::memory_order_relaxed);
+}
+OperationOwner& OperationOwner::operator=(
+    const OperationOwner& other) noexcept {
+  if (this == &other) return *this;
+  OperationOwner copy(other);
+  std::swap(budget_, copy.budget_);
+  return *this;
+}
+OperationOwner::OperationOwner(OperationOwner&& other) noexcept
+    : budget_(std::exchange(other.budget_, nullptr)) {}
+OperationOwner& OperationOwner::operator=(OperationOwner&& other) noexcept {
+  if (this == &other) return *this;
+  Reset();
+  budget_ = std::exchange(other.budget_, nullptr);
+  return *this;
+}
+OperationOwner::~OperationOwner() noexcept { Reset(); }
+void OperationOwner::Reset() noexcept {
+  auto* budget = std::exchange(budget_, nullptr);
+  if (budget &&
+      budget->references.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+    budget->~OperationBudget();
+    AllocationContext::Deallocate(budget);
+  }
+}
+bool OperationOwner::Reserve(std::size_t bytes) const noexcept {
+  if (!budget_) return true;
+  auto current = budget_->active.load(std::memory_order_relaxed);
+  do {
+    if (current > budget_->maximum || bytes > budget_->maximum - current)
+      return false;
+  } while (!budget_->active.compare_exchange_weak(current, current + bytes,
+                                                  std::memory_order_relaxed));
+  return true;
+}
+void OperationOwner::Release(std::size_t bytes) const noexcept {
+  if (budget_) budget_->active.fetch_sub(bytes, std::memory_order_relaxed);
+}
+std::size_t OperationOwner::ActiveBytes() const noexcept {
+  return budget_ ? budget_->active.load(std::memory_order_relaxed) : 0;
+}
+bool OperationOwner::SameOwner(const OperationOwner& other) const noexcept {
+  return budget_ == other.budget_;
+}
+AllocationContext AllocationContext::WithRequestLimit(std::size_t bytes) const {
+  if (operation_.budget_) throw AdmissionFailure(AdmissionCode::kInvalidObject);
+  const auto seed =
+      AllocationRequestBytes(sizeof(OperationBudget), alignof(OperationBudget));
+  if (bytes < seed) throw AdmissionFailure(AdmissionCode::kSizeLimit);
+  AllocationContext result(*this);
+  auto* storage = Allocate(sizeof(OperationBudget), alignof(OperationBudget));
+  auto* budget = new (storage) OperationBudget(seed, bytes);
+  result.operation_ = OperationOwner(budget);
+  return result;
+}
+std::size_t AllocationContext::OperationActiveBytes() const noexcept {
+  return operation_.ActiveBytes();
 }
 }  // namespace meshvale::interchange::gltf_detail

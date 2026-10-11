@@ -7,6 +7,8 @@
 
 #include "gltf_allocation.h"
 
+struct cgltf_data;
+
 namespace meshvale::interchange::gltf_detail {
 struct JsonSyntaxSummary {
   bool accepted = false;
@@ -21,9 +23,11 @@ struct CoreParserSummary {
   std::size_t meshes = 0;
   std::size_t nodes = 0;
 };
-// Must ultimately receive only an independently admitted core projection.
-// Stage-one tests supply original small syntax fixtures, not untrusted assets.
+// Receives only an independently admitted core projection. The optional private
+// observer copies converted fields before parser release for qualification.
+using CoreProjectionObserver = void (*)(const cgltf_data&, void*);
 [[nodiscard]] CoreParserSummary InspectCoreProjection(
-    std::string_view input, const AllocationContext& allocation);
+    std::string_view input, const AllocationContext& allocation,
+    CoreProjectionObserver observer = nullptr, void* observer_state = nullptr);
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_PARSER_H_

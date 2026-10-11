@@ -78,12 +78,24 @@ jobs:
         run: cmake -S . -B .local/build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET" "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies" "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
       - name: Build interchange
         run: cmake --build .local/build --config Release
-      - name: Test native adapters, GLB and capture ownership
+      - name: Test native adapters, GLB and glTF ownership
         run: ctest --test-dir .local/build -C Release --output-on-failure
       - name: Check retained JSON with independent lexical oracle
         run: |
           $test = if ($IsWindows) { ".local/build/Release/meshvale_gltf_json_tests.exe" } else { ".local/build/meshvale_gltf_json_tests" }
           python tests/gltf_json_oracle.py $test .local/json-oracle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check typed accessor and actual read extraction oracles
+        run: |
+          $test = if ($IsWindows) { ".local/build/Release/meshvale_gltf_extract_tests.exe" } else { ".local/build/meshvale_gltf_extract_tests" }
+          python tests/gltf_accessor_oracle.py $test .local/accessor-oracle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/gltf_accessor_oracle.py $test .local/read-extract-oracle read
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check unchanged retained writer through actual reload
+        run: |
+          $test = if ($IsWindows) { ".local/build/Release/meshvale_gltf_write_oracle.exe" } else { ".local/build/meshvale_gltf_write_oracle" }
+          python tests/gltf_write_oracle.py $test .local/write-reload-oracle
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install interchange
         run: cmake --install .local/build --config Release --prefix .local/install

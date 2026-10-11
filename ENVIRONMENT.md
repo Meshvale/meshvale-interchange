@@ -12,7 +12,8 @@ Geometry package must provide `meshvale::editing` execution leases. For offline
 configuration, supply `MESHVALE_CGLTF_ARCHIVE` and `MESHVALE_JSONCONS_ARCHIVE` as
 absolute archive paths; their hashes must match [GltfDependencies.cmake](cmake/GltfDependencies.cmake).
 Arbitrary FetchContent source-directory overrides are rejected. This changes build
-inputs, with no new public glTF operation or dependency header installation.
+inputs for the [native glTF reader/extractor](docs/gltf-read.md); parser dependency
+headers remain private and are not installed.
 
 Set `VCPKG_ROOT` to a bootstrapped vcpkg installation compatible with the pinned registry. Set `GEOMETRY_PREFIX` and `INTERCHANGE_PREFIX` to chosen absolute install prefixes, and `VCPKG_TRIPLET` to the target platform (`x64-windows-static-md`, `x64-linux`, or `arm64-osx` in the evaluated desktop lanes). In a compiler environment, use CMake manifest integration:
 

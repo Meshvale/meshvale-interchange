@@ -13,10 +13,16 @@ add_test(NAME installed_obj_bundle_consumer COMMAND meshvale_obj_bundle_consumer
 add_executable(meshvale_execution_dependency_consumer execution.cpp)
 target_link_libraries(meshvale_execution_dependency_consumer PRIVATE meshvale::interchange)
 add_test(NAME installed_execution_dependency_consumer COMMAND meshvale_execution_dependency_consumer)
+add_executable(meshvale_gltf_consumer gltf.cpp)
+target_link_libraries(meshvale_gltf_consumer PRIVATE meshvale::interchange)
+add_test(NAME installed_gltf_consumer COMMAND meshvale_gltf_consumer)
 add_executable(meshvale_glb_consumer glb.cpp)
 target_link_libraries(meshvale_glb_consumer PRIVATE meshvale::interchange meshvale::editing)
 add_test(NAME installed_glb_consumer COMMAND meshvale_glb_consumer)
-foreach(consumer IN ITEMS meshvale_interchange_consumer meshvale_obj_bundle_consumer meshvale_execution_dependency_consumer meshvale_glb_consumer)
+add_executable(meshvale_gltf_write_consumer gltf_write.cpp)
+target_link_libraries(meshvale_gltf_write_consumer PRIVATE meshvale::interchange)
+add_test(NAME installed_gltf_write_consumer COMMAND meshvale_gltf_write_consumer)
+foreach(consumer IN ITEMS meshvale_interchange_consumer meshvale_obj_bundle_consumer meshvale_execution_dependency_consumer meshvale_gltf_consumer meshvale_glb_consumer meshvale_gltf_write_consumer)
   if(MSVC)
     target_compile_options(${consumer} PRIVATE /W4 /WX)
   else()
@@ -26,6 +32,8 @@ endforeach()
 
 # Compile each installed public header first, using the canonical declarations.
 add_library(meshvale_interchange_installed_header_checks OBJECT
+  ../../tests/headers/gltf_write_h.cpp
+  ../../tests/headers/gltf_h.cpp
   ../../tests/headers/obj_h.cpp
   ../../tests/headers/obj_files_h.cpp ../../tests/headers/glb_h.cpp)
 target_link_libraries(meshvale_interchange_installed_header_checks PRIVATE meshvale::interchange)

@@ -34,6 +34,9 @@ struct CaptureFailure {
 [[noreturn]] void Malformed() {
   throw CaptureFailure{JsonCaptureCode::kMalformed};
 }
+[[noreturn]] void UnicodeScalarFailure() {
+  throw CaptureFailure{JsonCaptureCode::kUnicodeScalar};
+}
 void RequireExtent(std::size_t current, std::size_t extra, std::size_t limit) {
   if (current > limit || extra > limit - current)
     throw CaptureFailure{JsonCaptureCode::kSizeLimit};
@@ -86,18 +89,19 @@ void ValidateScalars(std::string_view text,
       value = first & kFourByteLeadPayloadMask;
       minimum = kFourByteScalarMinimum;
     } else {
-      Malformed();
+      UnicodeScalarFailure();
     }
-    if (tails > text.size() - i) Malformed();
+    if (tails > text.size() - i) UnicodeScalarFailure();
     for (std::size_t t = 0; t < tails; ++t) {
       const auto next = static_cast<unsigned char>(text[i++]);
-      if ((next & kContinuationTagMask) != kContinuationTag) Malformed();
+      if ((next & kContinuationTagMask) != kContinuationTag)
+        UnicodeScalarFailure();
       value = (value << kContinuationPayloadBits) |
               (next & kContinuationPayloadMask);
     }
     if (value < minimum || value > kScalarMaximum ||
         (value >= kSurrogateMinimum && value <= kSurrogateMaximum))
-      Malformed();
+      UnicodeScalarFailure();
   }
 }
 unsigned Hex4(std::string_view text, std::size_t offset) {
@@ -182,16 +186,16 @@ void ScanOriginal(std::string_view source, Numbers& numbers, std::size_t limit,
         }
         const auto code = Hex4(source, i + kEscapePrefixBytes);
         if (code >= kLowSurrogateMinimum && code <= kLowSurrogateMaximum)
-          Malformed();
+          UnicodeScalarFailure();
         if (code >= kHighSurrogateMinimum && code <= kHighSurrogateMaximum) {
           if (source.size() - i < kSurrogatePairEscapeBytes ||
               source[i + kUnicodeEscapeBytes] != '\\' ||
               source[i + kUnicodeEscapeBytes + 1] != 'u')
-            Malformed();
+            UnicodeScalarFailure();
           const auto low =
               Hex4(source, i + kUnicodeEscapeBytes + kEscapePrefixBytes);
           if (low < kLowSurrogateMinimum || low > kLowSurrogateMaximum)
-            Malformed();
+            UnicodeScalarFailure();
           i += kSurrogatePairEscapeBytes;
         } else {
           i += kUnicodeEscapeBytes;
@@ -351,6 +355,10 @@ JsonCaptureCode AllocationCode(AdmissionCode code) {
   throw AdmissionFailure(code);
 }
 }  // namespace
+std::size_t MaximumJsonCaptureNodes() noexcept {
+  return static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max()) /
+         sizeof(Node);
+}
 JsonCaptureResult CaptureJsonSnapshot(std::string_view input,
                                       const JsonCaptureLimits& limits,
                                       const AllocationContext& allocation) {
@@ -360,7 +368,7 @@ JsonCaptureResult CaptureJsonSnapshot(std::string_view input,
   const auto host_extent =
       static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
   if (limits.source_bytes > host_extent || limits.decoded_bytes > host_extent ||
-      limits.nodes > host_extent / sizeof(Node))
+      limits.nodes > MaximumJsonCaptureNodes())
     return {JsonCaptureCode::kSizeLimit, std::nullopt};
   if (input.size() > limits.source_bytes)
     return {JsonCaptureCode::kSizeLimit, std::nullopt};

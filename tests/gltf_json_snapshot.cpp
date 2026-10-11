@@ -160,15 +160,9 @@ void RejectCases() {
   Counter counter{context};
   const AllocationContext allocation(context, {}, Backend(counter));
   const std::vector<std::string> malformed{
-      "",
-      "{",
-      "[1,]",
-      "/*x*/{}",
-      "true false",
-      "{\"a\":01}",
-      "[NaN]",
-      "[1e]",
-      "[--1]",
+      "",           "{",     "[1,]", "/*x*/{}", "true false",
+      "{\"a\":01}", "[NaN]", "[1e]", "[--1]"};
+  const std::vector<std::string> unicode_invalid{
       "{\"x\":\"\\uD800\"}",
       "{\"x\":\"\\uDC00\"}",
       "{\"x\":\"\\uD800x\\uDC00\"}",
@@ -179,6 +173,12 @@ void RejectCases() {
     const auto result = CaptureJsonSnapshot(input, Limits(), allocation);
     Require(result.code == JsonCaptureCode::kMalformed && !result.snapshot,
             "malformed JSON accepted");
+    Released(counter);
+  }
+  for (const auto& input : unicode_invalid) {
+    const auto result = CaptureJsonSnapshot(input, Limits(), allocation);
+    Require(result.code == JsonCaptureCode::kUnicodeScalar && !result.snapshot,
+            "non-scalar Unicode accepted or mislabeled");
     Released(counter);
   }
   for (const auto input : {R"({"a":1,"\u0061":2})", R"({"":{},"":null})",

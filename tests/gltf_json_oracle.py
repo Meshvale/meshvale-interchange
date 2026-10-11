@@ -113,7 +113,7 @@ def main():
                 pass
             else:
                 raise AssertionError((index, "oracle accepted invalid fixture"))
-            assert actual in [["code\t2"], ["code\t3"]], (index, actual)
+            assert actual in [["code\t2"], ["code\t3"], ["code\t7"]], (index, actual)
         assert fixture.read_bytes() == source
     print(f"Independent exact oracle passed: {len(valid)} valid, {len(invalid)} invalid; "
           "source/numeric lexemes/scalars/order/parents/siblings exact")
