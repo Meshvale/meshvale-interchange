@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, optional native USD and FBX imports, resource snapshots, verified bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, optional native USD and FBX imports, resource snapshots, verified bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -11,6 +11,16 @@ Import/export mixed polygon faces with separate corner UVs/normals, missingness,
 Read the [OBJ/MTL text contract](docs/obj.md) for mesh semantics and numerical limits, and the [file/bundle contract](docs/obj-files.md) for material/texture resolution, resource boundaries and publication outcomes. Separate installed consumers demonstrate [text interchange](examples/consumer/main.cpp) and [resource-aware file publication](examples/consumer/files.cpp). Texture files retain their bytes; image decoding and shader equivalence are outside current coverage.
 
 The [Python interface](docs/python.md) exposes the same operations through canonical Geometry snapshots, frozen asset values and owned resource bytes. It supports cooperative cancellation and synchronous publication callbacks. A verified-content callback can prepare receipts from reloaded assets and exact staged bytes for checked inclusion in the same bundle. See the [installed bundle example](examples/python/obj_bundle.py) for load → inspect → publish → reload.
+
+## Native GLB containers
+
+Read or assemble a supplied GLB 2 byte container with owned JSON, optional BIN and
+opaque chunks, explicit limits and shared-budget copy workers. The
+[container contract](docs/glb.md) separates wire validation from glTF asset
+semantics; a successful container read does not validate meshes or resources.
+The [installed example](examples/consumer/glb.cpp) uses only public headers and
+targets. Full glTF reading, Geometry transfer, asset writing, filesystem
+publication and Python operations remain forthcoming.
 
 ## Optional native USD extraction
 
@@ -39,8 +49,9 @@ binding is provided; default OBJ builds need no FBX SDK.
 
 The [proposed glTF/GLB asset contract](docs/gltf.md) defines document/resource
 ownership, primitive selection and preservation gates for the next adapter.
-Its API and runtime dependencies are not implemented; see the implemented
-native adapters above for current format coverage.
+Its public API remains unimplemented. The [private native parser foundation](docs/gltf-foundation.md)
+supplies immutable JSON capture, checked allocation and pinned parser inputs;
+see the implemented native adapters above for current format coverage.
 
 Supported formats, operation guarantees, and platform compatibility will be documented and tested with each implementation and release.
 

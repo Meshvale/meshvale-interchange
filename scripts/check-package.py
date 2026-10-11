@@ -29,12 +29,14 @@ def inspect(path):
                     ("licenses", "LICENSE"), ("licenses", "NOTICE"),
                     ("licenses", "licenses", "nanobind.txt"),
                     ("licenses", "licenses", "robin-map.txt"),
+                    ("licenses", "licenses", "cgltf.txt"),
+                    ("licenses", "licenses", "jsoncons.txt"),
                     ("licenses", "licenses", "eigen-mpl2.txt"),
                     ("licenses", "licenses", "eigen-apache.txt"),
                     ("licenses", "licenses", "eigen-notices.txt"),
                     ("licenses", "licenses", "meshvale-geometry-notice.txt"),
                     ("licenses", "licenses", "tinyobjloader.txt")], name
-        for license in ["eigen-mpl2.txt","eigen-apache.txt","eigen-notices.txt","LICENSE","NOTICE","nanobind.txt","robin-map.txt","meshvale-geometry-notice.txt","tinyobjloader.txt"]:
+        for license in ["cgltf.txt","jsoncons.txt","eigen-mpl2.txt","eigen-apache.txt","eigen-notices.txt","LICENSE","NOTICE","nanobind.txt","robin-map.txt","meshvale-geometry-notice.txt","tinyobjloader.txt"]:
             matching = [name for name in notice_contents if name.endswith("/" + license)]
             assert len(matching) == 1, (license, matching)
             reference = Path(__file__).resolve().parents[1] / (license if license in {"LICENSE", "NOTICE"} else "licenses/" + license)
@@ -59,7 +61,15 @@ def inspect(path):
                          "include/meshvale/interchange/obj_files.h",
                          "src/obj_file_detail.h","src/obj_file_detail.cpp","tests/headers/obj_h.cpp",
                          "tests/headers/obj_files_h.cpp",
-                         "scripts/check-cpp-format.py","scripts/portable-preview.py","vcpkg.json"]:
+                         "include/meshvale/interchange/glb.h", "src/glb.cpp",
+                         "src/glb_detail.h", "docs/glb.md", "tests/glb.cpp",
+                         "tests/headers/glb_h.cpp", "examples/consumer/glb.cpp",
+                         "scripts/check-cpp-format.py","scripts/portable-preview.py","vcpkg.json",
+                         "cmake/GltfDependencies.cmake","src/gltf_allocation.h",
+                         "src/gltf_allocation.cpp","src/gltf_parser.cpp","src/cgltf_reader.cpp",
+                         "src/gltf_json_snapshot.h","src/gltf_json_snapshot.cpp",
+                         "tests/gltf_json_snapshot.cpp","tests/gltf_json_oracle.py",
+                         "licenses/cgltf.txt","licenses/jsoncons.txt"]:
             assert required in names,required
         for license in ["eigen-mpl2.txt", "eigen-apache.txt", "eigen-notices.txt", "meshvale-geometry-notice.txt"]:
             assert "licenses/" + license in names, license
