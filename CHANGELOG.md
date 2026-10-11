@@ -4,6 +4,12 @@
 
 ### Added
 
+- Native supplied-memory glTF retention and selected static primitive extraction
+  with owner-bound handles, exact original numbers, owned resources, typed raw/
+  normalized channels, sparse provenance and triangle strip/fan corner maps.
+  The finite processing profile reports unsupported scene effects explicitly;
+  edited writing, Geometry transfer, publication and Python glTF remain separate.
+
 - Native supplied-byte GLB container capture and assembly with owned JSON/BIN/
   opaque chunks, canonical output padding, explicit limits and joined copy
   partitions under Geometry's shared execution budget. Wire-container success

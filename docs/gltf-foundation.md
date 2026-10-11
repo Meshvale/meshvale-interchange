@@ -1,171 +1,93 @@
-# Native glTF parser foundation
+# Native glTF parser and allocation foundation
 
-This implementation is a private foundation for the [proposed glTF asset
-contract](gltf.md). It adds no installed glTF header, asset reader, extraction,
-writer or Python operation. See the [implemented adapters](../README.md) for
-current format coverage.
+The [native reader contract](gltf-read.md) describes the installed asset and
+primitive operations. This document describes their private implementation
+seams and dependency inputs. [gltf.h](../include/meshvale/interchange/gltf.h)
+owns public declarations; private headers, parser pointers and JSON-library
+objects are not installed consumer interfaces.
 
-The native library compiles pinned cgltf and explicitly configured jsoncons
-through private implementation files. jsoncons uses lossless number/bignum
-options, strict comments/trailing-comma handling and an explicit nesting limit;
-its syntax event counter does not retain a document. A separate private capture
-seam now owns a flat immutable JSON snapshot. The cgltf seam accepts a
-small core projection and copies summary values before freeing its parser owner.
-Successful parsing is not metadata, graph, resource or accessor-role admission.
-The capture seam retains original bytes, exact numeric lexemes, decoded scalar-
-valid UTF8 strings and keys, source order and parent/child/sibling relationships.
-It rejects malformed syntax, invalid UTF8, lone escaped surrogates and duplicate
-decoded keys. Number-looking strings remain strings; huge numbers and nonzero
-tiny exponents remain their authored lexemes, with no double conversion.
+## Capture and core projection
 
-Capture is JSON retention only. It accepts scalar/array roots and arbitrary JSON
-fields; it does not admit glTF asset versions, integer metadata, enums, required
-extensions or core field/graph/resource/accessor semantics. No captured document
-is passed to cgltf before those later guards exist. There is no installed DOM,
-asset reader or selection handle yet.
+A flat immutable snapshot owns original source, decoded Unicode scalar-valid
+UTF8 strings/keys, numeric token ranges and source-ordered node relationships.
+Capture rejects malformed JSON, decoded duplicate keys and invalid Unicode.
+Numbers retain their original spelling without binary-double conversion. Copies
+retain a const owner, and their views require a live owner.
 
-## Immutable capture ownership
+Capture alone does not admit glTF metadata. The reader separately traverses a
+static vocabulary of 227 core paths to check types, exact integer/range/enum
+constraints, required fields, array bounds and selected dependencies. Extras,
+unknown properties and optional extension contents stay uninterpreted. Required
+extensions are unsupported. A charged core projection includes admitted core
+values and excludes opaque contents before entering cgltf. Parser success is a
+prerequisite, not complete graph, accessor-role or format semantic validation.
 
-The private capture requires nonzero source-byte, node-count, decoded-byte and
-nesting-depth limits; zero is an invalid caller configuration. Well-formed JSON
-exceeding these limits returns a size-limit failure. Source bytes, flat nodes,
-decoded text, raw-number ranges, parser temporaries, traversal stack and shared
-owner/control block use the checked allocator. Copies share a const owner and
-remain charged until the final copy dies. Borrowed text views require a visible
-snapshot owner. Input bytes remain unchanged and alive until capture returns;
-the successful snapshot survives their destruction and the caller context's
-destruction. Moved-from wrappers reject access.
+Integer ingress compares bounded authored decimal values before narrowing.
+Binary32 ingress preserves signed zero and finite subnormals; legal unsupported
+representations report an explicit outcome. cgltf's configured numeric hook
+parses projected values directly to binary32 using locale-independent conversion,
+without changing the caller's rounding state. Same-library observer qualification
+copies converted fields before freeing the parser owner; production retains no
+borrowed parser data.
 
-Expected syntax, duplicate-key, size-limit, payload-budget and cancellation
-failures return no partial snapshot; actual allocation/runtime exceptions
-propagate. Capture copies source bytes in bounded chunks and checks cancellation
-during scanning, Unicode/duplicate checks and parser events. This ordered parse
-runs on its calling thread: SAX events update a shared nesting stack and
-source-ordered sibling links, while raw-number correspondence follows the same
-lexical order. Splitting these stateful passes requires a separate qualified
-algorithm. The source-copy chunks currently provide cancellation checkpoints,
-not parallel partitions; this bounded foundation has no public work policy.
-Substantial resource copies and accessor rows require later shared-budget worker
-admission and measured thresholds; this stage makes no parallel throughput claim.
+## Allocation and execution
 
-## Allocation and execution ownership
+The checked allocator owns a copy of Geometry's execution context and a stop
+token. Rebound standard containers share the ledger; copy/move assignment and
+swap propagate allocator ownership. Every actual block reserves payload,
+ownership header and alignment padding before calling its backend. Multiplication
+and addition reject overflow before allocation, and growing containers charge old
+and replacement blocks until the old storage is freed.
 
-The private allocator owns a copy of Geometry's execution context and a stop
-token. Standard allocator rebinds share that ledger; copy/move assignment and
-swap propagate the allocator. Each allocation reserves its complete requested
-block before calling the backend: payload, ownership header and alignment
-padding. Count multiplication and block-size addition reject overflow before
-allocation. A growing container charges both its old and replacement blocks
-until the old storage is actually freed.
+Each block retains its release backend and payload lease. Cleanup frees storage
+before releasing its charge and neither allocates nor checks cancellation. Shared
+owner/control blocks, source snapshots, parser temporaries, traversal stacks,
+projections, resources, decoded outputs and worker arrays use this seam. The
+per-extraction operation cap also charges its own shared accounting state and
+includes replacement overlap. Operation allocators are distinct even when their
+root ledger is shared.
 
-Each block retains its release backend and a payload lease. Destruction releases
-storage before its charge, without allocating or checking cancellation. A block
-and its rebound shared owner can survive destruction of the caller's context or
-stop source. Expected size/budget/cancellation failures have fixed private codes;
-unexpected allocation exceptions propagate after parser cleanup. The cgltf C
-callbacks contain exceptions and report them after releasing the parser.
+This accounts requested blocks, not RSS or allocator heap overhead. Caller input,
+execution ledger/stop-state construction and runtime exception/thread storage are
+outside the accounting seam. Expected limit, payload-budget and cancellation
+failures use fixed diagnostics. Actual allocation/runtime exceptions propagate
+after cleanup; parser C callbacks contain exceptions until parser ownership is
+released.
 
-This is requested-block accounting, not RSS or heap-overhead measurement. The
-caller-owned input, execution ledger/stop-state creation, runtime exception
-storage and unrelated Geometry result lifetimes are outside this allocator's
-charge. It does not establish a total process allocation cap. Future owned
-projections, resources and decoded outputs must use the same
-checked seam before a reader can claim complete requested-payload coverage.
-There is no new product budget default or public read-limit policy in this stage.
+Ordered capture and graph traversal run on the caller because they update ordered
+state. Independent resource copies and accessor rows use Geometry worker leases
+where eligible and fall back when the shared budget is occupied. Worker leases
+remain held until every started thread is joined, including partial launch and
+worker exceptions. Private qualification hooks and statistics are synchronous
+implementation test seams; no public callback or throughput claim follows.
 
-The tests exercise exact caps including headers, alignment, overflow, overlapping
-container growth, partial failure/cancellation cleanup, stateful rebind ownership,
-concurrent operations and mixed Geometry/Interchange reservations. Tiny parser
-and allocator checks run serially to inspect deterministic ownership and fault
-boundaries; the concurrent tests use two actual threads. This stage performs no
-resource/channel work and makes no parallel throughput claim. Worker leases are
-held through actual worker joins; later resource/channel partitions must use the
-same context rather than launch an independent worker budget.
+## Build inputs and checks
 
-The native `gltf_json_snapshot` test checks owned lifetimes, exact caps, malformed
-and duplicate input, overlapping retained charges and every observed allocation
-boundary for failure and cancellation. An independent standard-library Python
-oracle compares original fixtures against the compiled capture executable:
+[THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) owns cgltf/jsoncons pins
+and notices. [GltfDependencies.cmake](../cmake/GltfDependencies.cmake) verifies
+archive SHA256 values and keeps upstream headers private. Native installs include
+the notices; Python license metadata retains them although Python remains
+OBJ-only. The installed Geometry package supplies `meshvale::editing` and public
+execution leases. See [ENVIRONMENT.md](../ENVIRONMENT.md) for portable build and
+installed-consumer commands.
+
+Native tests exercise exact requested-block caps, replacement overlap, aligned
+backend failure, parser/capture lifetimes, resource inventories and aliases,
+worker fallback/joins, metadata bounds, sparse decoding and typed provenance.
+The [installed glTF consumer](../examples/consumer/gltf.cpp) uses public headers
+and targets for actual read/extract ownership and cancellation boundaries.
+The independent standard-library oracles can be run with the corresponding
+built executables:
 
 ```sh
 python tests/gltf_json_oracle.py "$GLTF_JSON_TEST" .local/json-oracle
+python tests/gltf_accessor_oracle.py "$GLTF_EXTRACT_TEST" .local/accessor-oracle
+python tests/gltf_accessor_oracle.py "$GLTF_EXTRACT_TEST" .local/read-extract-oracle read
 ```
 
-Set `GLTF_JSON_TEST` to the built `meshvale_gltf_json_tests` executable, including
-the configuration directory and platform suffix where required. Use the same
-compiler/runtime environment as the native build, including the sanitizer
-runtime when evaluating an instrumented executable. This tests lexical JSON
-retention, decoded Unicode and exact Decimal values, not glTF schema legality.
-
-## Build inputs and consumption
-
-[THIRD_PARTY.md](../THIRD_PARTY.md#gltf-parser-foundation) owns the exact
-cgltf/jsoncons pins and notices. [CMake acquisition](../cmake/GltfDependencies.cmake)
-checks archive SHA256 and keeps upstream headers private. Native installations
-include their notices; Python license metadata includes them even though Python
-exposes no glTF API. No parser SDK or private header is installed for consumers.
-
-The installed Geometry package must supply `meshvale::editing` and its public
-execution leases. The native container/foundation candidate was evaluated with
-Geometry source `cc030f3669f81b8eac5924fc2eeb71b48fcd280a`; native package version
-remains `0.0.0`. Its compiled scalar/position interfaces are checked during
-configuration. The separate [Python cohort](python.md#build-installation-and-example)
-retains its exact documented producer pin; native evaluation does not change that
-runtime pin.
-The [installed execution consumer](../examples/consumer/execution.cpp) links only
-`meshvale::interchange`, verifies the public shared ledger/lease dependency and
-reads an ordinary OBJ triangle. It does not exercise an unimplemented glTF API.
-
-Use [ENVIRONMENT.md](../ENVIRONMENT.md) for configuration and checks. The native
-`gltf_allocation` test uses only the selected private implementation and installed
-Geometry targets. Full asset snapshots and admitted resources, all core admission
-guards, enumerable owner-bound handles, typed extraction and verified publication
-are separate implementation gates, with skin/morph/animation support still
-outstanding.
-
-## Exact metadata preparation
-
-Private metadata helpers compare authored decimal numbers without allocation or
-locale-dependent conversion. Unsigned/signed integer ingress preserves exact
-64-bit boundaries and rejects fractional values before narrowing; binary32
-conversion preserves signed zero and admits finite subnormals. Legal values
-outside a native representation return an unsupported outcome. These helpers
-and private immutable asset ownership prepare metadata admission; they do not
-yet provide a callable installed asset reader or extraction interface.
-
-An internal per-operation request cap retains the shared Geometry ledger while
-additionally accounting one operation’s live aligned requests. Its accounting
-state is itself charged; rebound containers and retained blocks keep it alive.
-Overlapping replacements count both blocks. Admission and rollback use atomic
-counters, and cleanup frees each block before releasing its charges. Distinct
-operation allocators are unequal even when their root execution ledger matches.
-This prepares the extraction output cap; it does not expose an extraction API.
-
-The private metadata layer now traverses an original static vocabulary of 227
-core paths using the owned flat document. It checks types, mathematical decimal
-integrality, intrinsic ranges, extensible enums, required fields, array sizes,
-duplicates and selected field dependencies. Declared extension payload envelopes
-remain opaque after their object envelope check; extras and unknown properties
-remain uninterpreted. A charged projection emits admitted integer/binary32 values
-without changing original source. Complete path coverage and parser correspondence
-remain validation gates; focused boundary tests are not full glTF validation.
-
-A developing supplied-memory reader now combines core guards, owned resources,
-node forests, scene instances and owner-bound primitive selection. Successful
-reads retain original source and exact numbers after the parser owner is freed.
-Canonical data URI decoding covers both buffer media types and PNG/JPEG, while
-large supplied-resource copies use joined shared-budget workers. The installed
-header and reader contract remain gated on full guard/projection correspondence,
-resource/graph fault and independent installed-consumer qualification. Current
-focused reader tests do not certify complete material, image or binary semantics.
-
-The reader also checks selected declared graph relationships without applying
-transforms or evaluating unsupported processing roles. Skin joints need a common
-ancestor, an authored skeleton must contain that ancestor, and the common
-ancestor must share each scene containing a use of the skin. Inverse-bind
-accessors must declare unnormalized FLOAT MAT4 values with enough rows. Morph
-counts agree across mesh primitives and authored weight arrays; declared core
-morph channels require matching base attributes and row counts. Animation
-channels reject duplicate node/path destinations and targets with authored
-matrices. These checks retain legal skin, morph and animation declarations;
-primitive processing reports their selected unsupported capability reasons.
+Set those executable paths for the selected build/configuration and use its
+compiler/runtime environment, including sanitizer runtime when instrumented.
+The lexical oracle tests exact JSON/Unicode retention; the accessor oracle
+checks independent component bytes, normalized values, sparse provenance and
+triangle corner maps. These checks do not certify complete materials, images,
+transforms, skinning, morph evaluation or animation semantics.

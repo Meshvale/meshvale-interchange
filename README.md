@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, optional native USD and FBX imports, resource snapshots, verified bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, optional native USD and FBX imports, resource snapshots, verified OBJ bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -19,8 +19,17 @@ opaque chunks, explicit limits and shared-budget copy workers. The
 [container contract](docs/glb.md) separates wire validation from glTF asset
 semantics; a successful container read does not validate meshes or resources.
 The [installed example](examples/consumer/glb.cpp) uses only public headers and
-targets. Full glTF reading, Geometry transfer, asset writing, filesystem
-publication and Python operations remain forthcoming.
+targets. Wire-container success is separate from glTF asset admission.
+
+## Native glTF retention and extraction
+
+Read supplied JSON/resources into an immutable asset and extract selected static
+triangle primitives with typed raw/normalized channels, sparse provenance and
+strip/fan source corner maps. The [native reader contract](docs/gltf-read.md)
+documents its finite metadata/graph/resource profile and explicit unsupported
+capabilities. The [installed consumer](examples/consumer/gltf.cpp) demonstrates
+the public interface and owned lifetimes. Geometry transfer, edited asset writing,
+filesystem publication and Python glTF operations remain forthcoming.
 
 ## Optional native USD extraction
 
@@ -49,7 +58,8 @@ binding is provided; default OBJ builds need no FBX SDK.
 
 The [proposed glTF/GLB asset contract](docs/gltf.md) defines document/resource
 ownership, primitive selection and preservation gates for the next adapter.
-Its public API remains unimplemented. The [private native parser foundation](docs/gltf-foundation.md)
+The supplied-memory reader and extraction subset is described above; the broader
+proposal remains partly unimplemented. The [native parser foundation](docs/gltf-foundation.md)
 supplies immutable JSON capture, checked allocation and pinned parser inputs;
 see the implemented native adapters above for current format coverage.
 

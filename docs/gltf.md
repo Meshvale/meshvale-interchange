@@ -4,14 +4,17 @@
 |---|---|
 | ID | GLTF-ASSET-001 |
 | Version | 0.1.0 draft |
-| Status | Proposed; adapter API unimplemented; private parser foundation available |
+| Status | Broader proposal; supplied-memory retention/static primitive extraction implemented |
 
 This contract defines the intended native document, resource and primitive
-boundaries for a glTF 2.0 adapter. The available adapters remain
-[OBJ/MTL text](obj.md) and [OBJ files and bundles](obj-files.md). The separate
+boundaries for a glTF 2.0 adapter. The [native reader contract](gltf-read.md)
+describes the implemented finite retention and static primitive subset; clauses
+below do not imply that broader edited export or publication is implemented.
+Other available adapters include [OBJ/MTL text](obj.md) and
+[OBJ files and bundles](obj-files.md). The separate
 [GLB wire-container interface](glb.md) is implemented without asset admission.
-No glTF asset header, Python interface or complete-format claim follows from this draft.
-Complete core semantic admission is also unimplemented: successful parsing,
+No Python glTF interface or complete-format claim follows from this draft.
+Complete core semantic admission remains outside the finite reader: successful parsing,
 layout checks or a valid fixture do not establish every graph, accessor-role,
 skin, morph or animation constraint.
 
