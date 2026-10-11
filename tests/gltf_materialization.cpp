@@ -10,6 +10,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <fstream>
 #include <iostream>
@@ -45,6 +46,9 @@ constexpr std::uint64_t kCancellationBlockScalars = 1;
 constexpr std::uint64_t kMaximumJobs = 32;
 constexpr std::size_t kRequestRecordCapacity = 32;
 constexpr std::string_view kFixtureOption = "--fixture";
+constexpr std::string_view kTriangleModeArgument = "4";
+constexpr std::string_view kStripModeArgument = "5";
+constexpr std::string_view kFanModeArgument = "6";
 constexpr std::string_view kPositionRecord = "positions";
 constexpr std::string_view kOffsetsRecord = "offsets";
 constexpr std::string_view kCornersRecord = "corners";
@@ -93,11 +97,12 @@ mv::GltfMaterializationLimits Limits() {
            kRequestLimit},
           {kCountLimit, kRequestLimit}};
 }
-mv::GltfPrimitiveExtraction Extract(std::string_view document,
-                                    std::span<const std::byte> bytes,
-                                    const geo::ExecutionContext& context,
-                                    std::uint64_t ordinal,
-                                    std::stop_token stop = {}) {
+mv::GltfPrimitiveExtraction Extract(
+    std::string_view document, std::span<const std::byte> bytes,
+    const geo::ExecutionContext& context, std::uint64_t ordinal,
+    std::stop_token stop = {},
+    mv::GltfTriangleRequest triangle_request =
+        mv::GltfTriangleRequest::kRequireTriangles) {
   const mv::SuppliedGltfResource resource{mv::GltfResourceKind::kBuffer, 0,
                                           bytes};
   auto read = mv::ReadGltfAsset(
@@ -109,11 +114,10 @@ mv::GltfPrimitiveExtraction Extract(std::string_view document,
        kCancellationBlockScalars},
       context, stop);
   Require(read.asset.has_value(), "actual reader rejected focused fixture");
-  auto extracted =
-      mv::ExtractGltfPrimitive(*read.asset, *read.asset->Primitive(ordinal),
-                               {mv::GltfTriangleRequest::kConvertStripOrFan,
-                                mv::GltfValueRequest::kRawAndNormalized},
-                               {kCountLimit, kCountLimit, kRequestLimit}, stop);
+  auto extracted = mv::ExtractGltfPrimitive(
+      *read.asset, *read.asset->Primitive(ordinal),
+      {triangle_request, mv::GltfValueRequest::kRawAndNormalized},
+      {kCountLimit, kCountLimit, kRequestLimit}, stop);
   Require(extracted.extraction.has_value(),
           "actual extractor rejected focused fixture");
   return *extracted.extraction;
@@ -351,6 +355,165 @@ void ActualBridgeRequestsAndFaults() {
 }
 
 template <class T>
+void RequireEqualBits(std::span<const T> first, std::span<const T> second) {
+  Require(first.size() == second.size() &&
+              (first.empty() || std::memcmp(first.data(), second.data(),
+                                            first.size_bytes()) == 0),
+          "serial and parallel canonical bytes differ");
+}
+void SubstantialSerialParallelCorrespondence() {
+  constexpr std::size_t kVertexCount = 12288;
+  constexpr std::size_t kPositionComponents = 3;
+  constexpr std::size_t kAttributeComponents = 2;
+  constexpr std::size_t kCornersPerTriangle = 3;
+  constexpr std::size_t kPositionPatternModulus = 17;
+  constexpr std::size_t kSignedPatternModulus = 257;
+  constexpr std::int32_t kSignedPatternOffset = 128;
+  constexpr std::uint64_t kSerialMinimumBytes = kPayloadBudget;
+  constexpr std::uint64_t kSubstantialPartitionBytes = 1024;
+  constexpr std::uint64_t kSubstantialCheckpointScalars = 256;
+  constexpr std::uint32_t kBinary32NegativeZero = 0x80000000U;
+  constexpr std::string_view kSignedSemantic = "_SIGNED";
+  constexpr std::string_view kLargeDocument =
+      R"({"asset":{"version":"2.0"},"buffers":[{"uri":"memory.bin","byteLength":196608}],"bufferViews":[{"buffer":0,"byteLength":147456},{"buffer":0,"byteOffset":147456,"byteLength":49152}],"accessors":[{"componentType":5126,"type":"VEC3","count":12288,"bufferView":0,"min":[0,0,0],"max":[16,0,0]},{"componentType":5122,"type":"VEC2","count":12288,"bufferView":1,"normalized":true,"min":[-128,-128],"max":[128,128]}],"meshes":[{"primitives":[{"attributes":{"POSITION":0,"_SIGNED":1}}]}]})";
+  std::vector<std::byte> bytes;
+  const auto append = [&](std::uint32_t value, std::size_t width) {
+    constexpr std::size_t kBitsPerByte = 8;
+    constexpr std::uint32_t kByteMask = 255;
+    for (std::size_t byte = 0; byte < width; ++byte)
+      bytes.push_back(
+          static_cast<std::byte>((value >> (byte * kBitsPerByte)) & kByteMask));
+  };
+  for (std::size_t vertex = 0; vertex < kVertexCount; ++vertex) {
+    append(std::bit_cast<std::uint32_t>(
+               static_cast<float>(vertex % kPositionPatternModulus)),
+           sizeof(float));
+    append(kBinary32NegativeZero, sizeof(float));
+    append(0, sizeof(float));
+  }
+  for (std::size_t vertex = 0; vertex < kVertexCount; ++vertex) {
+    const auto value = static_cast<std::int16_t>(
+        static_cast<std::int32_t>(vertex % kSignedPatternModulus) -
+        kSignedPatternOffset);
+    append(std::bit_cast<std::uint16_t>(value), sizeof(value));
+    append(std::bit_cast<std::uint16_t>(static_cast<std::int16_t>(-value)),
+           sizeof(value));
+  }
+  auto context = Context();
+  const auto extraction = Extract(kLargeDocument, bytes, context, 0);
+  const auto source_bytes = context.ActiveTrackedPayload();
+  auto serial_work = Work();
+  serial_work.parallel_min_bytes = kSerialMinimumBytes;
+  serial_work.partition_bytes = kSubstantialPartitionBytes;
+  serial_work.cancellation_block_scalars = kSubstantialCheckpointScalars;
+  auto parallel_work = serial_work;
+  parallel_work.parallel_min_bytes = kParallelMinimumBytes;
+  auto serial = mv::MaterializeGltfPrimitive(extraction, Limits(), serial_work);
+  auto parallel =
+      mv::MaterializeGltfPrimitive(extraction, Limits(), parallel_work);
+  Require(serial.primitive && parallel.primitive &&
+              serial.status == mv::GltfMaterializationStatus::kSuccess &&
+              parallel.status == serial.status &&
+              serial.diagnostic.code ==
+                  mv::GltfMaterializationDiagnosticCode::kNone &&
+              parallel.diagnostic.code == serial.diagnostic.code &&
+              parallel.diagnostic.stage == serial.diagnostic.stage &&
+              !serial.diagnostic.geometry_status &&
+              !parallel.diagnostic.geometry_status,
+          "successful serial and parallel adapter diagnostics differ");
+  Require(serial.execution.capture.launched_workers == 0 &&
+              serial.execution.inspection.launched_workers == 0 &&
+              parallel.execution.capture.launched_workers > 0 &&
+              parallel.execution.inspection.launched_workers > 0 &&
+              parallel.execution.capture.launched_workers ==
+                  parallel.execution.capture.joined_workers &&
+              parallel.execution.inspection.launched_workers ==
+                  parallel.execution.inspection.joined_workers &&
+              context.ActiveWorkers() == 0,
+          "substantial capture and inspection require actual joined workers");
+  const auto first = serial.primitive->Mesh().View();
+  const auto second = parallel.primitive->Mesh().View();
+  Require(
+      first.positions.size() == kVertexCount * kPositionComponents &&
+          first.attributes.size() == 1 && second.attributes.size() == 1 &&
+          first.face_offsets.size() == kVertexCount / kCornersPerTriangle + 1,
+      "substantial canonical row inventory differs");
+  RequireEqualBits(first.positions, second.positions);
+  RequireEqualBits(first.face_offsets, second.face_offsets);
+  RequireEqualBits(first.corner_vertices, second.corner_vertices);
+  const auto& first_attribute = first.attributes[0];
+  const auto& second_attribute = second.attributes[0];
+  Require(first_attribute.name == kSignedSemantic &&
+              first_attribute.name == second_attribute.name &&
+              first_attribute.semantic == second_attribute.semantic &&
+              first_attribute.domain == second_attribute.domain &&
+              first_attribute.components == kAttributeComponents &&
+              first_attribute.components == second_attribute.components &&
+              first_attribute.set_index == second_attribute.set_index,
+          "serial and parallel descriptors differ");
+  for (std::size_t face = 0; face < first.face_offsets.size(); ++face)
+    Require(first.face_offsets[face] == face * kCornersPerTriangle,
+            "independent substantial triangle offsets changed");
+  const auto first_values =
+      std::get<std::span<const std::int32_t>>(first_attribute.values);
+  const auto second_values =
+      std::get<std::span<const std::int32_t>>(second_attribute.values);
+  RequireEqualBits(first_values, second_values);
+  constexpr std::uint64_t kBinary64NegativeZero = UINT64_C(0x8000000000000000);
+  for (std::size_t vertex = 0; vertex < kVertexCount; ++vertex) {
+    Require(
+        first.positions[vertex * kPositionComponents] ==
+                static_cast<double>(vertex % kPositionPatternModulus) &&
+            std::bit_cast<std::uint64_t>(
+                first.positions[vertex * kPositionComponents + 1]) ==
+                kBinary64NegativeZero &&
+            first_values[vertex * kAttributeComponents] ==
+                static_cast<std::int32_t>(vertex % kSignedPatternModulus) -
+                    kSignedPatternOffset &&
+            first_values[vertex * kAttributeComponents + 1] ==
+                -(static_cast<std::int32_t>(vertex % kSignedPatternModulus) -
+                  kSignedPatternOffset) &&
+            first.corner_vertices[vertex] == vertex,
+        "independent substantial source pattern changed");
+  }
+  const auto first_mappings = serial.primitive->ChannelMappings();
+  const auto second_mappings = parallel.primitive->ChannelMappings();
+  Require(first_mappings.size() == second_mappings.size(),
+          "serial and parallel mapping extents differ");
+  for (std::size_t i = 0; i < first_mappings.size(); ++i)
+    Require(
+        first_mappings[i].source_channel == second_mappings[i].source_channel &&
+            first_mappings[i].destination == second_mappings[i].destination &&
+            first_mappings[i].attribute == second_mappings[i].attribute &&
+            first_mappings[i].encoding == second_mappings[i].encoding,
+        "serial and parallel channel correspondence differs");
+  auto restricted = Limits();
+  restricted.materialization.max_vertices = kVertexCount - 1;
+  const auto serial_failure =
+      mv::MaterializeGltfPrimitive(extraction, restricted, serial_work);
+  const auto parallel_failure =
+      mv::MaterializeGltfPrimitive(extraction, restricted, parallel_work);
+  Require(serial_failure.status ==
+                  mv::GltfMaterializationStatus::kGeometryFailure &&
+              serial_failure.status == parallel_failure.status &&
+              serial_failure.diagnostic.stage ==
+                  parallel_failure.diagnostic.stage &&
+              serial_failure.diagnostic.geometry_status ==
+                  parallel_failure.diagnostic.geometry_status &&
+              serial_failure.diagnostic.geometry_diagnostic->code ==
+                  parallel_failure.diagnostic.geometry_diagnostic->code,
+          "serial and parallel delegated rejection diagnostics differ");
+  std::cout << "actual substantial workers capture="
+            << parallel.execution.capture.launched_workers << "/"
+            << parallel.execution.capture.joined_workers
+            << " inspection=" << parallel.execution.inspection.launched_workers
+            << "/" << parallel.execution.inspection.joined_workers << '\n';
+  serial.primitive.reset();
+  parallel.primitive.reset();
+  RequireRollback(context, source_bytes);
+}
+
+template <class T>
 constexpr std::string_view TypeName() {
   if constexpr (std::is_same_v<T, float>)
     return kFloat32Type;
@@ -388,7 +551,15 @@ void Values(std::span<const T> values) {
   }
   std::cout << '\n';
 }
-void RunFixture(const char* json_path, const char* buffer_path) {
+void RunFixture(const char* json_path, const char* buffer_path,
+                std::string_view source_mode) {
+  Require(source_mode == kTriangleModeArgument ||
+              source_mode == kStripModeArgument ||
+              source_mode == kFanModeArgument,
+          "unknown fixture declared primitive mode");
+  const auto request = source_mode == kTriangleModeArgument
+                           ? mv::GltfTriangleRequest::kRequireTriangles
+                           : mv::GltfTriangleRequest::kConvertStripOrFan;
   std::ifstream json_file(json_path, std::ios::binary);
   std::ifstream buffer_file(buffer_path, std::ios::binary);
   Require(json_file.is_open() && buffer_file.is_open(), "fixture file missing");
@@ -397,8 +568,9 @@ void RunFixture(const char* json_path, const char* buffer_path) {
   const std::string buffer{std::istreambuf_iterator<char>(buffer_file),
                            std::istreambuf_iterator<char>()};
   auto context = Context();
-  auto extraction = Extract(
-      json, std::as_bytes(std::span(buffer.data(), buffer.size())), context, 0);
+  auto extraction =
+      Extract(json, std::as_bytes(std::span(buffer.data(), buffer.size())),
+              context, 0, {}, request);
   auto result = mv::MaterializeGltfPrimitive(extraction, Limits(), Work());
   Require(result.primitive.has_value(), "fixture adapter rejected source");
   const auto& owner = *result.primitive;
@@ -442,14 +614,15 @@ void RunFixture(const char* json_path, const char* buffer_path) {
 }  // namespace
 int main(int argc, char** argv) {
   try {
-    constexpr int kFixtureArgumentCount = 4;
+    constexpr int kFixtureArgumentCount = 5;
     constexpr int kNoArgumentCount = 1;
     if (argc == kFixtureArgumentCount && argv[1] == kFixtureOption) {
-      RunFixture(argv[2], argv[3]);
+      RunFixture(argv[2], argv[3], argv[4]);
     } else {
       Require(argc == kNoArgumentCount, "unknown materialization test option");
       LimitsCancellationAndDelegation();
       ActualBridgeRequestsAndFaults();
+      SubstantialSerialParallelCorrespondence();
       std::cout << "charged glTF bridge limits, cancellation, requests and "
                    "faults passed\n";
     }

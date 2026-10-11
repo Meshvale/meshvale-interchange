@@ -186,7 +186,7 @@ def main():
                   "buffer_sha256": hashlib.sha256(raw).hexdigest(),
                   "scope": "fixture preparation only" if args.prepare_only else "actual public pipeline"}
         if not args.prepare_only:
-            command = [str(args.exe.resolve()), "--fixture", str(source.resolve()), str(buffer.resolve())]
+            command = [str(args.exe.resolve()), "--fixture", str(source.resolve()), str(buffer.resolve()), str(mode)]
             report["argv"] = command
             (args.output / (name + ".command.json")).write_text(json.dumps(report, indent=2), encoding="utf-8")
             run = subprocess.run(command, capture_output=True)
