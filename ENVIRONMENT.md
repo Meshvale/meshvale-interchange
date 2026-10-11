@@ -73,3 +73,48 @@ runtime DLL directory on PATH and consume `MeshvaleInterchangeFbx` separately.
 The [FBX contract](docs/fbx.md) owns exact compiler/configuration admission,
 static-import coverage, SDK cleanup and notice requirements. Default native
 builds and current Python wheels leave FBX disabled.
+
+## Linux native sanitizer evaluation
+
+The [repository workflow](.github/workflows/repository-checks.yml) defines separate
+Linux x64 Clang lanes for AddressSanitizer plus UndefinedBehaviorSanitizer and for
+ThreadSanitizer. A completed run is required to establish execution evidence;
+configuration alone does not establish sanitizer coverage or platform support.
+The [runner](scripts/run-native-sanitizers.py) builds the same pinned Geometry and
+vcpkg revisions as the ordinary native job without changing the Python cohort.
+
+Each lane uses matching Debug Clang compilation and sanitizer link/runtime flags
+for Geometry, Interchange and its six installed consumers. The existing manifest
+selects double-precision tinyobjloader; the [custom triplets](cmake/sanitizer-triplets/x64-linux-asan-ubsan.cmake)
+rebuild its Debug and Release configurations with the same instrumentation, and
+consumers select Debug. Tracked flag environment values participate in vcpkg's
+port ABI; binary-cache reuse is disabled. Build concurrency is bounded to two.
+Compiled-command inventories verify compiler, instrumentation and Meshvale Werror.
+See the [vcpkg triplet variables](https://learn.microsoft.com/en-us/vcpkg/users/triplets)
+for flag and tracked-environment behavior.
+
+The lanes assert all eleven native suites and six installed test entries, use
+Geometry's own allocation-profile inventory checker, and execute the independent
+lexical, accessor, actual Read/extraction and actual Write/reload oracles. Geometry's
+ordinary replacement-new allocation probes remain enabled for ASan/UBSan and are
+disabled for TSan because that runtime owns its allocation interceptors. The glTF
+backend-failure and joined-worker cases remain in both lanes. Failures propagate;
+no sanitizer suppressions, retry-to-success or reduced oracle substitutions apply.
+
+To run on a compatible Linux x64 environment, prepare the workflow's exact public
+Geometry/vcpkg checkouts and supply their locations:
+
+```sh
+python scripts/run-native-sanitizers.py --profile asan-ubsan --geometry-source "$GEOMETRY_SOURCE" --vcpkg-root "$VCPKG_ROOT"
+python scripts/run-native-sanitizers.py --profile tsan --geometry-source "$GEOMETRY_SOURCE" --vcpkg-root "$VCPKG_ROOT"
+```
+
+Each profile requires a fresh `.local/native-sanitizers/<profile>` directory.
+Commands, identities, compiler flags, test inventories, oracle observations and
+CTest output remain ignored; hosted jobs upload these as separate artifacts,
+including partial failure evidence. The completion marker is written only after
+all actual commands pass. Parser headers and Eigen code compile into instrumented
+Meshvale targets. System libraries, thread/runtime internals and dependency tooling
+are not comprehensively instrumented. Optional FBX/USD and Python bindings remain
+disabled in these lanes; they do not qualify those SDKs, full glTF semantics,
+allocation-request planning or any unexecuted architecture.
