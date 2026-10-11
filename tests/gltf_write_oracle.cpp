@@ -5,8 +5,10 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <fstream>
 #include <iomanip>
+#include <ios>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -15,6 +17,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <variant>
 #include <vector>
 
 namespace {

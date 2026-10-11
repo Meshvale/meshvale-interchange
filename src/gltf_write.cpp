@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "meshvale/interchange/gltf_write.h"
 
+#include <meshvale/geometry/execution.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <exception>
+#include <initializer_list>
 #include <limits>
 #include <memory>
+#include <span>
+#include <stop_token>
 #include <thread>
 #include <utility>
 
+#include "gltf_allocation.h"
 #include "gltf_asset_state.h"
 #include "gltf_write_detail.h"
 
@@ -21,6 +29,7 @@ using gltf_detail::Allocator;
 using gltf_detail::OwnedVector;
 constexpr std::uint32_t kWriterRule = 320;
 constexpr std::size_t kCheckpointCopyBytes = 4096;
+constexpr std::size_t kMinimumParallelCopyWorkers = 2;
 void Reject(GltfStatus status, GltfDiagnosticCode code) {
   gltf_detail::Fail(status, code, {}, kWriterRule);
 }
@@ -85,7 +94,8 @@ void CopyJson(const gltf_detail::AssetState& source,
   const auto jobs =
       original.size() / partition + (original.size() % partition != 0);
   if (stats) stats->jobs = jobs;
-  auto lease = original.size() >= policy.parallel_min_json_bytes && jobs >= 2
+  auto lease = original.size() >= policy.parallel_min_json_bytes &&
+                       jobs >= kMinimumParallelCopyWorkers
                    ? geometry::TryReserveWorkers(source.context, jobs)
                    : geometry::WorkerLease{};
   auto copy = [&](std::size_t first, std::size_t last) {
@@ -96,7 +106,7 @@ void CopyJson(const gltf_detail::AssetState& source,
       first += count;
     }
   };
-  if (lease.Count() < 2) {
+  if (lease.Count() < kMinimumParallelCopyWorkers) {
     copy(0, original.size());
     return;
   }
