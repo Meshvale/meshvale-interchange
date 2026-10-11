@@ -2,6 +2,8 @@
 #ifndef MESHVALE_INTERCHANGE_SRC_GLTF_MATERIALIZATION_TEST_INTERNAL_H_
 #define MESHVALE_INTERCHANGE_SRC_GLTF_MATERIALIZATION_TEST_INTERNAL_H_
 
+#include <meshvale/geometry/materialization.h>
+#include <meshvale/interchange/gltf.h>
 #include <meshvale/interchange/gltf_materialization.h>
 
 #include <cstdint>

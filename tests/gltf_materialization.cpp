@@ -13,6 +13,7 @@
 #include <cstring>
 #include <exception>
 #include <fstream>
+#include <ios>
 #include <iostream>
 #include <iterator>
 #include <limits>
