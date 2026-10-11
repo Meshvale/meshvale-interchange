@@ -39,6 +39,7 @@ struct AssetState {
   GltfReadLimits limits;
   GltfWorkPolicy work_policy;
   JsonSnapshot document;
+  OwnedVector<std::uint32_t> guard_rules;
   OwnedVector<OwnedVector<std::byte>> resource_storage;
   OwnedVector<GltfResourceView> resources;
   OwnedVector<GltfRawNumberView> raw_numbers;

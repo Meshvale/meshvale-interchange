@@ -135,3 +135,12 @@ Overlapping replacements count both blocks. Admission and rollback use atomic
 counters, and cleanup frees each block before releasing its charges. Distinct
 operation allocators are unequal even when their root execution ledger matches.
 This prepares the extraction output cap; it does not expose an extraction API.
+
+The private metadata layer now traverses an original static vocabulary of 227
+core paths using the owned flat document. It checks types, mathematical decimal
+integrality, intrinsic ranges, extensible enums, required fields, array sizes,
+duplicates and selected field dependencies. Declared extension payload envelopes
+remain opaque after their object envelope check; extras and unknown properties
+remain uninterpreted. A charged projection emits admitted integer/binary32 values
+without changing original source. Complete path coverage and parser correspondence
+remain validation gates; focused boundary tests are not full glTF validation.

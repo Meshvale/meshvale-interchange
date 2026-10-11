@@ -15,6 +15,7 @@ namespace meshvale::interchange::gltf_detail {
 [[nodiscard]] std::int64_t ExactSigned(std::string_view lexeme);
 [[nodiscard]] int CompareDecimal(std::string_view left, std::string_view right);
 void AdmitMetadata(AssetState& state);
+[[nodiscard]] OwnedVector<char> BuildCoreProjection(const AssetState& state);
 void AdmitResources(AssetState& state,
                     std::span<const SuppliedGltfResource> supplied);
 void BuildGraph(AssetState& state);
