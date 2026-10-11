@@ -38,6 +38,28 @@ def normalized(values, width, signed):
     return [f64_bits(max(Fraction(-1), Fraction(v, denominator))) for v in values]
 
 
+def exact_json(value):
+    """Emit binary32 bounds as exact rational JSON numbers, without float repr.
+
+    Finite binary32 denominators are powers of two, so their decimal expansion
+    terminates. The maximum finite bound must not be rounded upward by a shorter
+    binary64 decimal spelling before the reader's exact range check.
+    """
+    if isinstance(value, Fraction):
+        denominator = value.denominator
+        exponent = denominator.bit_length() - 1
+        assert denominator == 1 << exponent
+        digits = str(abs(value.numerator) * 5 ** exponent).zfill(exponent + 1)
+        number = digits if exponent == 0 else digits[:-exponent] + "." + digits[-exponent:]
+        return ("-" if value < 0 else "") + number
+    if isinstance(value, dict):
+        return "{" + ",".join(json.dumps(key) + ":" + exact_json(item)
+                              for key, item in value.items()) + "}"
+    if isinstance(value, list):
+        return "[" + ",".join(exact_json(item) for item in value) + "]"
+    return json.dumps(value, separators=(",", ":"))
+
+
 def fixture(mode, *, high_channels=False):
     positions = [
         0x3F800000, 0x80000000, 1,
@@ -79,7 +101,7 @@ def fixture(mode, *, high_channels=False):
         expected_normalized[name] = normalized(values, width, signed) if normalize else []
 
     position_view = view(struct.pack("<" + "I" * len(positions), *positions))
-    numeric_positions = [struct.unpack("<f", struct.pack("<I", b))[0] for b in positions]
+    numeric_positions = [f32_fraction(b) for b in positions]
     accessors.append({"bufferView": position_view, "componentType": 5126,
                       "type": "VEC3", "count": count,
                       "min": [min(numeric_positions[axis::3]) for axis in range(3)],
@@ -178,7 +200,16 @@ def main():
         document, raw, expected = fixture(mode, high_channels=high)
         source = args.output / (name + ".gltf")
         buffer = args.output / (name + ".bin")
-        source.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+        source.write_text(exact_json(document), encoding="utf-8")
+        # An independent Decimal spelling regression: JSON bounds must denote
+        # precisely the authored binary32 rationals, not an upward float repr.
+        parsed = json.loads(source.read_text(encoding="utf-8"),
+                            parse_int=Fraction, parse_float=Fraction)
+        for key in ("min", "max"):
+            assert parsed["accessors"][0][key] == document["accessors"][0][key]
+        maximum = f32_fraction(0x7F7FFFFF)
+        assert Fraction(json.dumps(float(maximum))) > maximum
+        assert Fraction(exact_json(maximum)) == maximum
         buffer.write_bytes(raw)
         (args.output / (name + ".expected.json")).write_text(
             json.dumps(expected, indent=2), encoding="utf-8")

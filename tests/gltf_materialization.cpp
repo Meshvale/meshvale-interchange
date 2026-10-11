@@ -47,6 +47,14 @@ constexpr std::uint64_t kCancellationBlockScalars = 1;
 constexpr std::uint64_t kMaximumJobs = 32;
 constexpr std::size_t kRequestRecordCapacity = 32;
 constexpr std::string_view kFixtureOption = "--fixture";
+constexpr std::string_view kReaderRejectionPrefix =
+    "reader rejected fixture: status=";
+constexpr std::string_view kExtractorRejectionPrefix =
+    "extractor rejected fixture: status=";
+constexpr std::string_view kDiagnosticCodeLabel = " code=";
+constexpr std::string_view kDiagnosticRuleLabel = " rule=";
+constexpr std::string_view kDiagnosticJsonSpanLabel = " json_span=";
+constexpr std::string_view kAbsentSpan = "none";
 constexpr std::string_view kTriangleModeArgument = "4";
 constexpr std::string_view kStripModeArgument = "5";
 constexpr std::string_view kFanModeArgument = "6";
@@ -75,6 +83,19 @@ constexpr std::uint64_t kExpectedPrimitive = 1;
 
 void Require(bool value, std::string_view message) {
   if (!value) throw std::runtime_error(std::string(message));
+}
+void ReportRejected(const mv::GltfDiagnostic& diagnostic,
+                    std::string_view prefix) {
+  std::cerr << prefix << static_cast<int>(diagnostic.status)
+            << kDiagnosticCodeLabel << static_cast<int>(diagnostic.code)
+            << kDiagnosticRuleLabel << diagnostic.rule_id
+            << kDiagnosticJsonSpanLabel;
+  if (diagnostic.json_span)
+    std::cerr << diagnostic.json_span->offset << ':'
+              << diagnostic.json_span->length;
+  else
+    std::cerr << kAbsentSpan;
+  std::cerr << '\n';
 }
 geo::ExecutionContext Context() {
   return geo::ExecutionContext(
@@ -114,11 +135,14 @@ mv::GltfPrimitiveExtraction Extract(
       {kParallelMinimumBytes, kPartitionBytes, kParallelMinimumBytes,
        kCancellationBlockScalars},
       context, stop);
+  if (!read.asset) ReportRejected(read.diagnostic, kReaderRejectionPrefix);
   Require(read.asset.has_value(), "actual reader rejected focused fixture");
   auto extracted = mv::ExtractGltfPrimitive(
       *read.asset, *read.asset->Primitive(ordinal),
       {triangle_request, mv::GltfValueRequest::kRawAndNormalized},
       {kCountLimit, kCountLimit, kRequestLimit}, stop);
+  if (!extracted.extraction)
+    ReportRejected(extracted.diagnostic, kExtractorRejectionPrefix);
   Require(extracted.extraction.has_value(),
           "actual extractor rejected focused fixture");
   return *extracted.extraction;
