@@ -108,6 +108,21 @@ int main() {
     Require(unrelated_extension.asset
                 ->Capability(*unrelated_extension.asset->Primitive(0))
                 .reason == GltfCapabilityReason::kOptionalExtensionEffect);
+    const std::array<std::string_view, 6> malformed_declarations = {
+        R"({"asset":{"version":"2.0"},"nodes":[{},{}],"skins":[{"joints":[0,1]}]})",
+        R"({"asset":{"version":"2.0"},"nodes":[{"children":[1]},{},{}],"skins":[{"joints":[1],"skeleton":2}]})",
+        R"({"asset":{"version":"2.0"},"nodes":[{}],"accessors":[{"componentType":5126,"count":1,"type":"VEC3"}],"skins":[{"joints":[0],"inverseBindMatrices":0}]})",
+        R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"count":1,"type":"VEC3"}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":[{"NORMAL":0}]}]}]})",
+        R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"count":1,"type":"VEC3"}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":[{"POSITION":0}]}],"weights":[0,0]}]})",
+        R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"count":1,"type":"SCALAR"},{"componentType":5126,"count":1,"type":"VEC3"}],"nodes":[{}],"animations":[{"samplers":[{"input":0,"output":1}],"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}},{"sampler":0,"target":{"node":0,"path":"translation"}}]}]})"};
+    for (const auto declaration : malformed_declarations)
+      Require(Read(declaration, {}, context).diagnostic.code ==
+              GltfDiagnosticCode::kGraphRelationship);
+    Require(
+        Read(
+            R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"count":1,"type":"VEC3"}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":[{"POSITION":0}]}],"weights":[0]}],"nodes":[{"mesh":0,"weights":[1]}]})",
+            {}, context)
+            .asset.has_value());
     Require(context.ActiveWorkers() == 0);
     std::cout << "owned reader/resource/graph boundaries passed\n";
     return 0;

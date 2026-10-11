@@ -153,3 +153,14 @@ large supplied-resource copies use joined shared-budget workers. The installed
 header and reader contract remain gated on full guard/projection correspondence,
 resource/graph fault and independent installed-consumer qualification. Current
 focused reader tests do not certify complete material, image or binary semantics.
+
+The reader also checks selected declared graph relationships without applying
+transforms or evaluating unsupported processing roles. Skin joints need a common
+ancestor, an authored skeleton must contain that ancestor, and the common
+ancestor must share each scene containing a use of the skin. Inverse-bind
+accessors must declare unnormalized FLOAT MAT4 values with enough rows. Morph
+counts agree across mesh primitives and authored weight arrays; declared core
+morph channels require matching base attributes and row counts. Animation
+channels reject duplicate node/path destinations and targets with authored
+matrices. These checks retain legal skin, morph and animation declarations;
+primitive processing reports their selected unsupported capability reasons.

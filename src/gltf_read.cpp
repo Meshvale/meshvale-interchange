@@ -126,6 +126,7 @@ GltfReadResult ReadGltfAsset(
     RawNumbers(*state);
     AdmitMetadata(*state);
     BuildGraph(*state);
+    CheckDeclaredGraphRelationships(*state);
     AdmitResources(*state, supplied_resources);
     const auto projection = BuildCoreProjection(*state);
     const auto parsed = InspectCoreProjection(

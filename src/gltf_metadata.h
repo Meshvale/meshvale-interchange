@@ -21,5 +21,6 @@ void CheckMetadataRelationships(AssetState& state);
 void AdmitResources(AssetState& state,
                     std::span<const SuppliedGltfResource> supplied);
 void BuildGraph(AssetState& state);
+void CheckDeclaredGraphRelationships(const AssetState& state);
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_METADATA_H_
