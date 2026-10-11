@@ -195,8 +195,33 @@ def check_cpp(path, data):
         (Fraction(-1, 127), 0xBF80204081020408),
         (Fraction(1, 255), 0x3F70101010101010),
         (Fraction(254, 255), 0x3FEFDFDFDFDFDFE0),
+        (Fraction(-1, 32767), 0xBF00002000400080),
+        (Fraction(1, 32767), 0x3F00002000400080),
+        (Fraction(32768, 65535), 0x3FE0001000100010),
+        (Fraction(1, 65535), 0x3EF0001000100010),
     ]:
         assert struct.unpack('<Q', struct.pack('<d', float(rational)))[0] == expected_bits
+    # Check every independently authored C++ normalized expectation, rather than
+    # validating only representative ratios or using a production decoder.
+    normalized_text = path.with_name('raw_channels.cpp').read_text(encoding='utf-8')
+    signed_values = [-128, -1, 0, 127]
+    short_values = [-32768, 32767, -1, 0, 0, -32768, 32767, 1]
+    uv_values = [0, 0, 255, 0, 0, 0, 1, 254]
+    second_uv_values = [0, 65535, 32768, 1, 65535, 0, 1, 32768]
+    color_values = [0, 255, 1, 254, 255, 0, 128, 127,
+                    1, 2, 3, 4, 255, 255, 255, 255]
+    for name, values, maximum in [
+        ('Signed', signed_values, 127), ('Short', short_values, 32767),
+        ('Uv', uv_values, 255), ('SecondUv', second_uv_values, 65535),
+        ('ByteColor', color_values, 255),
+    ]:
+        found = re.search(rf'kNormalized{name}Bits\s*\{{(.*?)\}};', normalized_text, re.S)
+        assert found, name
+        actual = [int(value, 0) for value in
+                  re.findall(r'0x[0-9a-f]+|(?<!\w)0(?!\w)', found.group(1))]
+        expected = [struct.unpack('<Q', struct.pack('<d', float(max(Fraction(-1),
+                    Fraction(value, maximum)))))[0] for value in values]
+        assert actual == expected, name
     print('Independent wire fixtures checked: five JSON/binary inputs, six raw encodings; no native execution')
 
 

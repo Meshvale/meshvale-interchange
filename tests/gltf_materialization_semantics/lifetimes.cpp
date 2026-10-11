@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/attributes.h>
+#include <meshvale/geometry/materialization.h>
+#include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_materialization.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -25,6 +30,7 @@ constexpr std::string_view kNegativeZeroLexeme = "-0.0";
 constexpr std::uint64_t kSmallExtractionElements = 4096;
 constexpr std::uint64_t kSmallExtractionBytes = 64 * 1024 * 1024;
 constexpr std::uint64_t kFanMode = 6;
+constexpr std::uint64_t kTriangleMode = 4;
 
 template <class T>
 std::vector<std::byte> CopyBytes(std::span<const T> values) {
@@ -131,6 +137,28 @@ void CheckSnapshot(const mv::GltfPrimitiveExtraction& source,
               "Maximum bound lifetime failed");
   }
 }
+void CheckRetainedTopology(const mv::GltfPrimitiveExtraction& source) {
+  constexpr std::array<std::uint32_t, 6> kOriginalIndices{3, 1, 2, 0, 2, 2};
+  const auto indices = source.SourceIndices();
+  Require(indices &&
+              indices->component_type == mv::GltfComponentType::kUint32 &&
+              indices->shape == mv::GltfAccessorShape::kScalar &&
+              !indices->normalized &&
+              indices->element_count == kOriginalIndices.size(),
+          "Retained original index descriptor lost its typed source identity");
+  RequireBits<std::uint32_t>(
+      std::get<std::span<const std::uint32_t>>(indices->raw), kOriginalIndices,
+      "Original uint32 indices must survive destruction of the adapter");
+  RequireBits<std::uint32_t>(source.TriangleIndices(), kOriginalIndices,
+                             "Retained triangle indices lost their owner");
+  Require(source.SourceMode() == kTriangleMode && source.MaterialIndex() == 0 &&
+              source.SourceCorners().size() == kOriginalIndices.size(),
+          "Retained source mode, material or corner inventory changed");
+  for (std::size_t i = 0; i < kOriginalIndices.size(); ++i)
+    Require(source.SourceCorners()[i].primitive_stream_corner == i &&
+                source.SourceCorners()[i].accessor_row == kOriginalIndices[i],
+            "Retained stream-corner/accessor-row map lost its owner");
+}
 void CheckAsset(const mv::GltfMaterializedPrimitive& primitive,
                 std::string_view json, std::span<const std::byte> resource) {
   const auto& asset = primitive.SourceAsset();
@@ -230,6 +258,7 @@ void CheckSourceAndMeshLifetimes() {
   CheckAsset(*retained, expected_json, expected_resource);
   CheckSnapshot(retained->SourceExtraction(), channels);
   CheckSnapshot(*extraction, channels);
+  CheckRetainedTopology(*extraction);
   auto reassigned = *retained;
   reassigned = Transfer(MakeTopologyFixture(TopologyFixture::kFan));
   Require(reassigned.SourceExtraction().SourceMode() == kFanMode,
@@ -237,6 +266,7 @@ void CheckSourceAndMeshLifetimes() {
   CheckSnapshot(retained->SourceExtraction(), channels);
   retained.reset();
   CheckSnapshot(*extraction, channels);
+  CheckRetainedTopology(*extraction);
   extraction.reset();
   asset.reset();
   handle.reset();

@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/attributes.h>
+#include <meshvale/geometry/materialization.h>
+#include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_materialization.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>

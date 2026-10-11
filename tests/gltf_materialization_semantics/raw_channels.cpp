@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/attributes.h>
+#include <meshvale/geometry/materialization.h>
+#include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_materialization.h>
+
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -189,6 +194,16 @@ void CheckRawChannels() {
   RequireBits<std::int16_t>(
       std::get<std::span<const std::int16_t>>(*short_source.exact_max),
       kShortMaximum, "Signed-short maximum changed");
+  constexpr std::array<std::uint64_t, 8> kNormalizedShortBits{
+      UINT64_C(0xbff0000000000000),
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0xbf00002000400080),
+      0,
+      0,
+      UINT64_C(0xbff0000000000000),
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0x3f00002000400080)};
+  CheckFloatingBits(short_source.normalized_values, kNormalizedShortBits);
   const auto& uv_source = Channel(result.SourceExtraction(), kFirstUv);
   constexpr std::array<std::uint64_t, 2> kSparseDestinations{1, 3};
   RequireBits<std::uint64_t>(uv_source.sparse_destinations, kSparseDestinations,
@@ -212,6 +227,38 @@ void CheckRawChannels() {
   RequireBits<std::uint8_t>(
       std::get<std::span<const std::uint8_t>>(*uv_source.exact_max), kUvMaximum,
       "Sparse UV maximum changed");
+  constexpr std::array<std::uint64_t, 8> kNormalizedSecondUvBits{
+      0,
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0x3fe0001000100010),
+      UINT64_C(0x3ef0001000100010),
+      UINT64_C(0x3ff0000000000000),
+      0,
+      UINT64_C(0x3ef0001000100010),
+      UINT64_C(0x3fe0001000100010)};
+  CheckFloatingBits(
+      Channel(result.SourceExtraction(), kSecondUv).normalized_values,
+      kNormalizedSecondUvBits);
+  constexpr std::array<std::uint64_t, 16> kNormalizedByteColorBits{
+      0,
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0x3f70101010101010),
+      UINT64_C(0x3fefdfdfdfdfdfe0),
+      UINT64_C(0x3ff0000000000000),
+      0,
+      UINT64_C(0x3fe0101010101010),
+      UINT64_C(0x3fdfdfdfdfdfdfe0),
+      UINT64_C(0x3f70101010101010),
+      UINT64_C(0x3f80101010101010),
+      UINT64_C(0x3f88181818181818),
+      UINT64_C(0x3f90101010101010),
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0x3ff0000000000000),
+      UINT64_C(0x3ff0000000000000)};
+  CheckFloatingBits(
+      Channel(result.SourceExtraction(), kByteColor).normalized_values,
+      kNormalizedByteColorBits);
   const auto raw_only = Transfer(fixture, mv::GltfValueRequest::kRaw);
   for (const auto& channel : raw_only.SourceExtraction().Channels())
     Require(
