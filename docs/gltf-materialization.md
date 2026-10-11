@@ -45,7 +45,7 @@ arrays. The adapter manufactures no attribute metadata from opaque extras.
 | Raw source | Canonical Geometry storage |
 |---|---|
 | POSITION float XYZ | Exact widened double XYZ |
-| Attribute float, uint8, uint16, uint32 | Same scalar type and bits |
+| Admitted attribute float, uint8, uint16 | Same scalar type and bits |
 | Attribute int8 or int16 | Exact sign extension into int32 |
 | Triangle uint32 corner indices | Exact widened uint64 corners and triangle offsets |
 
@@ -55,7 +55,9 @@ has one `GltfMaterializedChannel`, in source channel order: source ordinal,
 positions or vertex-attribute destination, optional destination attribute ordinal
 and exact/position-widened/signed-widened encoding correspondence. POSITION has
 no destination attribute ordinal. Other destination ordinals follow their order
-after excluding POSITION. Source indices are provenance, not another attribute.
+after excluding POSITION. Source indices are provenance, not another attribute. The current extraction
+profile admits uint32 as a source index encoding; it rejects uint32 custom
+attributes. The bridge does not expand that admission boundary.
 
 Canonical attributes remain **raw**. Normalization declarations and available
 derived binary64 values remain accessible through `SourceExtraction().Channels()`.
