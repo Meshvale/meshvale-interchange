@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <limits>
@@ -21,7 +22,8 @@ constexpr std::string_view kMode = "mode";
 constexpr std::string_view kAttributes = "attributes";
 constexpr std::string_view kTargets = "targets";
 constexpr std::string_view kWeights = "weights";
-constexpr std::string_view kExtensions = "extensions";
+constexpr std::string_view kExtensionsPathSuffix = "/extensions";
+constexpr std::string_view kAnimationPath = "path";
 constexpr std::string_view kAnimations = "animations";
 constexpr std::string_view kChannels = "channels";
 constexpr std::string_view kTarget = "target";
@@ -96,10 +98,6 @@ void ReferenceArray(const JsonSnapshot& doc, std::size_t node,
   for (auto child = doc.FirstChild(*array); child;
        child = doc.NextSibling(*child))
     (void)TableRow(doc, table, ReadExactUnsigned(doc, *child));
-}
-bool Extensions(const JsonSnapshot& doc, std::size_t node) {
-  const auto extensions = FindMember(doc, node, kExtensions);
-  return extensions && ChildCount(doc, *extensions) != 0;
 }
 void PrimitiveReferences(const JsonSnapshot& doc, std::size_t primitive) {
   Reference(doc, primitive, kIndices, kAccessors);
@@ -218,8 +216,13 @@ GltfCapabilityReason Capability(const AssetState& state,
     return GltfCapabilityReason::kMorphBinding;
   const auto animation_table = FindMember(doc, 0, kAnimations);
   bool animated = false;
-  bool extension = Extensions(doc, 0) || Extensions(doc, mesh) ||
-                   Extensions(doc, primitive.json_node);
+  bool extension = false;
+  for (std::size_t node = 0; node < state.guard_rules.size(); ++node) {
+    state.allocation.Checkpoint();
+    if (GuardPath(state.guard_rules[node]).ends_with(kExtensionsPathSuffix) &&
+        ChildCount(doc, node) != 0)
+      extension = true;
+  }
   const auto node_table = FindMember(doc, 0, kNodes);
   // The first reason has profile priority independent of authored use order.
   for (std::size_t use = 0; use < state.nodes.size(); ++use)
@@ -228,21 +231,24 @@ GltfCapabilityReason Capability(const AssetState& state,
       return GltfCapabilityReason::kMorphBinding;
   for (std::size_t use = 0; use < state.nodes.size(); ++use) {
     if (state.nodes[use].mesh != primitive.mesh_index) continue;
+    if (state.nodes[use].skin) return GltfCapabilityReason::kSkinBinding;
     for (std::optional<std::uint64_t> ancestor = use; ancestor;
          ancestor = state.nodes[*ancestor].parent) {
-      if (state.nodes[*ancestor].skin)
-        return GltfCapabilityReason::kSkinBinding;
-      extension =
-          extension || Extensions(doc, *ChildAt(doc, *node_table, *ancestor));
       if (animation_table)
         for (auto animation = doc.FirstChild(*animation_table); animation;
              animation = doc.NextSibling(*animation)) {
           const auto channels = *FindMember(doc, *animation, kChannels);
           for (auto channel = doc.FirstChild(channels); channel;
-               channel = doc.NextSibling(*channel))
-            if (Index(doc, *FindMember(doc, *channel, kTarget), kNode) ==
-                ancestor)
+               channel = doc.NextSibling(*channel)) {
+            const auto target = *FindMember(doc, *channel, kTarget);
+            if (Index(doc, target, kNode) != ancestor) continue;
+            const auto path =
+                doc.String(*FindMember(doc, target, kAnimationPath));
+            const bool transform =
+                std::find(kTrs.begin(), kTrs.end(), path) != kTrs.end();
+            if (transform || (path == kWeights && *ancestor == use))
               animated = true;
+          }
         }
     }
   }

@@ -75,6 +75,13 @@ void Dump(const char* path) {
   } catch (const GltfFailure& failure) {
     std::cout << "status\t" << static_cast<int>(failure.Diagnostic().status)
               << '\n';
+    for (const auto rule : state.guard_rules) {
+      const auto guard_path = GuardPath(rule);
+      if (guard_path.empty()) continue;
+      std::cout << "guard\t";
+      Hex(guard_path);
+      std::cout << '\n';
+    }
     return;
   }
   const auto projection = BuildCoreProjection(state);

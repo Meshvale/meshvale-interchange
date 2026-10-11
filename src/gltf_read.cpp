@@ -39,7 +39,8 @@ void Configuration(const GltfReadLimits& limits, const GltfWorkPolicy& policy) {
       gltf_detail::Fail(GltfStatus::kInvalidLimits,
                         GltfDiagnosticCode::kLimitNotRepresentable);
   }
-  if (limits.max_document_depth > std::numeric_limits<int>::max())
+  if (limits.max_document_depth > std::numeric_limits<int>::max() ||
+      limits.max_document_nodes > gltf_detail::MaximumJsonCaptureNodes())
     gltf_detail::Fail(GltfStatus::kInvalidLimits,
                       GltfDiagnosticCode::kLimitNotRepresentable);
 }
@@ -107,6 +108,8 @@ GltfReadResult ReadGltfAsset(
           Fail(GltfStatus::kCanceled, GltfDiagnosticCode::kCanceled);
         case JsonCaptureCode::kBudgetExceeded:
           Fail(GltfStatus::kBudgetExceeded, GltfDiagnosticCode::kPayloadBudget);
+        case JsonCaptureCode::kUnicodeScalar:
+          Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kUnicodeScalar);
         case JsonCaptureCode::kDuplicateKey:
           Fail(GltfStatus::kMalformed,
                GltfDiagnosticCode::kDecodedDuplicateKey);

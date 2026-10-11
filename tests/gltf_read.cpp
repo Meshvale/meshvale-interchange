@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -64,6 +65,14 @@ int main() {
             R"({"asset":{"version":"2.0"},"images":[{"uri":"data:image/png;base64,iVBORw0KGgo=","mimeType":"image/future"}]})",
             {}, context)
             .diagnostic.code == GltfDiagnosticCode::kEmbeddedMediaMismatch);
+    Require(Read(R"({"asset":{"version":"2.0"},"extras":{"invalid":"\uD800"}})",
+                 {}, context)
+                .diagnostic.code == GltfDiagnosticCode::kUnicodeScalar);
+    auto oversized_nodes = Limits();
+    oversized_nodes.max_document_nodes =
+        std::numeric_limits<std::ptrdiff_t>::max();
+    Require(ReadGltfAsset({}, {}, oversized_nodes, Work(), context, {})
+                .diagnostic.status == GltfStatus::kInvalidLimits);
     std::array<std::byte, 40> buffer{};
     buffer.back() = std::byte{42};
     const SuppliedGltfResource supplied{GltfResourceKind::kBuffer, 0, buffer};
@@ -86,6 +95,19 @@ int main() {
             R"({"asset":{"version":"2.0"},"nodes":[{"children":[1]},{"children":[0]}]})",
             {}, context)
             .diagnostic.status == GltfStatus::kMalformed);
+    auto ancestor_skin = Read(
+        R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"count":3,"type":"VEC3"}],"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]},{"primitives":[{"attributes":{"POSITION":0}}]}],"nodes":[{"mesh":1,"skin":0,"children":[1]},{"mesh":0},{}],"skins":[{"joints":[2]}]})",
+        {}, context);
+    Require(ancestor_skin.asset.has_value());
+    Require(ancestor_skin.asset->Capability(*ancestor_skin.asset->Primitive(0))
+                .reason == GltfCapabilityReason::kBinaryAdmissionPending);
+    auto unrelated_extension = Read(
+        R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"count":3,"type":"VEC3","extensions":{"CUSTOM":{}}}],"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]})",
+        {}, context);
+    Require(unrelated_extension.asset.has_value());
+    Require(unrelated_extension.asset
+                ->Capability(*unrelated_extension.asset->Primitive(0))
+                .reason == GltfCapabilityReason::kOptionalExtensionEffect);
     Require(context.ActiveWorkers() == 0);
     std::cout << "owned reader/resource/graph boundaries passed\n";
     return 0;
