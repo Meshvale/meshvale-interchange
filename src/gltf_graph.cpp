@@ -2,7 +2,10 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <limits>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string_view>
 
 #include "gltf_metadata.h"
 
@@ -61,9 +64,14 @@ constexpr std::string_view kValues = "values";
 constexpr std::string_view kMatrix = "matrix";
 constexpr std::array<std::string_view, 3> kTrs = {"translation", "rotation",
                                                   "scale"};
-constexpr std::array<std::size_t, 3> kTrsOffsets = {0, 3, 7};
-constexpr std::array<std::uint8_t, 3> kTrsMasks = {1, 2, 4};
-constexpr std::uint8_t kMatrixMask = 8;
+constexpr std::array<std::size_t, 3> kTrsOffsets = {
+    GltfLocalTransformLayout::kTranslationOffset,
+    GltfLocalTransformLayout::kRotationOffset,
+    GltfLocalTransformLayout::kScaleOffset};
+constexpr std::array<std::uint8_t, 3> kTrsMasks = {
+    GltfLocalTransformLayout::kAuthoredTranslation,
+    GltfLocalTransformLayout::kAuthoredRotation,
+    GltfLocalTransformLayout::kAuthoredScale};
 constexpr std::uint64_t kTrianglesMode = 4;
 constexpr std::uint64_t kFanMode = 6;
 constexpr std::string_view kJointPrefix = "JOINTS_";
@@ -297,13 +305,17 @@ void BuildGraph(AssetState& state) {
                       0};
     const auto name = FindMember(doc, source, kName);
     if (name) node.name = doc.String(*name);
-    node.local_transform_bits[6] = std::bit_cast<std::uint32_t>(1.0f);
-    node.local_transform_bits[7] = node.local_transform_bits[8] =
-        node.local_transform_bits[9] = std::bit_cast<std::uint32_t>(1.0f);
+    constexpr auto kUnitTransformBits = std::bit_cast<std::uint32_t>(1.0f);
+    node.local_transform_bits[GltfLocalTransformLayout::kRotationWSlot] =
+        kUnitTransformBits;
+    for (std::size_t component = 0;
+         component < GltfLocalTransformLayout::kScaleComponents; ++component)
+      node.local_transform_bits[GltfLocalTransformLayout::kScaleOffset +
+                                component] = kUnitTransformBits;
     const auto matrix = FindMember(doc, source, kMatrix);
     if (matrix) {
       node.transform_kind = GltfTransformKind::kMatrix;
-      node.authored_transform_mask = kMatrixMask;
+      node.authored_transform_mask = GltfLocalTransformLayout::kAuthoredMatrix;
       for (std::uint64_t i = 0; i < node.local_transform_bits.size(); ++i)
         node.local_transform_bits[i] =
             ReadFloatBits(doc, *ChildAt(doc, *matrix, i));

@@ -5,7 +5,10 @@
 #include <bit>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <string_view>
 #include <system_error>
 
 namespace meshvale::interchange::gltf_detail {
@@ -210,6 +213,17 @@ void CheckMetadataRelationships(AssetState& state) {
   constexpr std::uint64_t kUint16Component = 5123;
   constexpr std::uint64_t kUint32Component = 5125;
   constexpr std::uint64_t kFloatComponent = 5126;
+  struct IntegerComponentRange {
+    std::uint64_t component;
+    std::string_view minimum;
+    std::string_view maximum;
+  };
+  constexpr std::array<IntegerComponentRange, 5> kIntegerComponentRanges = {
+      {{kInt8Component, "-128", "127"},
+       {kUint8Component, "0", "255"},
+       {kInt16Component, "-32768", "32767"},
+       {kUint16Component, "0", "65535"},
+       {kUint32Component, "0", "4294967295"}}};
   constexpr std::string_view kCamerasKey = "cameras";
   constexpr std::string_view kNearKey = "znear";
   constexpr std::string_view kFarKey = "zfar";
@@ -239,26 +253,12 @@ void CheckMetadataRelationships(AssetState& state) {
           const auto value = doc.Number(*number);
           std::string_view lower;
           std::string_view upper;
-          if (component == kInt8Component) {
-            lower = "-128";
-            upper = "127";
-          }
-          if (component == kUint8Component) {
-            lower = "0";
-            upper = "255";
-          }
-          if (component == kInt16Component) {
-            lower = "-32768";
-            upper = "32767";
-          }
-          if (component == kUint16Component) {
-            lower = "0";
-            upper = "65535";
-          }
-          if (component == kUint32Component) {
-            lower = "0";
-            upper = "4294967295";
-          }
+          for (const auto& range : kIntegerComponentRanges)
+            if (component == range.component) {
+              lower = range.minimum;
+              upper = range.maximum;
+              break;
+            }
           if (component == kFloatComponent) {
             (void)ReadFloatBits(doc, *number);
             continue;

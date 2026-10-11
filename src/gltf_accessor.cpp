@@ -4,12 +4,18 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <span>
+#include <stop_token>
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 namespace meshvale::interchange::gltf_detail {
 namespace {
@@ -17,6 +23,7 @@ constexpr std::size_t kMatrixColumnAlignment = 4;
 constexpr std::size_t kVertexAlignment = 4;
 constexpr std::size_t kMaximumVertexStride = 252;
 constexpr std::size_t kBitsPerByte = 8;
+constexpr std::size_t kMinimumDecodeWorkers = 2;
 constexpr std::uint32_t kAccessorRule = 300;
 constexpr std::uint32_t kBinaryLayoutRule = 301;
 constexpr std::uint32_t kSparseSelectorRule = 302;
@@ -299,11 +306,11 @@ void RunRows(const AccessorSource& source, const AccessorLayout& layout,
         },
         output.raw);
   };
-  const bool eligible =
-      job_count >= 2 && Product(source.count, layout.rows * layout.columns) >=
+  const bool eligible = job_count >= kMinimumDecodeWorkers &&
+                        Product(source.count, layout.rows * layout.columns) >=
                             policy.parallel_min_channel_components;
   auto workers = geometry::TryReserveWorkers(context, eligible ? job_count : 0);
-  if (workers.Count() < 2) {
+  if (workers.Count() < kMinimumDecodeWorkers) {
     execute(0, source.count);
     return;
   }

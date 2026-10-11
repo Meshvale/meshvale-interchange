@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <charconv>
+#include <cstddef>
 #include <string_view>
 #include <system_error>
 

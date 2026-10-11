@@ -3,8 +3,13 @@
 #include <array>
 #include <bit>
 #include <charconv>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <limits>
+#include <optional>
 #include <string_view>
+#include <system_error>
 
 #include "gltf_metadata.h"
 
@@ -748,6 +753,8 @@ OwnedVector<char> BuildCoreProjection(const AssetState& state) {
   };
   auto string = [&](std::string_view text) {
     constexpr std::string_view kHexDigits = "0123456789abcdef";
+    constexpr unsigned kHexNibbleBits = 4;
+    constexpr unsigned char kHexNibbleMask = 0xf;
     constexpr unsigned char kFirstPrintable = 0x20;
     append("\"");
     for (const auto raw : text) {
@@ -761,8 +768,8 @@ OwnedVector<char> BuildCoreProjection(const AssetState& state) {
                                 'u',
                                 '0',
                                 '0',
-                                kHexDigits[character >> 4],
-                                kHexDigits[character & 0xf]};
+                                kHexDigits[character >> kHexNibbleBits],
+                                kHexDigits[character & kHexNibbleMask]};
         append({escaped, sizeof(escaped)});
       } else {
         append({&raw, 1});

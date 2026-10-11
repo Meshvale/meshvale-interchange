@@ -8,9 +8,11 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include "gltf_accessor.h"
 #include "gltf_asset_state.h"

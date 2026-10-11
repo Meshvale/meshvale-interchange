@@ -140,6 +140,20 @@ struct GltfRawNumberView {
   std::string_view lexeme;
 };
 enum class GltfTransformKind { kDefaultTrs, kTrs, kMatrix };
+// Slot and authored-mask owners for GltfNodeView::local_transform_bits.
+struct GltfLocalTransformLayout {
+  static constexpr std::size_t kSlotCount = 16;
+  static constexpr std::size_t kMatrixDimension = 4;
+  static constexpr std::size_t kTranslationOffset = 0;
+  static constexpr std::size_t kRotationOffset = 3;
+  static constexpr std::size_t kRotationWSlot = 6;
+  static constexpr std::size_t kScaleOffset = 7;
+  static constexpr std::size_t kScaleComponents = 3;
+  static constexpr std::uint8_t kAuthoredTranslation = 1;
+  static constexpr std::uint8_t kAuthoredRotation = 2;
+  static constexpr std::uint8_t kAuthoredScale = 4;
+  static constexpr std::uint8_t kAuthoredMatrix = 8;
+};
 struct GltfNodeView {
   std::uint64_t table_index;
   std::string_view name;
@@ -148,7 +162,14 @@ struct GltfNodeView {
   std::optional<std::uint64_t> mesh;
   std::optional<std::uint64_t> skin;
   GltfTransformKind transform_kind;
-  std::array<std::uint32_t, 16> local_transform_bits;
+  // IEEE binary32 bit patterns. Matrix uses column-major slot column*4+row.
+  // TRS uses translation xyz[0..2], rotation xyzw[3..6], scale xyz[7..9];
+  // unused slots[10..15] are zero. Omitted TRS defaults are zero translation,
+  // identity quaternion and unit scale, including kDefaultTrs nodes.
+  std::array<std::uint32_t, GltfLocalTransformLayout::kSlotCount>
+      local_transform_bits;
+  // OR of the authored layout flags, independent of the populated defaults.
+  // Matrix has only kAuthoredMatrix; an entirely omitted TRS has mask zero.
   std::uint8_t authored_transform_mask;
 };
 struct GltfSceneView {

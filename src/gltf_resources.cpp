@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "gltf_metadata.h"
+#include "meshvale/geometry/execution.h"
 
 namespace meshvale::interchange::gltf_detail {
 namespace {
@@ -45,6 +46,7 @@ constexpr std::size_t kBase64GroupCharacters = 4;
 constexpr std::size_t kBase64GroupBytes = 3;
 constexpr unsigned kBase64CharacterBits = 6;
 constexpr std::size_t kCheckpointCopyBytes = 4096;
+constexpr std::size_t kMinimumCopyWorkers = 2;
 void ResourceFailure(GltfStatus status, GltfDiagnosticCode code,
                      GltfResourceKind kind, std::uint64_t index) {
   throw GltfFailure({status, code, std::nullopt, kind, index, std::nullopt, 0});
@@ -75,7 +77,7 @@ void CopyBytes(AssetState& state, std::span<const std::byte> source,
       start += count;
     }
   };
-  if (lease.Count() < 2) {
+  if (lease.Count() < kMinimumCopyWorkers) {
     if (stats) ++stats->caller_copies;
     copy(0, source.size());
     return;

@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <span>
+#include <stop_token>
+#include <string_view>
 #include <utility>
 
 #include "gltf_asset_state.h"
