@@ -357,56 +357,72 @@ void ConcurrentOwners() {
   Released(counter);
 }
 void Hex(std::string_view text) {
-  constexpr char digits[] = "0123456789abcdef";
+  constexpr char kHexDigits[] = "0123456789abcdef";
+  constexpr unsigned int kHexNibbleBits = 4;
+  constexpr unsigned int kHexNibbleMask = 0xf;
   for (const auto c : text) {
     const auto byte = static_cast<unsigned char>(c);
-    std::cout << digits[byte >> 4] << digits[byte & 15];
+    std::cout << kHexDigits[byte >> kHexNibbleBits]
+              << kHexDigits[byte & kHexNibbleMask];
   }
 }
 void Dump(const char* path) {
+  constexpr std::string_view kCaptureCodePrefix = "code\t";
+  constexpr std::string_view kOriginalSourcePrefix = "source\t";
+  constexpr char kMissingNode = '-';
+  constexpr char kFieldSeparator = '\t';
+  constexpr char kRecordTerminator = '\n';
+  constexpr char kTrueValue = '1';
+  constexpr char kFalseValue = '0';
+  constexpr std::size_t kDumpPayloadBudgetBytes = 1 << 24;
+  constexpr JsonCaptureLimits kDumpLimits{1 << 20, 1 << 16, 1 << 20, 128};
   std::ifstream file(path, std::ios::binary);
   Require(file.good(), "fixture open failed");
   const std::string input{std::istreambuf_iterator<char>(file),
                           std::istreambuf_iterator<char>()};
-  ExecutionContext context({2, 1, 1 << 24});
-  const auto result = CaptureJsonSnapshot(
-      input, {1 << 20, 1 << 16, 1 << 20, 128}, AllocationContext(context, {}));
-  std::cout << "code\t" << static_cast<int>(result.code) << '\n';
+  ExecutionContext context({2, 1, kDumpPayloadBudgetBytes});
+  const auto result =
+      CaptureJsonSnapshot(input, kDumpLimits, AllocationContext(context, {}));
+  std::cout << kCaptureCodePrefix << static_cast<int>(result.code)
+            << kRecordTerminator;
   if (!result.snapshot) return;
   const auto& snapshot = *result.snapshot;
-  std::cout << "source\t";
+  std::cout << kOriginalSourcePrefix;
   Hex(snapshot.Original());
-  std::cout << '\n';
+  std::cout << kRecordTerminator;
   for (std::size_t i = 0; i < snapshot.NodeCount(); ++i) {
-    std::cout << static_cast<int>(snapshot.Kind(i)) << '\t';
+    std::cout << static_cast<int>(snapshot.Kind(i)) << kFieldSeparator;
     if (const auto parent = snapshot.Parent(i))
       std::cout << *parent;
     else
-      std::cout << '-';
-    std::cout << '\t';
+      std::cout << kMissingNode;
+    std::cout << kFieldSeparator;
     if (const auto child = snapshot.FirstChild(i))
       std::cout << *child;
     else
-      std::cout << '-';
-    std::cout << '\t';
+      std::cout << kMissingNode;
+    std::cout << kFieldSeparator;
     if (const auto next = snapshot.NextSibling(i))
       std::cout << *next;
     else
-      std::cout << '-';
-    std::cout << '\t';
+      std::cout << kMissingNode;
+    std::cout << kFieldSeparator;
     Hex(snapshot.Key(i));
-    std::cout << '\t';
+    std::cout << kFieldSeparator;
     if (snapshot.Kind(i) == JsonKind::kNumber) Hex(snapshot.Number(i));
     if (snapshot.Kind(i) == JsonKind::kString) Hex(snapshot.String(i));
     if (snapshot.Kind(i) == JsonKind::kBool)
-      std::cout << (snapshot.Boolean(i) ? "1" : "0");
-    std::cout << '\n';
+      std::cout << (snapshot.Boolean(i) ? kTrueValue : kFalseValue);
+    std::cout << kRecordTerminator;
   }
 }
 }  // namespace
 int main(int argc, char** argv) {
+  constexpr int kDumpArgumentCount = 3;
+  constexpr std::string_view kDumpOption = "--dump";
   try {
-    if (argc == 3 && std::string_view(argv[1]) == "--dump") {
+    if (argc == kDumpArgumentCount &&
+        std::string_view(argv[1]) == kDumpOption) {
       Dump(argv[2]);
       return 0;
     }
