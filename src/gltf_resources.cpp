@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+#include "gltf_resources.h"
+
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <exception>
+#include <optional>
+#include <span>
+#include <string_view>
 #include <thread>
 
 #include "gltf_metadata.h"
@@ -50,11 +57,13 @@ void BoundExtent(AssetState& state, std::uint64_t bytes, std::uint64_t& total) {
   total += bytes;
 }
 void CopyBytes(AssetState& state, std::span<const std::byte> source,
-               std::span<std::byte> destination) {
+               std::span<std::byte> destination, ResourceExecutionStats* stats,
+               const ResourceExecutionHooks* hooks) {
   const auto partition =
       static_cast<std::size_t>(state.work_policy.resource_partition_bytes);
   const auto jobs =
       source.size() / partition + (source.size() % partition != 0);
+  if (stats) stats->jobs += jobs;
   auto lease = source.size() >= state.work_policy.parallel_min_resource_bytes
                    ? geometry::TryReserveWorkers(state.context, jobs)
                    : geometry::WorkerLease{};
@@ -67,6 +76,7 @@ void CopyBytes(AssetState& state, std::span<const std::byte> source,
     }
   };
   if (lease.Count() < 2) {
+    if (stats) ++stats->caller_copies;
     copy(0, source.size());
     return;
   }
@@ -75,24 +85,35 @@ void CopyBytes(AssetState& state, std::span<const std::byte> source,
       Allocator<std::exception_ptr>(state.allocation));
   OwnedVector<std::jthread> workers{Allocator<std::jthread>(state.allocation)};
   workers.reserve(lease.Count());
+  std::exception_ptr launch_exception;
   try {
-    for (std::size_t worker = 0; worker < lease.Count(); ++worker)
+    for (std::size_t worker = 0; worker < lease.Count(); ++worker) {
+      if (hooks && hooks->before_launch)
+        hooks->before_launch(worker, hooks->state);
       workers.emplace_back([&, worker] {
         for (auto job = worker; job < jobs; job += lease.Count()) {
           const auto start = job * partition;
           const auto end = start + std::min(partition, source.size() - start);
           try {
+            if (hooks && hooks->before_job)
+              hooks->before_job(job, hooks->state);
             copy(start, end);
           } catch (...) {
             failures[job] = std::current_exception();
           }
+          if (hooks && hooks->after_job) hooks->after_job(job, hooks->state);
         }
       });
+      if (stats) ++stats->launched;
+    }
   } catch (...) {
-    for (auto& worker : workers) worker.join();
-    throw;
+    launch_exception = std::current_exception();
   }
-  for (auto& worker : workers) worker.join();
+  for (auto& worker : workers) {
+    worker.join();
+    if (stats) ++stats->joined;
+  }
+  if (launch_exception) std::rethrow_exception(launch_exception);
   // Actual exceptions precede discovered expected cancellation failures.
   for (const auto& failure : failures) {
     if (!failure) continue;
@@ -163,10 +184,11 @@ void DecodeBase64(std::string_view text, std::span<std::byte> destination,
               text[at + digit] == '=' ? 0
                                       : kBase64Alphabet.find(text[at + digit]));
     constexpr unsigned kByteBits = 8;
+    constexpr std::uint32_t kByteMask = 0xffu;
     for (std::size_t byte = 0;
          byte < kBase64GroupBytes && output < destination.size(); ++byte)
       destination[output++] = static_cast<std::byte>(
-          (bits >> ((kBase64GroupBytes - byte - 1) * kByteBits)) & 0xffu);
+          (bits >> ((kBase64GroupBytes - byte - 1) * kByteBits)) & kByteMask);
   }
 }
 void ImageSignature(const GltfResourceView& resource, std::string_view mime) {
@@ -188,7 +210,10 @@ void ImageSignature(const GltfResourceView& resource, std::string_view mime) {
 }
 }  // namespace
 void AdmitResources(AssetState& state,
-                    std::span<const SuppliedGltfResource> supplied) {
+                    std::span<const SuppliedGltfResource> supplied,
+                    ResourceExecutionStats* stats,
+                    const ResourceExecutionHooks* hooks) {
+  if (stats) *stats = {};
   const auto& document = state.document;
   std::uint64_t total = document.Original().size();
   const auto buffers = FindMember(document, 0, kBuffersKey);
@@ -313,7 +338,7 @@ void AdmitResources(AssetState& state,
         if (prefix)
           DecodeBase64(encoded, destination, state.allocation);
         else
-          CopyBytes(state, binding->bytes, destination);
+          CopyBytes(state, binding->bytes, destination, stats, hooks);
         resource.bytes = destination;
         if (kind == GltfResourceKind::kImage) resource.logical_bytes = bytes;
       }

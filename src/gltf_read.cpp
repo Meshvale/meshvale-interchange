@@ -5,6 +5,7 @@
 
 #include "gltf_metadata.h"
 #include "gltf_parser.h"
+#include "gltf_resources.h"
 #include "meshvale/interchange/gltf.h"
 
 namespace meshvale::interchange {
