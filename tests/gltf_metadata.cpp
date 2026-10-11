@@ -77,8 +77,8 @@ void Dump(const char* path) {
               << '\n';
     for (const auto rule : state.guard_rules) {
       const auto guard_path = GuardPath(rule);
-      if (guard_path.empty()) continue;
-      std::cout << "guard\t";
+      if (rule == std::numeric_limits<std::uint32_t>::max()) continue;
+      std::cout << "guard\t" << rule << '\t';
       Hex(guard_path);
       std::cout << '\n';
     }
@@ -111,7 +111,7 @@ void Dump(const char* path) {
     if (kind == JsonKind::kNumber) Hex(state.document.Number(node));
     if (kind == JsonKind::kBool)
       std::cout << (state.document.Boolean(node) ? "1" : "0");
-    std::cout << '\t';
+    std::cout << '\t' << state.guard_rules[node] << '\t';
     Hex(GuardPath(state.guard_rules[node]));
     std::cout << '\n';
   }
