@@ -73,6 +73,9 @@ function(meshvale_require_geometry_materialization)
   unset(MESHVALE_GEOMETRY_CHARGED_MATERIALIZATION CACHE)
   set(CMAKE_REQUIRED_LIBRARIES meshvale::materialization)
   check_cxx_source_compiles("#include <meshvale/geometry/materialization.h>
+  #include <meshvale/geometry/editable_mesh.h>
+  #include <cstdint>
+  #include <span>
   int main() {
     using namespace meshvale::geometry;
     MeshMaterializationInput input;
@@ -265,7 +268,7 @@ if(BUILD_TESTING)
   target_link_libraries(meshvale_gltf_json_tests PRIVATE meshvale::interchange)
   meshvale_warnings(meshvale_gltf_json_tests)
   add_test(NAME gltf_json_snapshot COMMAND meshvale_gltf_json_tests)
-  if(MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "qualified")
+  if(MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "${_MESHVALE_INTERCHANGE_PROFILE_QUALIFIED}")
     add_executable(meshvale_gltf_materialization_tests tests/gltf_materialization.cpp)
     target_include_directories(meshvale_gltf_materialization_tests PRIVATE src)
     target_link_libraries(meshvale_gltf_materialization_tests PRIVATE meshvale::gltf_materialization)
