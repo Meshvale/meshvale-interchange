@@ -106,6 +106,44 @@ jobs:
       - name: Test installed consumer
         run: ctest --test-dir .local/consumer -C Release --output-on-failure
 
+  native-gltf-sanitizers:
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [asan-ubsan, tsan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Meshvale/meshvale-geometry
+          ref: ec38fabd783a578947d43856b0c7a7fd54ce8533
+          path: .local/geometry-source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: microsoft/vcpkg
+          ref: cb5a41b03cde4086d554b3f3e2eac39206b16eda
+          path: .local/vcpkg-runtime
+      - name: Evaluate actual native interfaces with matched instrumentation
+        run: >-
+          python scripts/run-native-sanitizers.py --profile ${{ matrix.profile }}
+          --geometry-source .local/geometry-source --vcpkg-root .local/vcpkg-runtime
+      - name: Retain sanitizer inputs, commands, inventories and oracle evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: native-gltf-${{ matrix.profile }}
+          path: |
+            .local/native-sanitizers/${{ matrix.profile }}/evidence
+            .local/native-sanitizers/${{ matrix.profile }}/*-oracle
+            .local/native-sanitizers/${{ matrix.profile }}/*-build/Testing
+          include-hidden-files: true
+          if-no-files-found: error
+
   python:
     strategy:
       fail-fast: false

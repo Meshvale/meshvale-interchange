@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# The runner owns flags; tracked environment values participate in the port ABI.
+if(NOT "$ENV{MESHVALE_SANITIZER_PROFILE}" STREQUAL "${MESHVALE_EXPECTED_SANITIZER_PROFILE}")
+  message(FATAL_ERROR "Run the selected profile with scripts/run-native-sanitizers.py")
+endif()
+if("$ENV{MESHVALE_SANITIZER_COMPILE_FLAGS}" STREQUAL "" OR
+   "$ENV{MESHVALE_SANITIZER_LINK_FLAGS}" STREQUAL "")
+  message(FATAL_ERROR "The runner must supply sanitizer compile and link flags")
+endif()
+set(VCPKG_TARGET_ARCHITECTURE x64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME Linux)
+set(VCPKG_C_FLAGS "$ENV{MESHVALE_SANITIZER_COMPILE_FLAGS}")
+set(VCPKG_CXX_FLAGS "${VCPKG_C_FLAGS}")
+set(VCPKG_LINKER_FLAGS "$ENV{MESHVALE_SANITIZER_LINK_FLAGS}")
+set(VCPKG_ENV_PASSTHROUGH CC CXX MESHVALE_SANITIZER_PROFILE
+  MESHVALE_SANITIZER_COMPILE_FLAGS MESHVALE_SANITIZER_LINK_FLAGS)
+set(VCPKG_HASH_ADDITIONAL_FILES "${CMAKE_CURRENT_LIST_FILE}")
+set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
+# Build both port configurations; the matching Debug imported target is consumed.
