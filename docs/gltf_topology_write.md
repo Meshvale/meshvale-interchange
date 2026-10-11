@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-TOPOLOGY-WRITE-001 |
-| Version | 0.1.0 |
-| Status | Declaration draft; runtime and installed target unavailable |
+| Version | 0.1.1 |
+| Status | Native development implementation; full sanitizer/hosted qualification pending |
 | Interface | [gltf_topology_write.h](../include/meshvale/interchange/gltf_topology_write.h) |
 
 This contract selects supplied-memory output for an ordered triangle subset of
@@ -13,8 +13,9 @@ accessors, raw channels, resources and graph identities. The
 [reader/extractor](gltf-read.md) owns source admission and static-local processing
 capability; the [unchanged writer](gltf_write.md) remains a separate operation.
 This writer verifies preservation and selection, not the caller's reason for
-removing a face. No callable implementation or qualified platform is claimed by
-these declarations.
+removing a face. The separate native target provides the supplied-memory
+operation. It is a development interface with the qualification boundary below;
+no stable release is established.
 
 ## GTW-INPUT-001: Authority and candidate
 
@@ -34,6 +35,14 @@ mappings and canonical mesh provide the retained identity; shared accessors or
 caller-supplied ordinals cannot substitute another primitive. Existing source
 capability restrictions remain in force, including selected skin/morph/affecting
 animation and extension effects. This operation grants no new admission.
+
+The [reader/extractor](gltf-read.md#typed-primitive-output) owns binary admission.
+An immutable source asset can still report `kBinaryAdmissionPending` after its
+successful extraction: the extraction retains the completed binary proof
+without rewriting that asset's preliminary capability. This writer accepts
+that state only through the required strong `GltfMaterializedPrimitive`, which
+retains the admitted extraction, or the existing `kReady` state. Other capability
+reasons remain unsupported; retaining an asset alone cannot bypass extraction.
 
 The candidate has exactly the same vertices and ordered channel declarations as
 the source. Compare complete canonical position bits and every attribute's
@@ -240,20 +249,76 @@ attribute/element/JSON span/actual storage issue. No delegated Geometry failure
 is fabricated from a caller-supplied inspection. Allocation/backend failures
 retain the allocator's exception behavior after noallocating cleanup and joins.
 
-## GTW-QUALIFICATION-001: Pending gates and scope
+## GTW-BUILD-001: Native target and dependency
 
-Before this draft becomes callable, qualify independent Read -> Extract ->
-Materialize -> candidate inspection/selection -> Write -> Read -> Extract
-fixtures. Cover exact no-op, changed-empty refusal, all selected source modes,
-shared accessors/instances, escaped keys/opaque lexemes, full resource bytes,
-raw normalized/sparse/interleaved channels, signed extrema/zero/subnormals,
-unused vertices/degenerates, both maps and original stream provenance. An opt-in
-large physical vertex fixture must witness a new index above2^24 without a float
-surrogate. Mismatched bytes/declarations, foreign ledgers and malformed maps
-publish nothing. Independently observe actual requested blocks/peak and cap-minus-
-one rollback, faults, fresh/old tokens, serial/real joined workers and partial
-launch. Exact source/archive/install and matching sanitizer/profile/hosted gates
-remain necessary; no performance guarantee is made.
+`MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` defaults to `ON` for native builds.
+It adds the installed static target `meshvale::gltf_topology_write` and public
+[header](../include/meshvale/interchange/gltf_topology_write.h). Configuration
+requires callable compiled `MaterializedMesh::ShareExecutionContext()` and
+`SharesExecutionBudget()` from the documented
+[Geometry producer](https://github.com/Meshvale/meshvale-geometry/tree/1a364acb0cba4fbf8cd9cccde5c04a1fa4428536),
+plus the existing [materialization dependencies](gltf-materialization.md).
+The configure-time link probe rejects a producer missing those symbols; it
+does not silently disable the module or select a different ledger.
+
+Follow [ENVIRONMENT.md](../ENVIRONMENT.md) for compiler, dependency prefixes,
+vcpkg and build/install commands. Enable this module explicitly with
+`-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON`. Native and installed test
+configurations must use the same explicit
+`MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=qualified` or `unsupported`
+value for the actual Geometry producer. That setting selects expected test
+outcomes; it does not admit a numerical profile. Geometry's
+[compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/1a364acb0cba4fbf8cd9cccde5c04a1fa4428536/docs/materialization.md#compiled-allocation-profiles)
+owns that admission.
+
+An installed C++20 consumer links the target directly:
+
+```cmake
+find_package(MeshvaleInterchange CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE meshvale::gltf_topology_write)
+```
+
+The [installed operation example](../examples/consumer/gltf_topology_write.cpp)
+composes public Read, Extract, Materialize, face selection, inspection, Write
+and a separate reload. It uses no Repair, Eigen or private Geometry interface.
+The [link example](../examples/consumer/gltf_topology_write_link.cpp) checks the
+installed target without fabricating a nonempty numerical producer on an
+unsupported profile.
+
+Explicit `OFF` omits this module's target, header installation and writer tests;
+the existing reader, unchanged writer and materialization targets keep their
+own availability. The current [Python build](python.md) explicitly sets this
+option `OFF`, retains its existing dependency cohort and exposes no glTF
+topology writer binding.
+
+## GTW-QUALIFICATION-001: Development evidence and remaining gates
+
+The local Windows x64 MSVC Release evaluation passed all 17 native suites and
+9 consumers built and executed against a relocated installed prefix. The writer
+fixtures execute independent Read -> Extract -> Materialize -> candidate
+inspection/selection -> Write -> Read -> Extract paths. They cover exact no-op,
+changed-empty refusal, triangles/strip/fan, shared accessors/instances, escaped
+keys/opaque lexemes, full resource bytes, raw normalized/sparse/interleaved
+channels, signed extrema/zero/subnormals, unused vertices/degenerates, both maps
+and original stream provenance. Rejected bytes/declarations, foreign ledgers
+and malformed maps publish nothing.
+
+The qualified native inventory includes a separate required large-resource test
+with 16,777,218 physical vertex rows and a new UINT32 index of 16,777,217. The
+default unfiltered CTest invocation executes it with an explicit 2048 MiB ledger
+setting. `RUN_SERIAL` prevents concurrent tests; the writer's payload workers
+remain active. No float surrogate replaces that index. Focused tests observe
+complete original allocation requests and their peak, exact-peak and one-byte-
+lower cap outcomes, every request-ordinal fault, shared-ledger saturation with a
+prior output alive, fresh/old tokens, real joined workers in all four payload
+phases, partial launch and deterministic first failure after late cancellation.
+These observations are separate from RSS or cumulative allocation traffic.
+
+Exact source/archive/package correspondence, matching Windows and Linux
+sanitizer profiles, unsupported producer coverage and hosted native/installed
+gates remain necessary before full qualification. The local native result does
+not establish those pending gates, stable API compatibility or a release. No
+performance guarantee is made.
 
 This increment excludes arbitrary channel/vertex mutation, selected
 skin/morph/animation processing, GLB asset conversion, filesystem publication,

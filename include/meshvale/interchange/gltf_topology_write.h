@@ -21,7 +21,8 @@ struct BundleState;
 struct Access;
 }  // namespace gltf_topology_write_detail
 
-// Draft declarations only; runtime and installed target are not yet available.
+// Development native interface; link the optional meshvale::gltf_topology_write
+// target. See the owning contract for qualification and build boundaries.
 // Inputs remain alive and unmodified until the synchronous operation returns.
 struct GltfTopologyWriteRequest {
   const GltfMaterializedPrimitive& source;
