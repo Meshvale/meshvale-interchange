@@ -4,6 +4,11 @@
 
 ### Added
 
+- Native supplied-byte GLB container capture and assembly with owned JSON/BIN/
+  opaque chunks, canonical output padding, explicit limits and joined copy
+  partitions under Geometry's shared execution budget. Wire-container success
+  does not establish glTF asset/resource validity or add Python format support.
+
 - Optional native USD mesh extraction from selected default-time USDA/USDC meshes, preserving polygon loops and supported normal/UV interpolation with owned source tables. The separate SDK-backed target reports unsupported scene features; the default Python package remains OBJ-only.
 
 - Optional native FBX static polygon import with owned source bytes, normal/UV layer tables and axis/unit metadata. The separate target requires a locally licensed Autodesk SDK and reports unsupported scene features; the default Python package remains OBJ-only.
