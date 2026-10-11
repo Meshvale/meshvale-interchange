@@ -42,6 +42,9 @@ constexpr std::uint64_t kRequestLimit = 4194304;
 constexpr std::uint64_t kDescriptorLimit = 1048576;
 constexpr std::uint64_t kChannelLimit = 1024;
 constexpr std::uint64_t kParallelMinimumBytes = 1;
+constexpr std::uint64_t kParallelMinimumVertices = 1;
+constexpr std::uint64_t kParallelMinimumChannelComponents = 1;
+constexpr std::uint64_t kChannelPartitionElements = 1;
 constexpr std::uint64_t kPartitionBytes = 64;
 constexpr std::uint64_t kCancellationBlockScalars = 1;
 constexpr std::uint64_t kMaximumJobs = 32;
@@ -99,7 +102,7 @@ void ReportRejected(const mv::GltfDiagnostic& diagnostic,
 }
 geo::ExecutionContext Context() {
   return geo::ExecutionContext(
-      {kWorkerBudget, kParallelMinimumBytes, kPayloadBudget});
+      {kWorkerBudget, kParallelMinimumVertices, kPayloadBudget});
 }
 geo::MeshMaterializationWorkPolicy Work() {
   return {kParallelMinimumBytes, kPartitionBytes, kCancellationBlockScalars,
@@ -132,8 +135,8 @@ mv::GltfPrimitiveExtraction Extract(
       bytes.empty() ? std::span<const mv::SuppliedGltfResource>{}
                     : std::span(&resource, 1),
       ReadLimits(),
-      {kParallelMinimumBytes, kPartitionBytes, kParallelMinimumBytes,
-       kCancellationBlockScalars},
+      {kParallelMinimumBytes, kPartitionBytes,
+       kParallelMinimumChannelComponents, kChannelPartitionElements},
       context, stop);
   if (!read.asset) ReportRejected(read.diagnostic, kReaderRejectionPrefix);
   Require(read.asset.has_value(), "actual reader rejected focused fixture");
