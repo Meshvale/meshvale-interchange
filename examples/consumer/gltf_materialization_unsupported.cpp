@@ -60,14 +60,13 @@ int main() {
         kDocumentDepth, kDocumentBytes,  kNumericTokenBytes, kNumericDigits,
         kNumericDigits, kTableRows,      kTableRows,         kTableRows,
         kTableRows,     kProjectionBytes};
-    auto read =
-        mv::ReadGltfAsset({reinterpret_cast<const std::byte*>(kDocument.data()),
-                           kDocument.size()},
-                          {}, read_limits,
-                          {kMinimumParallelBytes, kResourcePartitionBytes,
-                           kMinimumParallelChannelComponents,
-                           kChannelPartitionElements},
-                          context, {});
+    auto read = mv::ReadGltfAsset(
+        {reinterpret_cast<const std::byte*>(kDocument.data()),
+         kDocument.size()},
+        {}, read_limits,
+        {kMinimumParallelBytes, kResourcePartitionBytes,
+         kMinimumParallelChannelComponents, kChannelPartitionElements},
+        context, {});
     Require(read.asset && read.diagnostic.status == mv::GltfStatus::kAccepted);
     auto extraction = mv::ExtractGltfPrimitive(
         *read.asset, *read.asset->Primitive(0),
