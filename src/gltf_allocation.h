@@ -74,6 +74,12 @@ class AllocationContext {
   AllocationContext(const geometry::ExecutionContext& context,
                     std::stop_token stop,
                     AllocationBackend backend = DefaultAllocationBackend());
+  // Keep ledger-owner special members in the compiled allocation module.
+  AllocationContext(const AllocationContext& other) noexcept;
+  AllocationContext(AllocationContext&& other) noexcept;
+  AllocationContext& operator=(const AllocationContext& other) noexcept;
+  AllocationContext& operator=(AllocationContext&& other) noexcept;
+  ~AllocationContext() noexcept;
   [[nodiscard]] void* Allocate(std::size_t bytes, std::size_t alignment) const;
   // Nonallocating operation checkpoint; cleanup must never call it.
   void Checkpoint() const;
