@@ -29,6 +29,7 @@ constexpr unsigned int kBitsPerByte = 8;
 constexpr std::uint32_t kByteMask = 0xff;
 constexpr std::byte kJsonPadding{0x20};
 constexpr std::byte kBinPadding{0};
+constexpr std::size_t kMinimumParallelWorkers = 2;
 
 struct ChunkRecord {
   std::uint32_t type;
@@ -132,9 +133,10 @@ std::size_t CopyPartitions(std::size_t bytes, std::size_t output_request,
   const auto partitions = bytes / work.partition_bytes +
                           (bytes % work.partition_bytes != 0 ? 1 : 0);
   const auto desired = std::min(partitions, context.WorkerBudget());
-  auto lease = bytes >= work.parallel_min_bytes && desired >= 2
-                   ? geometry::TryReserveWorkers(context, desired)
-                   : geometry::WorkerLease{};
+  auto lease =
+      bytes >= work.parallel_min_bytes && desired >= kMinimumParallelWorkers
+          ? geometry::TryReserveWorkers(context, desired)
+          : geometry::WorkerLease{};
   const auto count = lease.Count();
   if (count == 0) {
     for (std::size_t begin = 0; begin < bytes;) {

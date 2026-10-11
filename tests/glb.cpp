@@ -7,9 +7,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <iostream>
 #include <limits>
 #include <new>
+#include <span>
 #include <stdexcept>
 #include <stop_token>
 #include <string_view>

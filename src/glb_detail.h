@@ -3,6 +3,8 @@
 #define MESHVALE_INTERCHANGE_SRC_GLB_DETAIL_H_
 
 #include <cstddef>
+#include <span>
+#include <stop_token>
 
 #include "gltf_allocation.h"
 #include "meshvale/interchange/glb.h"
