@@ -194,13 +194,33 @@ void PrintRaw(std::string_view tag, const mv::GltfRawValues& values) {
       values);
   std::cout << '\n';
 }
-void RunOracleCase(char** argv) {
+void RunOracleCase(char** argv, bool public_read) {
   const auto json = ReadFile(argv[1]);
   const auto resource = ReadFile(argv[2]);
   const std::span bytes(reinterpret_cast<const std::byte*>(resource.data()),
                         resource.size());
   meshvale::geometry::ExecutionContext context({4, 1, 10000000});
-  auto asset = CaptureFixture(json, bytes, context);
+  std::optional<mv::GltfAsset> retained;
+  if (public_read) {
+    std::vector<mv::SuppliedGltfResource> bindings;
+    if (!bytes.empty())
+      bindings.push_back({mv::GltfResourceKind::kBuffer, 0, bytes});
+    const mv::GltfReadLimits limits{100000, 100000, 100000, 10000, 100,
+                                    100000, 100,    100,    100,   1000,
+                                    1000,   1000,   100000, 100000};
+    auto read = mv::ReadGltfAsset(
+        {reinterpret_cast<const std::byte*>(json.data()), json.size()},
+        bindings, limits, {1, 1, 1, 1}, context, {});
+    if (!read.asset) {
+      std::cout << "D " << static_cast<int>(read.diagnostic.status) << ' '
+                << static_cast<int>(read.diagnostic.code) << '\n';
+      return;
+    }
+    retained = std::move(read.asset);
+  } else {
+    retained = CaptureFixture(json, bytes, context);
+  }
+  const auto& asset = *retained;
   auto result = mv::ExtractGltfPrimitive(
       asset, *asset.Primitive(0),
       {std::string_view(argv[3]) == "triangles"
@@ -261,8 +281,8 @@ void RunOracleCase(char** argv) {
 }  // namespace
 int main(int argc, char** argv) {
   try {
-    if (argc == 4) {
-      RunOracleCase(argv);
+    if (argc == 4 || (argc == 5 && std::string_view(argv[4]) == "read")) {
+      RunOracleCase(argv, argc == 5);
       return 0;
     }
     TopologyAndOwnership();

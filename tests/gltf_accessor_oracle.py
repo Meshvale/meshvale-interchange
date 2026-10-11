@@ -1,8 +1,8 @@
 """Independent struct/Decimal/Fraction oracle for actual native extraction.
 
-Usage: python gltf_accessor_oracle.py NATIVE_TEST_EXECUTABLE NEW_OUTPUT_DIRECTORY
+Usage: python gltf_accessor_oracle.py NATIVE_TEST_EXECUTABLE NEW_OUTPUT_DIRECTORY [read]
 The test driver constructs immutable snapshots through the private retention
-seam; this is extraction proof, not ReadGltfAsset metadata/capture acceptance.
+seam by default; pass read to exercise actual ReadGltfAsset before extraction.
 """
 
 from copy import deepcopy
@@ -224,6 +224,21 @@ def cases():
     yield "color-outside-range", doc, struct.pack("<f", 1.5) + data[4:], 3
     doc, data = channel_case(5126)
     yield "nonfinite", doc, struct.pack("<I", 0x7f800000) + data[4:], 3
+    # Fully populated animation relationships let the public reader reach the
+    # extractor's global usage check, rather than fail missing metadata first.
+    doc, data = channel_case(5126)
+    doc["nodes"] = [{}]
+    doc["accessors"].append({"componentType": 5126, "type": "VEC3", "count": 3})
+    doc["animations"] = [{"samplers": [{"input": 1, "output": 2}],
+                          "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}]}]
+    yield "complete-animation-accessor-role", doc, data, 3
+    doc, data = channel_case(5126, "VEC3")
+    doc["nodes"] = [{}]
+    doc["accessors"].append({"componentType": 5126, "type": "SCALAR", "count": 3, "bufferView": 0})
+    doc["accessors"].append({"componentType": 5126, "type": "VEC3", "count": 3})
+    doc["animations"] = [{"samplers": [{"input": 2, "output": 3}],
+                          "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}]}]
+    yield "complete-animation-shared-view-role", doc, data, 3
     doc, data = channel_case(5121, "VEC2", True, True, "TEXCOORD_0")
     multiple = deepcopy(doc)
     multiple["meshes"][0]["primitives"][0]["attributes"].update({"TEXCOORD_1": 1, "TEXCOORD_2": 1})
@@ -255,7 +270,11 @@ def main():
         source.write_text(json.dumps(document), encoding="utf-8")
         binary.write_bytes(payload)
         request = "triangles" if document["meshes"][0]["primitives"][0].get("mode", 4) == 4 else "convert"
-        run = subprocess.run([str(executable), str(source), str(binary), request], capture_output=True, text=True)
+        command = [str(executable), str(source), str(binary), request]
+        if len(sys.argv) == 4:
+            if sys.argv[3] != "read": raise ValueError("Unknown capture mode")
+            command.append("read")
+        run = subprocess.run(command, capture_output=True, text=True)
         (output / f"{name}.stdout").write_text(run.stdout, encoding="utf-8")
         (output / f"{name}.stderr").write_text(run.stderr, encoding="utf-8")
         if run.returncode: raise AssertionError((name, run.returncode, run.stderr))

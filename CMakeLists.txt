@@ -118,7 +118,7 @@ meshvale_warnings(meshvale_interchange)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 install(TARGETS meshvale_interchange EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h
+install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/meshvale/interchange")
 install(EXPORT MeshvaleInterchangeTargets NAMESPACE meshvale::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
@@ -156,6 +156,7 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   add_library(meshvale_interchange_header_checks OBJECT
+    tests/headers/gltf_h.cpp
     tests/headers/obj_h.cpp
     tests/headers/obj_files_h.cpp)
   target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::interchange)
