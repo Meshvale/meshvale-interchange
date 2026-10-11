@@ -35,6 +35,9 @@ constexpr std::uint64_t kAttributeOffsets = 4096;
 constexpr std::uint64_t kPresenceBytes = 4096;
 constexpr std::uint64_t kMetadataEntries = 1024;
 constexpr std::uint64_t kMinimumParallelBytes = 1;
+constexpr std::uint64_t kMinimumParallelVertices = 1;
+constexpr std::uint64_t kMinimumParallelChannelComponents = 1;
+constexpr std::uint64_t kChannelPartitionElements = 1;
 constexpr std::uint64_t kResourcePartitionBytes = 4;
 constexpr std::uint64_t kCapturePartitionBytes = 64;
 constexpr std::uint64_t kCancellationBlockScalars = 16;
@@ -51,7 +54,7 @@ int main() {
     constexpr std::string_view kDocument =
         R"({"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"type":"VEC3","count":3,"min":[0,0,0],"max":[0,0,0]}],"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]})";
     geo::ExecutionContext context(
-        {kWorkerBudget, kMinimumParallelBytes, kSharedPayloadBytes});
+        {kWorkerBudget, kMinimumParallelVertices, kSharedPayloadBytes});
     const mv::GltfReadLimits read_limits{
         kDocumentBytes, kResourceBytes,  kProjectionBytes,   kDocumentNodes,
         kDocumentDepth, kDocumentBytes,  kNumericTokenBytes, kNumericDigits,
@@ -62,7 +65,8 @@ int main() {
                            kDocument.size()},
                           {}, read_limits,
                           {kMinimumParallelBytes, kResourcePartitionBytes,
-                           kMinimumParallelBytes, kMinimumParallelBytes},
+                           kMinimumParallelChannelComponents,
+                           kChannelPartitionElements},
                           context, {});
     Require(read.asset && read.diagnostic.status == mv::GltfStatus::kAccepted);
     auto extraction = mv::ExtractGltfPrimitive(
