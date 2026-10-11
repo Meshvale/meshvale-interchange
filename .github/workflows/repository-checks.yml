@@ -40,7 +40,7 @@ jobs:
             compiler_option: ""
             build_type: Release
             materialization_profile: qualified
-            compile_flags: ""
+            compile_flags: /EHsc
             link_flags: ""
             sanitizer: ""
           - profile_id: windows-msvc-asan-qualified
@@ -50,7 +50,7 @@ jobs:
             compiler_option: ""
             build_type: Release
             materialization_profile: qualified
-            compile_flags: /fsanitize=address /Zi
+            compile_flags: /EHsc /fsanitize=address /Zi
             link_flags: /INCREMENTAL:NO
             sanitizer: asan
           - profile_id: linux-clang-qualified
