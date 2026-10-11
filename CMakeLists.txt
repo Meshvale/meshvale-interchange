@@ -274,6 +274,7 @@ if(BUILD_TESTING)
     add_executable(meshvale_gltf_materialization_semantics_tests
       tests/gltf_materialization_semantics/main.cpp
       tests/gltf_materialization_semantics/fixture_support.cpp
+      tests/gltf_materialization_semantics/fixture_data.cpp
       tests/gltf_materialization_semantics/raw_channels.cpp
       tests/gltf_materialization_semantics/topology_provenance.cpp
       tests/gltf_materialization_semantics/lifetimes.cpp)
