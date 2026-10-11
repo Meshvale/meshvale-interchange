@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -16,6 +17,8 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+
+#include "meshvale/geometry/execution.h"
 
 namespace meshvale::interchange::gltf_detail {
 namespace {
