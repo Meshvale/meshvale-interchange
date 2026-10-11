@@ -105,7 +105,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: 48bb348112f49a07aec03bc69b9875ea6b62128a
+          ref: 1a364acb0cba4fbf8cd9cccde5c04a1fa4428536
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -167,6 +167,7 @@ jobs:
           ${{ matrix.compiler_option }} "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
           "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
+          -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -211,6 +212,7 @@ jobs:
           "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
           "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
+          -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -288,7 +290,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: 48bb348112f49a07aec03bc69b9875ea6b62128a
+          ref: 1a364acb0cba4fbf8cd9cccde5c04a1fa4428536
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

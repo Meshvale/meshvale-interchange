@@ -85,20 +85,20 @@ profile matches both CMake caches, the actual configured compiler identity/versi
 build configuration and complete native/installed test sets. No profile selects
 an empty suite or silently skips unsupported numerical capture.
 
-The workflow pins Geometry to
-`48bb348112f49a07aec03bc69b9875ea6b62128a`, independently of its development
-package version. Its [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/48bb348112f49a07aec03bc69b9875ea6b62128a/docs/materialization.md#compiled-allocation-profiles)
+Native and sanitizer rows pin Geometry to
+`1a364acb0cba4fbf8cd9cccde5c04a1fa4428536`, independently of its development
+package version. Its [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/1a364acb0cba4fbf8cd9cccde5c04a1fa4428536/docs/materialization.md#compiled-allocation-profiles)
 owns the numerical admission tuple. Geometry is configured as a standalone
 producer without the Interchange/vcpkg toolchain. Native lanes disable system
 Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified | Geometry 16; Interchange 13; installed 7 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified | Geometry 16; Interchange 13; installed 7 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified | Geometry 16; Interchange 13; installed 7 |
-| Linux GNU | Release, unsupported | Geometry 13; Interchange 12; installed 7 |
-| macOS AppleClang | Release, unsupported | Geometry 13; Interchange 12; installed 7 |
+| Windows x64 MSVC | Release, qualified | Geometry 16; Interchange 17; installed 9 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified | Geometry 16; Interchange 17; installed 9 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified | Geometry 16; Interchange 17; installed 9 |
+| Linux GNU | Release, unsupported | Geometry 13; Interchange 13; installed 8 |
+| macOS AppleClang | Release, unsupported | Geometry 13; Interchange 13; installed 8 |
 
 Qualified rows include the focused materialization and independent semantic
 suites. Unsupported rows exercise actual nonempty delegated unsupported-profile
@@ -108,6 +108,22 @@ both profiles. The additional materialization oracle runs in qualified rows.
 These are configured gates; only completed actual runs establish acceptance of
 the candidate's implementation. The [draft transfer contract](docs/gltf-materialization.md)
 owns interface availability and scope.
+
+Native builds enable `MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` by default. The
+[topology output contract](docs/gltf_topology_write.md#gtw-build-001-native-target-and-dependency)
+owns its compiled Geometry sharing requirement and installed target. Configuration
+checks callable `MaterializedMesh::ShareExecutionContext()` and
+`SharesExecutionBudget()` symbols. An explicit OFF selection keeps the prior
+native inventories: qualified 13/installed 7 or unsupported 12/installed 7, and
+installs neither the writer target nor its header.
+
+With the writer ON, qualified rows also require its focused request/worker/fault
+suite, independent preservation/reload suite, public UINT32 index above2^24 case,
+link consumer and installed operation consumer. The large-index test is required
+and declares a 2048 MiB resource budget; CTest schedules it alone while its operation
+still uses admitted workers. Unsupported rows add the real dependency link check
+without pretending that nonempty numerical materialization is admitted. These
+inventory definitions are configured requirements, not completed hosted proof.
 
 Native rows use Ninja and record their compile-command inventories and test
 results. Windows loads the installed Visual Studio x64 compiler environment.
@@ -120,7 +136,8 @@ Binary-cache reuse is disabled, and build/dependency concurrency is bounded to
 two. This lane is separate from Linux ASan/UBSan and TSan.
 
 The six ordinary Python rows retain the Release OBJ interface and matching
-Geometry wheel/native prefix. They do not qualify a glTF Python operation,
+Geometry wheel/native prefix (`48bb348112f49a07aec03bc69b9875ea6b62128a`).
+Python packaging explicitly disables the topology writer. These rows do not qualify a glTF Python operation,
 charged transfer or Linux Release materialization profile. The separate portable
 OBJ candidate workflow retains its own package/dependency preparation checks.
 
@@ -134,7 +151,7 @@ does not establish sanitizer coverage or platform support. The
 revisions matching the ordinary native job, without changing the Python cohort.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange and all seven installed consumers. Geometry's owning
+Geometry, Interchange and all nine installed consumers. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
 fail the qualified suite rather than relabel it unsupported. The ordinary native
@@ -149,7 +166,7 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes require Interchange's qualified 13 suites and seven installed test
+Both lanes require Interchange's qualified 17 suites and nine installed test
 entries. Geometry requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an

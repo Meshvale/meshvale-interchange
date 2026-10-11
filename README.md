@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction and unchanged memory output, optional native USD and FBX imports, resource snapshots, verified OBJ bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -38,8 +38,17 @@ separate `meshvale::gltf_materialization` target. It retains source ownership,
 channel correspondence and normalization declarations; canonical attributes
 remain raw. Its [installed example](examples/consumer/gltf_materialization.cpp)
 composes transfer, inspection and face selection. The transfer contract owns
-numerical-profile and lifetime limits. Edited asset writing, filesystem
-publication and Python glTF operations remain forthcoming.
+numerical-profile and lifetime limits. Edited filesystem publication and Python
+glTF operations remain forthcoming.
+
+The [checked topology writer](docs/gltf_topology_write.md) writes an ordered
+triangle subset into supplied-memory glTF JSON through `meshvale::gltf_topology_write`.
+It verifies the inspected candidate and both correspondence maps, keeps original
+vertex/channel accessors and resources, and appends a UINT32 index resource for
+changed output. Identity output retains the exact original JSON. The
+[installed example](examples/consumer/gltf_topology_write.cpp) demonstrates
+selection, writing and independent reload. This native development operation
+does not establish edited GLB publication, Python operations or a stable release.
 
 ## Optional native USD extraction
 

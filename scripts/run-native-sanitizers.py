@@ -18,7 +18,7 @@ BUILD_CONFIGURATION = "Debug"
 CLANG_CXX = "clang++-18"
 CLANG_C = "clang-18"
 CLANG_VERSION = "18.1.3"
-GEOMETRY_REVISION = "48bb348112f49a07aec03bc69b9875ea6b62128a"
+GEOMETRY_REVISION = "1a364acb0cba4fbf8cd9cccde5c04a1fa4428536"
 VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 MATERIALIZATION_PROFILE = "qualified"
 BUILD_WORKERS = 2
@@ -177,6 +177,7 @@ def main():
     runner.run("cmake", "-S", root, "-B", build, *common, *toolchain,
                "-DMESHVALE_INTERCHANGE_USD=OFF", "-DMESHVALE_INTERCHANGE_FBX=OFF",
                "-DMESHVALE_INTERCHANGE_PYTHON=OFF",
+               "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     for suffix in DEPENDENCY_CONFIGURATIONS.values():
         parser_database = (vcpkg / "buildtrees/tinyobjloader" /
@@ -206,6 +207,7 @@ def main():
     consumer = work / "installed-build"
     runner.run("cmake", "-S", "examples/consumer", "-B", consumer, *common,
                *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
+               "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", consumer, "--parallel", BUILD_WORKERS)
     runner.instrumented(consumer / "compile_commands.json", profile["flags"], True)

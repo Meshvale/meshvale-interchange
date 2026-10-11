@@ -165,6 +165,7 @@ target_link_libraries(meshvale_interchange_gltf_materialization PUBLIC
 meshvale_warnings(meshvale_interchange_gltf_materialization)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(cmake/GltfTopologyWrite.cmake)
 install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization
   EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h
@@ -289,6 +290,9 @@ if(BUILD_TESTING)
     target_link_libraries(meshvale_gltf_materialization_unsupported_tests PRIVATE meshvale::gltf_materialization)
     meshvale_warnings(meshvale_gltf_materialization_unsupported_tests)
     add_test(NAME unsupported_gltf_materialization_profile COMMAND meshvale_gltf_materialization_unsupported_tests)
+  endif()
+  if(MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE)
+    meshvale_add_gltf_topology_write_tests()
   endif()
 endif()
 
