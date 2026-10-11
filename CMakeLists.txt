@@ -59,6 +59,43 @@ function(meshvale_require_geometry_attributes)
 endfunction()
 meshvale_require_geometry_attributes()
 
+# A package version alone cannot identify development API availability.
+if(NOT TARGET meshvale::materialization)
+  message(FATAL_ERROR "Geometry must provide the installed materialization target; use the documented producer revision")
+endif()
+function(meshvale_require_geometry_materialization)
+  cmake_push_check_state(RESET)
+  if(CMAKE_BUILD_TYPE)
+    set(CMAKE_TRY_COMPILE_CONFIGURATION "${CMAKE_BUILD_TYPE}")
+  else()
+    set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+  endif()
+  unset(MESHVALE_GEOMETRY_CHARGED_MATERIALIZATION CACHE)
+  set(CMAKE_REQUIRED_LIBRARIES meshvale::materialization)
+  check_cxx_source_compiles("#include <meshvale/geometry/materialization.h>
+  int main() {
+    using namespace meshvale::geometry;
+    MeshMaterializationInput input;
+    input.positions = std::span<const float>{};
+    input.topology = TriangleTopologyInput{};
+    AttributeMaterializationInput attribute;
+    attribute.values = std::span<const std::int8_t>{};
+    ExecutionContext context;
+    auto result = MaterializeMesh(input, {}, {}, context);
+    if (result.mesh) {
+      auto inspection = InspectMaterializedMesh(*result.mesh, {}, {});
+      auto selection = SelectMeshFaces(*result.mesh, {}, {}, {});
+      return inspection.inspection && selection.selection ? 0 : 1;
+    }
+    return 0;
+  }" MESHVALE_GEOMETRY_CHARGED_MATERIALIZATION)
+  cmake_pop_check_state()
+  if(NOT MESHVALE_GEOMETRY_CHARGED_MATERIALIZATION)
+    message(FATAL_ERROR "Geometry must provide compiled typed materialization, inspection and face selection; use the documented producer revision")
+  endif()
+endfunction()
+meshvale_require_geometry_materialization()
+
 # These notices accompany the Geometry code linked into native/Python outputs.
 get_filename_component(meshvale_geometry_notice_root "${MeshvaleGeometry_RECORD_SOURCE}" DIRECTORY)
 get_filename_component(meshvale_geometry_notice_root "${meshvale_geometry_notice_root}" DIRECTORY)
@@ -115,10 +152,19 @@ function(meshvale_warnings target)
   endif()
 endfunction()
 meshvale_warnings(meshvale_interchange)
+add_library(meshvale_interchange_gltf_materialization STATIC src/gltf_materialization.cpp)
+add_library(meshvale::gltf_materialization ALIAS meshvale_interchange_gltf_materialization)
+set_target_properties(meshvale_interchange_gltf_materialization PROPERTIES
+  EXPORT_NAME gltf_materialization POSITION_INDEPENDENT_CODE ON)
+target_compile_features(meshvale_interchange_gltf_materialization PUBLIC cxx_std_20)
+target_link_libraries(meshvale_interchange_gltf_materialization PUBLIC
+  meshvale::interchange meshvale::materialization)
+meshvale_warnings(meshvale_interchange_gltf_materialization)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-install(TARGETS meshvale_interchange EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h
+install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization
+  EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/meshvale/interchange")
 install(EXPORT MeshvaleInterchangeTargets NAMESPACE meshvale::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
@@ -154,13 +200,15 @@ endif()
 
 
 include(CTest)
+include(cmake/MaterializationTestProfile.cmake)
 if(BUILD_TESTING)
   add_library(meshvale_interchange_header_checks OBJECT
     tests/headers/gltf_write_h.cpp
     tests/headers/gltf_h.cpp
     tests/headers/obj_h.cpp
-    tests/headers/obj_files_h.cpp tests/headers/glb_h.cpp)
-  target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::interchange)
+    tests/headers/obj_files_h.cpp tests/headers/glb_h.cpp
+    tests/headers/gltf_materialization_h.cpp)
+  target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::gltf_materialization)
   meshvale_warnings(meshvale_interchange_header_checks)
   add_executable(meshvale_glb_tests tests/glb.cpp)
   target_include_directories(meshvale_glb_tests PRIVATE src)
@@ -217,6 +265,27 @@ if(BUILD_TESTING)
   target_link_libraries(meshvale_gltf_json_tests PRIVATE meshvale::interchange)
   meshvale_warnings(meshvale_gltf_json_tests)
   add_test(NAME gltf_json_snapshot COMMAND meshvale_gltf_json_tests)
+  if(MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "qualified")
+    add_executable(meshvale_gltf_materialization_tests tests/gltf_materialization.cpp)
+    target_include_directories(meshvale_gltf_materialization_tests PRIVATE src)
+    target_link_libraries(meshvale_gltf_materialization_tests PRIVATE meshvale::gltf_materialization)
+    meshvale_warnings(meshvale_gltf_materialization_tests)
+    add_test(NAME gltf_materialization COMMAND meshvale_gltf_materialization_tests)
+    add_executable(meshvale_gltf_materialization_semantics_tests
+      tests/gltf_materialization_semantics/main.cpp
+      tests/gltf_materialization_semantics/fixture_support.cpp
+      tests/gltf_materialization_semantics/raw_channels.cpp
+      tests/gltf_materialization_semantics/topology_provenance.cpp
+      tests/gltf_materialization_semantics/lifetimes.cpp)
+    target_link_libraries(meshvale_gltf_materialization_semantics_tests PRIVATE meshvale::gltf_materialization)
+    meshvale_warnings(meshvale_gltf_materialization_semantics_tests)
+    add_test(NAME gltf_materialization_semantics COMMAND meshvale_gltf_materialization_semantics_tests)
+  else()
+    add_executable(meshvale_gltf_materialization_unsupported_tests examples/consumer/gltf_materialization_unsupported.cpp)
+    target_link_libraries(meshvale_gltf_materialization_unsupported_tests PRIVATE meshvale::gltf_materialization)
+    meshvale_warnings(meshvale_gltf_materialization_unsupported_tests)
+    add_test(NAME unsupported_gltf_materialization_profile COMMAND meshvale_gltf_materialization_unsupported_tests)
+  endif()
 endif()
 
 # Optional format modules own their SDK discovery, exports and installed notices.

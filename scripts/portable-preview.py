@@ -14,8 +14,8 @@ import tempfile
 import sysconfig
 import zipfile
 
-GEOMETRY_REVISION = "ec38fabd783a578947d43856b0c7a7fd54ce8533"
-GEOMETRY_VERSION = "0.0.1.dev69+gec38fabd7"
+GEOMETRY_REVISION = "48bb348112f49a07aec03bc69b9875ea6b62128a"
+GEOMETRY_VERSION = "0.1.dev130+g48bb34811"
 VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 PACKAGE = Path(__file__).resolve().parents[1]
 
