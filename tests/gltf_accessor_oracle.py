@@ -172,6 +172,31 @@ def cases():
             yield f"indices-{mode}-{component}", doc, data, 0
             restart = struct.pack("<" + fmt, {5121: 255, 5123: 65535, 5125: 4294967295}[component])
             yield f"restart-{mode}-{component}", doc, restart + data[len(restart):], 3
+            for selector_component in (5121, 5123, 5125):
+                for with_base in (False, True):
+                    sparse_doc = deepcopy(doc)
+                    payload = bytearray(bytes(len(data)) if with_base else b"")
+                    sparse_doc["bufferViews"] = ([{"buffer": 0, "byteLength": len(data)}] if with_base else [])
+                    source = sparse_doc["accessors"][1]
+                    if not with_base: source.pop("bufferView")
+                    while len(payload) % 4: payload += bytes([99])
+                    selector_offset = len(payload)
+                    selectors = struct.pack("<" + FORMATS[selector_component]*5, 1, 2, 3, 4, 5)
+                    payload += selectors
+                    selector_view = len(sparse_doc["bufferViews"])
+                    sparse_doc["bufferViews"].append({"buffer": 0, "byteOffset": selector_offset, "byteLength": len(selectors)})
+                    while len(payload) % 4: payload += bytes([99])
+                    value_offset = len(payload)
+                    replacements = struct.pack("<" + fmt*5, *stream[1:])
+                    payload += replacements
+                    value_view = len(sparse_doc["bufferViews"])
+                    sparse_doc["bufferViews"].append({"buffer": 0, "byteOffset": value_offset, "byteLength": len(replacements)})
+                    source["sparse"] = {"count": 5,
+                        "indices": {"bufferView": selector_view, "componentType": selector_component},
+                        "values": {"bufferView": value_view}}
+                    source["min"], source["max"] = [0], [5]
+                    sparse_doc["buffers"][0]["byteLength"] = len(payload)
+                    yield f"indices-sparse-{mode}-{component}-{selector_component}-{with_base}", sparse_doc, bytes(payload), 0
     # Fraction establishes the profile boundary from actual binary32 values.
     for bits in (0x3f80003f, 0x3f800040, 0x3f7fff80, 0x3f7fff7f):
         value, = struct.unpack("<f", struct.pack("<I", bits))

@@ -117,6 +117,45 @@ void RawAndNormalized() {
   Require(std::bit_cast<std::uint32_t>(raw_float[0]) == 0x80000000U);
   Require(std::bit_cast<std::uint32_t>(raw_float[1]) == 1);
 }
+void OtherMatrixLayouts() {
+  meshvale::geometry::ExecutionContext context({4, 1, 10000000});
+  detail::AllocationContext allocation(context, {});
+  const std::array<std::byte, 14> byte_matrix{
+      std::byte{1}, std::byte{2}, std::byte{250}, std::byte{251},
+      std::byte{3}, std::byte{4}, std::byte{250}, std::byte{251},
+      std::byte{5}, std::byte{6}, std::byte{250}, std::byte{251},
+      std::byte{7}, std::byte{8}};
+  detail::AccessorSource source;
+  source.component_type = mv::GltfComponentType::kUint8;
+  source.shape = mv::GltfAccessorShape::kMat2;
+  source.count = 2;
+  source.base = detail::AccessorByteView{0, 0, 0, byte_matrix};
+  auto result = detail::DecodeAccessor(source, false, Limits(), Policy(),
+                                       context, allocation, {});
+  Require(result.values.has_value());
+  const auto& values =
+      std::get<detail::ChargedValues<std::uint8_t>>(result.values->raw);
+  for (std::size_t i = 0; i < values.size(); ++i) Require(values[i] == i + 1);
+  std::array<std::byte, 46> short_matrix{};
+  const std::array<std::size_t, 18> addresses{
+      0, 2, 4, 8, 10, 12, 16, 18, 20, 24, 26, 28, 32, 34, 36, 40, 42, 44};
+  for (std::size_t i = 0; i < addresses.size(); ++i)
+    short_matrix[addresses[i]] = static_cast<std::byte>(i + 1);
+  source.component_type = mv::GltfComponentType::kUint16;
+  source.shape = mv::GltfAccessorShape::kMat3;
+  source.base->bytes = short_matrix;
+  auto shorts = detail::DecodeAccessor(source, false, Limits(), Policy(),
+                                       context, allocation, {});
+  Require(shorts.values.has_value());
+  const auto& short_values =
+      std::get<detail::ChargedValues<std::uint16_t>>(shorts.values->raw);
+  for (std::size_t i = 0; i < short_values.size(); ++i)
+    Require(short_values[i] == i + 1);
+  source.base->bytes = std::span(short_matrix).first(45);
+  Require(detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                 allocation, {})
+              .diagnostic.status == mv::GltfStatus::kMalformed);
+}
 void FailureAndLifetime() {
   meshvale::geometry::ExecutionContext context({4, 1, 10000000});
   detail::AllocationContext allocation(context, {});
@@ -242,6 +281,7 @@ int main() {
   try {
     LayoutAndSparse();
     RawAndNormalized();
+    OtherMatrixLayouts();
     FailureAndLifetime();
     WorkerFailuresAndCancellation();
     std::cout << "typed layout, sparse, bits, normalization, workers and "
