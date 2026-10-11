@@ -4,6 +4,13 @@
 
 ### Added
 
+- Checked supplied-memory glTF triangle-selection output through
+  `meshvale::gltf_topology_write`, with inspected candidate validation, owned
+  correspondence and append-only UINT32 index resources. Original vertex/channel
+  accessors and unrelated resources remain retained. Native builds require the
+  compiled Geometry execution-sharing seam; Python packaging keeps this module
+  disabled. Full sanitizer, hosted and release qualification remain pending.
+
 - Static raw glTF transfer with explicit operation limits, shared
   Geometry accounting, inspected canonical storage and retained source/channel
   correspondence. The separate `meshvale::gltf_materialization` target requires

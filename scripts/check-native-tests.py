@@ -11,6 +11,10 @@ UNSUPPORTED_PROFILE = "unsupported"
 MATERIALIZATION_PROFILES = (QUALIFIED_PROFILE, UNSUPPORTED_PROFILE)
 COMPILER_IDS = ("MSVC", "Clang", "GNU", "AppleClang")
 PROFILE_CACHE_KEY = "MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE"
+TOPOLOGY_WRITE_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE"
+TOPOLOGY_WRITE_ON = "ON"
+TOPOLOGY_WRITE_OFF = "OFF"
+TOPOLOGY_WRITE_STATES = (TOPOLOGY_WRITE_ON, TOPOLOGY_WRITE_OFF)
 TESTING_CACHE_KEY = "BUILD_TESTING"
 CONFIGURATIONS_CACHE_KEY = "CMAKE_CONFIGURATION_TYPES"
 BUILD_TYPE_CACHE_KEY = "CMAKE_BUILD_TYPE"
@@ -35,6 +39,13 @@ PROFILE_INSTALLED_TESTS = {
     QUALIFIED_PROFILE: frozenset({"installed_gltf_materialization_consumer"}),
     UNSUPPORTED_PROFILE: frozenset({"installed_unsupported_gltf_materialization_profile"}),
 }
+TOPOLOGY_WRITE_TESTS = frozenset({"gltf_topology_write_link"})
+TOPOLOGY_WRITE_QUALIFIED_TESTS = frozenset({
+    "gltf_topology_write", "gltf_topology_write_semantics",
+    "gltf_topology_write_large_index",
+})
+TOPOLOGY_WRITE_INSTALLED_TESTS = frozenset({"installed_gltf_topology_write_link"})
+TOPOLOGY_WRITE_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_topology_write_consumer"})
 
 
 def cache_entries(path):
@@ -57,11 +68,14 @@ def cache_value(cache, name, expected_type):
     return cache[name][1]
 
 
-def validate_cache(cache, profile, configuration):
+def validate_cache(cache, profile, configuration, topology_write=True):
     if cache_value(cache, PROFILE_CACHE_KEY, STRING_CACHE_TYPE) != profile:
         raise ValueError("materialization CLI profile differs from configured CMake profile")
     if cache_value(cache, TESTING_CACHE_KEY, BOOL_CACHE_TYPE).upper() not in TRUE_CACHE_VALUES:
         raise ValueError("native inventory requires BUILD_TESTING=ON")
+    actual_topology_write = cache_value(cache, TOPOLOGY_WRITE_CACHE_KEY, BOOL_CACHE_TYPE)
+    if (actual_topology_write.upper() in TRUE_CACHE_VALUES) != topology_write:
+        raise ValueError("topology writer CLI selection differs from configured CMake option")
     if CONFIGURATIONS_CACHE_KEY in cache:
         configurations = cache_value(cache, CONFIGURATIONS_CACHE_KEY, STRING_CACHE_TYPE).split(";")
         if configuration not in configurations:
@@ -83,10 +97,16 @@ def validate_compiler(build_dir, expected_id, expected_version):
         raise ValueError("configured C++ compiler version differs from declared admitted cohort")
 
 
-def expected_inventory(profile, installed=False):
+def expected_inventory(profile, installed=False, topology_write=True):
     common = COMMON_INSTALLED_TESTS if installed else COMMON_TESTS
     specific = PROFILE_INSTALLED_TESTS if installed else PROFILE_TESTS
-    return common | specific[profile]
+    expected = common | specific[profile]
+    if topology_write:
+        expected |= TOPOLOGY_WRITE_INSTALLED_TESTS if installed else TOPOLOGY_WRITE_TESTS
+        if profile == QUALIFIED_PROFILE:
+            expected |= (TOPOLOGY_WRITE_QUALIFIED_INSTALLED_TESTS if installed else
+                         TOPOLOGY_WRITE_QUALIFIED_TESTS)
+    return expected
 
 
 def validate_inventory(build_dir, configuration, expected):
@@ -108,6 +128,8 @@ def main():
     parser.add_argument("--compiler-version")
     parser.add_argument("--materialization-profile", choices=MATERIALIZATION_PROFILES,
                         required=True)
+    parser.add_argument("--topology-write", choices=TOPOLOGY_WRITE_STATES,
+                        default=TOPOLOGY_WRITE_ON)
     args = parser.parse_args()
     try:
         checked = []
@@ -116,17 +138,20 @@ def main():
             if build_dir is None:
                 continue
             validate_cache(cache_entries(build_dir / "CMakeCache.txt"),
-                           args.materialization_profile, args.configuration)
+                           args.materialization_profile, args.configuration,
+                           args.topology_write == TOPOLOGY_WRITE_ON)
             validate_compiler(build_dir, args.compiler_id, args.compiler_version)
             checked.append(("installed" if installed else "native",
                             validate_inventory(build_dir, args.configuration,
                                                expected_inventory(args.materialization_profile,
-                                                                  installed))))
+                                                                  installed,
+                                                                  args.topology_write == TOPOLOGY_WRITE_ON))))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     for label, names in checked:
         print(f"{label}: verified {len(names)} test entries; materialization "
-              f"{args.materialization_profile}; {args.configuration}; {names}")
+              f"{args.materialization_profile}; topology writer {args.topology_write}; "
+              f"{args.configuration}; {names}")
 
 
 if __name__ == "__main__":
