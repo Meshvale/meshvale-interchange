@@ -4,6 +4,12 @@
 
 ### Added
 
+- Static raw glTF transfer candidate with explicit operation limits, shared
+  Geometry accounting, inspected canonical storage and retained source/channel
+  correspondence. The separate `meshvale::gltf_materialization` target requires
+  Geometry's materialization target; native, sanitizer and platform qualification
+  remain pending. This does not add edited writing or Python glTF operations.
+
 - Native unchanged glTF memory output preserving exact original JSON bytes and
   full immutable resource identities/bytes through retained ownership, explicit
   operation limits, fresh cancellation and joined shared-budget copy workers.
@@ -12,7 +18,7 @@
   with owner-bound handles, exact original numbers, owned resources, typed raw/
   normalized channels, sparse provenance and triangle strip/fan corner maps.
   The finite processing profile reports unsupported scene effects explicitly;
-  edited writing, Geometry transfer, publication and Python glTF remain separate.
+  edited writing, publication and Python glTF remain separate.
 
 - Native supplied-byte GLB container capture and assembly with owned JSON/BIN/
   opaque chunks, canonical output padding, explicit limits and joined copy
