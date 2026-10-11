@@ -199,6 +199,14 @@ void DecodeRows(const AccessorSource& source, const AccessorLayout& layout,
               row * (source.base->stride ? source.base->stride
                                          : layout.packed_step);
     if (sparse != sparse_destinations.end() && *sparse == row) {
+      if constexpr (std::is_same_v<T, float>) {
+        if (bytes)
+          for (std::size_t column = 0; column < layout.columns; ++column)
+            for (std::size_t component = 0; component < layout.rows;
+                 ++component)
+              (void)ReadScalar<T>(bytes + column * layout.column_step +
+                                  component * sizeof(T));
+      }
       const auto ordinal =
           static_cast<std::size_t>(sparse - sparse_destinations.begin());
       bytes = source.sparse->values.bytes.data() +
@@ -230,7 +238,8 @@ void RunRows(const AccessorSource& source, const AccessorLayout& layout,
              DecodedAccessor& output, const GltfWorkPolicy& policy,
              const geometry::ExecutionContext& context,
              const AllocationContext& allocation, std::stop_token stop,
-             AccessorExecutionStats* stats) {
+             AccessorExecutionStats* stats,
+             const AccessorExecutionHooks* hooks) {
   const auto partition =
       static_cast<std::size_t>(policy.channel_partition_elements);
   const auto job_count =
@@ -261,17 +270,22 @@ void RunRows(const AccessorSource& source, const AccessorLayout& layout,
   std::exception_ptr launch_exception;
   try {
     for (std::size_t worker = 0; worker < workers.Count(); ++worker) {
+      if (hooks && hooks->before_launch)
+        hooks->before_launch(worker, hooks->state);
       threads.emplace_back([&, worker] {
         for (auto job = worker; job < job_count; job += workers.Count()) {
           const auto first = job * partition;
           const auto last = first + std::min(partition, source.count - first);
           try {
+            if (hooks && hooks->before_job)
+              hooks->before_job(job, hooks->state);
             execute(first, last);
           } catch (const DecodeFailure& failure) {
             results[job].diagnostic = failure.diagnostic;
           } catch (...) {
             results[job].exception = std::current_exception();
           }
+          if (hooks && hooks->after_job) hooks->after_job(job, hooks->state);
         }
       });
       if (stats) ++stats->launched;
@@ -376,14 +390,12 @@ OwnedRawValues MakeRawValues(GltfComponentType component,
   }
   Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest);
 }
-AccessorDecodeResult DecodeAccessor(const AccessorSource& source,
-                                    bool normalized_view,
-                                    const GltfExtractionLimits& limits,
-                                    const GltfWorkPolicy& policy,
-                                    const geometry::ExecutionContext& context,
-                                    const AllocationContext& allocation,
-                                    std::stop_token stop,
-                                    AccessorExecutionStats* stats) {
+AccessorDecodeResult DecodeAccessor(
+    const AccessorSource& source, bool normalized_view,
+    const GltfExtractionLimits& limits, const GltfWorkPolicy& policy,
+    const geometry::ExecutionContext& context,
+    const AllocationContext& allocation, std::stop_token stop,
+    AccessorExecutionStats* stats, const AccessorExecutionHooks* hooks) {
   if (stats) *stats = {};
   try {
     constexpr auto kHostMaximum = std::numeric_limits<std::size_t>::max();
@@ -445,7 +457,8 @@ AccessorDecodeResult DecodeAccessor(const AccessorSource& source,
         output.sparse_destinations[i] = destination;
       }
     }
-    RunRows(source, layout, output, policy, context, allocation, stop, stats);
+    RunRows(source, layout, output, policy, context, allocation, stop, stats,
+            hooks);
     allocation.Checkpoint();
     return {std::move(output),
             Diagnostic(GltfStatus::kAccepted, GltfDiagnosticCode::kNone)};

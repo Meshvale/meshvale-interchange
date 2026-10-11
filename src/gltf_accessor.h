@@ -66,6 +66,15 @@ struct AccessorExecutionStats {
   std::size_t launched = 0;
   std::size_t joined = 0;
 };
+// Private deterministic fault/scheduling injection for worker qualification.
+// State remains alive until synchronous DecodeAccessor returns. Production
+// passes null; callbacks never run under the execution ledger mutex.
+struct AccessorExecutionHooks {
+  void (*before_launch)(std::size_t worker, void* state) = nullptr;
+  void (*before_job)(std::size_t job, void* state) = nullptr;
+  void (*after_job)(std::size_t job, void* state) noexcept = nullptr;
+  void* state = nullptr;
+};
 struct DecodedAccessor {
   explicit DecodedAccessor(const AllocationContext& allocation);
   OwnedRawValues raw;
@@ -93,7 +102,8 @@ struct AccessorDecodeResult {
     const GltfExtractionLimits& limits, const GltfWorkPolicy& policy,
     const geometry::ExecutionContext& context,
     const AllocationContext& allocation, std::stop_token stop,
-    AccessorExecutionStats* stats = nullptr);
+    AccessorExecutionStats* stats = nullptr,
+    const AccessorExecutionHooks* hooks = nullptr);
 
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_ACCESSOR_H_

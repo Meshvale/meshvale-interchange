@@ -4,6 +4,7 @@
 #include <meshvale/geometry/execution.h>
 
 #include <array>
+#include <atomic>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <span>
 #include <stdexcept>
 #include <stop_token>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -169,12 +171,79 @@ void FailureAndLifetime() {
               .diagnostic.status == mv::GltfStatus::kBudgetExceeded);
   Require(small.ActiveTrackedPayload() == 0 && small.ActiveWorkers() == 0);
 }
+void WorkerFailuresAndCancellation() {
+  meshvale::geometry::ExecutionContext context({4, 1, 10000000});
+  detail::AllocationContext allocation(context, {});
+  detail::AccessorSource source;
+  source.count = 4;
+  detail::AccessorExecutionHooks hooks;
+  hooks.before_launch = [](std::size_t worker, void*) {
+    if (worker == 1)
+      throw std::runtime_error("injected partial launch failure");
+  };
+  detail::AccessorExecutionStats stats;
+  bool threw = false;
+  try {
+    (void)detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                 allocation, {}, &stats, &hooks);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  Require(threw && stats.launched == 1 && stats.joined == 1);
+  Require(context.ActiveWorkers() == 0 && context.ActiveTrackedPayload() == 0);
+  const std::array<std::byte, 16> bytes{std::byte{0}, std::byte{0},
+                                        std::byte{128}, std::byte{127}};
+  source.base = detail::AccessorByteView{0, 0, 0, bytes};
+  struct Schedule {
+    std::stop_source stop;
+    std::atomic<bool> first_done{false};
+    bool runtime_failure = false;
+  } schedule;
+  hooks = {};
+  hooks.state = &schedule;
+  hooks.before_job = [](std::size_t job, void* opaque) {
+    auto& state = *static_cast<Schedule*>(opaque);
+    if (job != 0)
+      while (!state.first_done.load(std::memory_order_acquire))
+        std::this_thread::yield();
+    if (job == 2 && state.runtime_failure)
+      throw std::runtime_error("worker runtime failure");
+  };
+  hooks.after_job = [](std::size_t job, void* opaque) noexcept {
+    auto& state = *static_cast<Schedule*>(opaque);
+    if (job == 0) {
+      state.stop.request_stop();
+      state.first_done.store(true, std::memory_order_release);
+    }
+  };
+  auto result = detail::DecodeAccessor(
+      source, false, Limits(), Policy(), context, allocation,
+      schedule.stop.get_token(), &stats, &hooks);
+  Require(!result.values &&
+          result.diagnostic.status == mv::GltfStatus::kMalformed);
+  Require(stats.launched == 4 && stats.joined == 4);
+  Require(context.ActiveWorkers() == 0 && context.ActiveTrackedPayload() == 0);
+  schedule.stop = std::stop_source{};
+  schedule.first_done.store(false);
+  schedule.runtime_failure = true;
+  threw = false;
+  try {
+    (void)detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                 allocation, schedule.stop.get_token(), &stats,
+                                 &hooks);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  Require(threw && stats.launched == 4 && stats.joined == 4);
+  Require(context.ActiveWorkers() == 0 && context.ActiveTrackedPayload() == 0);
+}
 }  // namespace
 int main() {
   try {
     LayoutAndSparse();
     RawAndNormalized();
     FailureAndLifetime();
+    WorkerFailuresAndCancellation();
     std::cout << "typed layout, sparse, bits, normalization, workers and "
                  "rollback passed\n";
     return 0;
