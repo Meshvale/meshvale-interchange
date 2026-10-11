@@ -18,7 +18,7 @@ struct PrimitiveState;
 struct Access;
 }  // namespace gltf_materialization_detail
 
-// Draft declarations only: no runtime definitions or installed target yet.
+// Implementation candidate; native and installed qualification remain pending.
 // Every limit is required and positive. Channels includes POSITION.
 struct GltfMaterializationLimits {
   std::uint64_t max_channels = 0;

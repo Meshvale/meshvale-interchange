@@ -13,6 +13,7 @@
 
 #include "gltf_allocation.h"
 #include "gltf_json_snapshot.h"
+#include "meshvale/geometry/editable_mesh.h"
 #include "meshvale/interchange/gltf.h"
 
 namespace meshvale::interchange::gltf_detail {
@@ -96,6 +97,12 @@ struct Access {
       std::shared_ptr<const AssetState> state, std::uint64_t ordinal);
   [[nodiscard]] static GltfPrimitiveExtraction MakeExtraction(
       std::shared_ptr<const ExtractionState> state);
+  [[nodiscard]] static const geometry::ExecutionContext& ExtractionContext(
+      const GltfPrimitiveExtraction& extraction) noexcept;
+  [[nodiscard]] static GltfAsset ExtractionAsset(
+      const GltfPrimitiveExtraction& extraction);
+  [[nodiscard]] static GltfPrimitiveHandle ExtractionPrimitive(
+      const GltfPrimitiveExtraction& extraction);
 };
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_ASSET_STATE_H_

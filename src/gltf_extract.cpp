@@ -621,14 +621,17 @@ void DecodeChannel(ChannelStorage& channel, const AssetState& asset,
 }  // namespace
 struct ExtractionState {
   ExtractionState(std::shared_ptr<const AssetState> source,
+                  const PrimitiveRecord& source_primitive,
                   const AllocationContext& operation)
       : asset(std::move(source)),
+        primitive(source_primitive),
         allocation(operation),
         channel_storage(Allocator<ChannelStorage>(operation)),
         channels(Allocator<GltfChannelView>(operation)),
         triangles(Allocator<std::uint32_t>(operation)),
         corners(Allocator<GltfSourceCorner>(operation)) {}
   std::shared_ptr<const AssetState> asset;
+  PrimitiveRecord primitive;
   AllocationContext allocation;
   std::uint64_t mode = 0;
   std::optional<std::uint64_t> material;
@@ -641,6 +644,17 @@ struct ExtractionState {
 GltfPrimitiveExtraction Access::MakeExtraction(
     std::shared_ptr<const ExtractionState> state) {
   return GltfPrimitiveExtraction(std::move(state));
+}
+const geometry::ExecutionContext& Access::ExtractionContext(
+    const GltfPrimitiveExtraction& extraction) noexcept {
+  return extraction.owner_->asset->context;
+}
+GltfAsset Access::ExtractionAsset(const GltfPrimitiveExtraction& extraction) {
+  return MakeAsset(extraction.owner_->asset);
+}
+GltfPrimitiveHandle Access::ExtractionPrimitive(
+    const GltfPrimitiveExtraction& extraction) {
+  return MakePrimitive(extraction.owner_->asset, extraction.owner_->primitive);
 }
 }  // namespace meshvale::interchange::gltf_detail
 
@@ -716,7 +730,7 @@ GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
     allocation =
         allocation.WithRequestLimit(Host(limits.max_output_requested_bytes));
     auto output = std::allocate_shared<ExtractionState>(
-        Allocator<ExtractionState>(allocation), Access::Owner(asset),
+        Allocator<ExtractionState>(allocation), Access::Owner(asset), *record,
         allocation);
     const auto& doc = state.document;
     const auto primitive_node = record->json_node;

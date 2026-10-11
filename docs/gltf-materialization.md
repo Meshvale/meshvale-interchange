@@ -3,16 +3,17 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-MATERIALIZATION-001 |
-| Version | 0.1.0 |
-| Status | Unimplemented draft interface; declarations only |
+| Version | 0.2.0 |
+| Status | Implementation candidate; qualification pending |
 | Owner | Interchange |
 
-This draft specifies
+This contract specifies
 [`gltf_materialization.h`](../include/meshvale/interchange/gltf_materialization.h).
-There are no runtime definitions or installed `meshvale::gltf_materialization`
-target yet. The [implemented reader/extractor](gltf-read.md) retains its current
-behavior. This document defines the proposed adapter's additional behavior;
-it does not change glTF admission or imply an available transfer capability.
+The `meshvale::gltf_materialization` implementation is a candidate awaiting native,
+sanitizer and installed-consumer qualification. The
+[reader/extractor](gltf-read.md) retains its current behavior. This contract defines
+the adapter's additional behavior without changing glTF admission or establishing
+a qualified release capability.
 
 ## GTM-INPUT-001: Operation and required policy
 
@@ -151,12 +152,12 @@ large channel inventories require assessment before a performance claim.
 
 ## GTM-SCOPE-001: Capability and qualification boundary
 
-The draft covers every channel admitted by the existing static local extraction
+The adapter covers every channel admitted by the existing static local extraction
 profile. Its unsupported joint/weight, morph, animation, custom-matrix and
 non-triangle capabilities remain unchanged. Storage-valid inspection does not
 certify geometric quality or complete rendering semantics.
 
-Runtime availability will require actual Read→Extract→Materialize→Inspect and
+Qualification requires actual Read→Extract→Materialize→Inspect and
 face-selection correspondence, independent bit/provenance fixtures, original
 request/cap/fault/lifetime/worker evidence, matching native/sanitizer producers,
 relocated installed consumers and source/package regression. Serial original
@@ -165,5 +166,4 @@ Unqualified numerical producers must retain explicit unsupported outcomes.
 
 Direct charged Repair, broader skin/weight/morph/animation/material/image
 processing, edited primitive re-embedding, filesystem publication, Python and
-batch workflows require separate implementations. This draft and an eventual
-static adapter do not establish those capabilities or a stable release.
+batch workflows require separate implementations. This static adapter does not establish those capabilities or a stable release.
