@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <span>
 #include <stdexcept>
 #include <stop_token>
@@ -276,6 +277,52 @@ void WorkerFailuresAndCancellation() {
   Require(threw && stats.launched == 4 && stats.joined == 4);
   Require(context.ActiveWorkers() == 0 && context.ActiveTrackedPayload() == 0);
 }
+void AllocationFaults() {
+  struct FaultState {
+    detail::AllocationBackend backend = detail::DefaultAllocationBackend();
+    std::size_t remaining;
+    std::size_t calls = 0;
+  };
+  detail::AllocationBackend backend{
+      [](std::size_t bytes, std::size_t alignment, void* opaque) -> void* {
+        auto& state = *static_cast<FaultState*>(opaque);
+        ++state.calls;
+        if (state.remaining == 0) throw std::bad_alloc();
+        --state.remaining;
+        return state.backend.allocate(bytes, alignment, state.backend.state);
+      },
+      [](void* block, std::size_t bytes, std::size_t alignment,
+         void* opaque) noexcept {
+        auto& state = *static_cast<FaultState*>(opaque);
+        state.backend.deallocate(block, bytes, alignment, state.backend.state);
+      },
+      nullptr};
+  std::size_t rejected = 0;
+  bool accepted = false;
+  for (std::size_t allowance = 0; allowance < 16; ++allowance) {
+    meshvale::geometry::ExecutionContext context({4, 1, 10000000});
+    FaultState state{detail::DefaultAllocationBackend(), allowance};
+    backend.state = &state;
+    detail::AccessorExecutionStats stats;
+    try {
+      auto allocation = detail::AllocationContext(context, {}, backend)
+                            .WithRequestLimit(100000);
+      detail::AccessorSource source;
+      source.count = 64;
+      auto result = detail::DecodeAccessor(source, false, Limits(), Policy(),
+                                           context, allocation, {}, &stats);
+      Require(result.values.has_value());
+      Require(stats.launched == 4 && stats.joined == 4);
+      accepted = true;
+    } catch (const std::bad_alloc&) {
+      ++rejected;
+    }
+    Require(context.ActiveWorkers() == 0 &&
+            context.ActiveTrackedPayload() == 0);
+    if (accepted) break;
+  }
+  Require(accepted && rejected >= 4);
+}
 }  // namespace
 int main() {
   try {
@@ -284,6 +331,7 @@ int main() {
     OtherMatrixLayouts();
     FailureAndLifetime();
     WorkerFailuresAndCancellation();
+    AllocationFaults();
     std::cout << "typed layout, sparse, bits, normalization, workers and "
                  "rollback passed\n";
     return 0;
