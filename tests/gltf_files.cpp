@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <meshvale/geometry/execution.h>
+#include <meshvale/interchange/glb.h>
 #include <meshvale/interchange/gltf_files.h>
 
 #include <algorithm>
@@ -274,15 +275,17 @@ void ContentDetection() {
   constexpr std::array<std::byte, 4> kGlbMagic{std::byte{'g'}, std::byte{'l'},
                                                std::byte{'T'}, std::byte{'F'}};
   Write(fixture.root / "container.gltf", kGlbMagic);
-  const auto unavailable =
+  const auto malformed =
       ic::ReadGltfFileAsset(fixture.root / "container.gltf", fixture.Options(),
                             Limits(), Work(), context);
-  Failure(unavailable, ic::GltfFileDiagnosticCode::kContainerBinding);
-  Require(unavailable.diagnostic.status ==
-                  ic::GltfFileStatus::kUnsupportedProfile &&
-              unavailable.diagnostic.stage == ic::GltfFileStage::kContainer,
-          "literal GLB magic selects unavailable container route without JSON "
-          "fallback");
+  Failure(malformed, ic::GltfFileDiagnosticCode::kDelegatedContainer);
+  Require(
+      malformed.diagnostic.status == ic::GltfFileStatus::kMalformed &&
+          malformed.diagnostic.stage == ic::GltfFileStage::kContainer &&
+          malformed.diagnostic.container_status == ic::GlbStatus::kMalformed &&
+          malformed.diagnostic.container_byte_offset == 0,
+      "literal GLB magic selects actual malformed container without JSON "
+      "fallback");
   Empty(context);
   Write(fixture.root / "json.glb", Bytes(fixture.json));
   {
