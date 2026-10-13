@@ -18,7 +18,7 @@ BUILD_CONFIGURATION = "Debug"
 CLANG_CXX = "clang++-18"
 CLANG_C = "clang-18"
 CLANG_VERSION = "18.1.3"
-GEOMETRY_REVISION = "1a364acb0cba4fbf8cd9cccde5c04a1fa4428536"
+GEOMETRY_REVISION = "48298b24be7c132816fb5580d22d58bde61558d0"
 VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 MATERIALIZATION_PROFILE = "qualified"
 BUILD_WORKERS = 2
@@ -178,6 +178,7 @@ def main():
                "-DMESHVALE_INTERCHANGE_USD=OFF", "-DMESHVALE_INTERCHANGE_FBX=OFF",
                "-DMESHVALE_INTERCHANGE_PYTHON=OFF",
                "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
+               "-DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     for suffix in DEPENDENCY_CONFIGURATIONS.values():
         parser_database = (vcpkg / "buildtrees/tinyobjloader" /
@@ -185,7 +186,7 @@ def main():
         runner.instrumented(parser_database, profile["flags"], False)
     runner.run("cmake", "--build", build, "--parallel", BUILD_WORKERS)
     runner.instrumented(build / "compile_commands.json", profile["flags"], True)
-    runner.inventory(build, expected_inventory(MATERIALIZATION_PROFILE), "interchange")
+    runner.inventory(build, expected_inventory(MATERIALIZATION_PROFILE, workflow_support=True), "interchange")
     runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
                "--configuration", BUILD_CONFIGURATION,
                "--materialization-profile", MATERIALIZATION_PROFILE,
@@ -208,10 +209,11 @@ def main():
     runner.run("cmake", "-S", "examples/consumer", "-B", consumer, *common,
                *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
                "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
+               "-DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", consumer, "--parallel", BUILD_WORKERS)
     runner.instrumented(consumer / "compile_commands.json", profile["flags"], True)
-    runner.inventory(consumer, expected_inventory(MATERIALIZATION_PROFILE, installed=True),
+    runner.inventory(consumer, expected_inventory(MATERIALIZATION_PROFILE, installed=True, workflow_support=True),
                      "installed")
     runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
                "--installed-build-dir", consumer, "--configuration", BUILD_CONFIGURATION,

@@ -33,6 +33,9 @@
 #include "gltf_json_snapshot.h"
 #include "gltf_topology_write_internal.h"
 #include "gltf_topology_write_workers.h"
+#if defined(MESHVALE_INTERCHANGE_TESTING)
+#include "gltf_topology_bundle_test_internal.h"
+#endif
 
 namespace meshvale::interchange::gltf_topology_write_detail {
 using geometry::index_t;
@@ -453,7 +456,13 @@ struct BundleState {
         faces(Allocator<index_t>(operation)),
         corners(Allocator<index_t>(operation)),
         original_corners(Allocator<GltfSourceCorner>(operation)),
-        resources(Allocator<GltfResourceView>(operation)) {}
+        resources(Allocator<GltfResourceView>(operation))
+#if defined(MESHVALE_INTERCHANGE_TESTING)
+        ,
+        test_resource_storage(Allocator<ByteBlock>(operation))
+#endif
+  {
+  }
   GltfMaterializedPrimitive source;
   AllocationContext allocation;
   Vector<index_t> faces;
@@ -464,6 +473,10 @@ struct BundleState {
   ByteBlock uri;
   ByteBlock json;
   std::optional<GltfTopologyBindingChange> change;
+#if defined(MESHVALE_INTERCHANGE_TESTING)
+  std::optional<GltfTopologyWriteBundle> test_parent;
+  Vector<ByteBlock> test_resource_storage;
+#endif
 };
 struct Access {
   static GltfTopologyWriteBundle Make(
@@ -471,6 +484,52 @@ struct Access {
     return GltfTopologyWriteBundle(std::move(state));
   }
 };
+
+#if defined(MESHVALE_INTERCHANGE_TESTING)
+GltfTopologyWriteBundle CloneBundleForTest(
+    const GltfTopologyWriteBundle& original,
+    const BundleTestOverrides& overrides) {
+  const auto context = original.Source().Mesh().ShareExecutionContext();
+  const AllocationContext allocation(context, {});
+  auto copy = std::allocate_shared<BundleState>(
+      Allocator<BundleState>(allocation), original.Source(), allocation);
+  copy->test_parent = original;
+  const auto json = overrides.json.value_or(original.Json());
+  copy->json.Allocate(json.size(), allocation);
+  if (!json.empty())
+    std::memcpy(copy->json.data.get(), json.data(), json.size());
+  const auto faces = overrides.faces.value_or(original.SourceFaces());
+  copy->faces.assign(faces.begin(), faces.end());
+  const auto corners = overrides.corners.value_or(original.SourceCorners());
+  copy->corners.assign(corners.begin(), corners.end());
+  const auto provenance =
+      overrides.original_corners.value_or(original.OriginalCorners());
+  copy->original_corners.assign(provenance.begin(), provenance.end());
+  copy->change = overrides.changed_binding.value_or(original.ChangedBinding());
+  const auto resources = overrides.resources.value_or(original.Resources());
+  copy->resources.assign(resources.begin(), resources.end());
+  if (overrides.resources) {
+    for (auto& resource : copy->resources) {
+      ByteBlock uri;
+      uri.Allocate(resource.authored_uri.size(), allocation);
+      if (!resource.authored_uri.empty())
+        std::memcpy(uri.data.get(), resource.authored_uri.data(),
+                    resource.authored_uri.size());
+      resource.authored_uri = {reinterpret_cast<const char*>(uri.data.get()),
+                               uri.size};
+      copy->test_resource_storage.push_back(std::move(uri));
+      ByteBlock bytes;
+      bytes.Allocate(resource.bytes.size(), allocation);
+      if (!resource.bytes.empty())
+        std::memcpy(bytes.data.get(), resource.bytes.data(),
+                    resource.bytes.size());
+      resource.bytes = bytes.View();
+      copy->test_resource_storage.push_back(std::move(bytes));
+    }
+  }
+  return Access::Make(std::move(copy));
+}
+#endif
 
 namespace {
 struct UIntText {
