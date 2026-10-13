@@ -25,7 +25,7 @@ BOOL_CACHE_TYPE = "BOOL"
 TRUE_CACHE_VALUES = frozenset({"ON", "TRUE", "YES", "1"})
 COMMON_TESTS = frozenset({
     "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
-    "gltf_read", "gltf_resources", "gltf_write", "gltf_metadata",
+    "gltf_read", "gltf_execution_budget", "gltf_resources", "gltf_write", "gltf_metadata",
     "gltf_accessor", "gltf_extract", "gltf_json_snapshot",
     "gltf_workflow_read", "gltf_workflow_read_large_index",
 })

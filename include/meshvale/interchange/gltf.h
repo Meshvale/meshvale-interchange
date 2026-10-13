@@ -235,6 +235,13 @@ class GltfAsset {
   GltfAsset(const GltfAsset&);
   GltfAsset& operator=(const GltfAsset&);
   ~GltfAsset();
+  // True only when this asset's retained execution context and context share
+  // one worker/payload ledger. Moved-from contexts yield false. No allocation,
+  // lock, operation-counter equality or raw ledger identity is exposed.
+  // Concurrent copies/queries are allowed; mutation of either object requires
+  // caller synchronization.
+  [[nodiscard]] bool SharesExecutionBudget(
+      const geometry::ExecutionContext& context) const noexcept;
   [[nodiscard]] GltfAdmissionProfile AdmissionProfile() const noexcept;
   [[nodiscard]] std::span<const std::byte> OriginalJson() const noexcept;
   [[nodiscard]] std::span<const GltfRawNumberView> RawNumbers() const noexcept;

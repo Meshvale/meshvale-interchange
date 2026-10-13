@@ -20,6 +20,19 @@ bytes. Copies and primitive/instance handles retain a const shared owner.
 Borrowed spans require their corresponding owner to remain alive. Selection
 rejects handles belonging to another asset.
 
+`GltfAsset::SharesExecutionBudget(context)` performs an allocation-free,
+nonthrowing query of the asset's retained Geometry worker/payload ledger. It
+returns true for context copies sharing that ledger and false for independently
+created contexts, even with equal numeric limits. A moved-from supplied context
+returns false. The query exposes no context, allocator or raw identity, takes no
+lock, performs no checkpoint or reservation and changes no counters. Distinct
+fresh operation caps do not affect this ledger comparison or become
+interchangeable allocators. The asset and context remain alive during the query;
+concurrent const queries through immutable copies are allowed, while reassignment,
+destruction or moving the same object concurrently requires caller synchronization.
+File callers can query `source.Asset()` through this same interface without another
+parse or extraction. The caller owns false-result diagnostics and validation order.
+
 `RetainedCoreMetadataV1` checks strict JSON and selected core metadata, references
 and graph declarations. It rejects decoded duplicate keys, invalid Unicode scalar
 sequences, missing required fields, fractional integer metadata, invalid core

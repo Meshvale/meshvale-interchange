@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/execution.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -130,6 +132,10 @@ GltfAsset::~GltfAsset() = default;
 std::optional<std::uint64_t> GltfAsset::NewRequestedBytes() const noexcept {
   if (!owner_->allocation.HasRequestLimit()) return std::nullopt;
   return owner_->allocation.OperationActiveBytes();
+}
+bool GltfAsset::SharesExecutionBudget(
+    const geometry::ExecutionContext& context) const noexcept {
+  return geometry::SharesExecutionBudget(owner_->context, context);
 }
 GltfAdmissionProfile GltfAsset::AdmissionProfile() const noexcept {
   return GltfAdmissionProfile::kRetainedCoreMetadataV1;
