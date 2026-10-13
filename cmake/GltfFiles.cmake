@@ -63,7 +63,10 @@ function(meshvale_add_gltf_file_tests)
     target_link_libraries(meshvale_gltf_file_verified_provider_requests_tests PRIVATE meshvale::gltf_files)
     meshvale_warnings(meshvale_gltf_file_verified_provider_requests_tests)
     add_test(NAME gltf_file_verified_provider_requests COMMAND meshvale_gltf_file_verified_provider_requests_tests)
-    set_tests_properties(gltf_file_verified_provider_requests PROPERTIES TIMEOUT 360 RUN_SERIAL TRUE)
+    # Bound the heavy original-allocation sweep independently of other fixtures.
+    set(_MESHVALE_GLTF_VERIFIED_PROVIDER_REQUEST_TIMEOUT_SECONDS 600)
+    set_tests_properties(gltf_file_verified_provider_requests PROPERTIES
+      TIMEOUT "${_MESHVALE_GLTF_VERIFIED_PROVIDER_REQUEST_TIMEOUT_SECONDS}" RUN_SERIAL TRUE)
   else()
     add_test(NAME unsupported_gltf_file_publication_dependency
       COMMAND meshvale_gltf_file_publish_tests --unsupported-profile)

@@ -492,11 +492,18 @@ void CleanupRemoved(const Witnesses& witness) {
             "actual owned staging root removed after attempted rollback");
 }
 void OriginalRequests() {
+  // Sparse caller-boundary output never enters an injected request or cleanup.
+  constexpr std::size_t kFaultProgressStride = 128;
   for (const bool changed : {false, true}) {
     Fixture fixture(changed);
     const auto foreign = fixture.context.ActiveTrackedPayload();
     for (const bool serial : {true, false}) {
       for (const bool dynamic : {false, true}) {
+        const auto sweep_start = std::chrono::steady_clock::now();
+        std::cout << "publication original sweep start"
+                  << (changed ? " changed" : " unchanged")
+                  << (dynamic ? " dynamic" : " static")
+                  << (serial ? " serial" : " native") << std::endl;
         Witnesses baseline(fixture.context);
         Provider baseline_supplements;
         baseline_supplements.dynamic = dynamic;
@@ -523,6 +530,16 @@ void OriginalRequests() {
         baseline.Released(foreign);
         fs::remove_all(fixture.Destination());
         for (std::size_t ordinal = 1; ordinal <= calls; ++ordinal) {
+          if (ordinal == 1 || ordinal == calls ||
+              ordinal % kFaultProgressStride == 0)
+            std::cout << "publication original sweep ordinal " << ordinal << '/'
+                      << calls << (changed ? " changed" : " unchanged")
+                      << (dynamic ? " dynamic" : " static")
+                      << (serial ? " serial" : " native") << " elapsed_ms="
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - sweep_start)
+                             .count()
+                      << std::endl;
           Witnesses witness(fixture.context);
           Provider supplements;
           supplements.dynamic = dynamic;
@@ -553,7 +570,11 @@ void OriginalRequests() {
         std::cout << "publication original faults " << calls
                   << (changed ? " changed" : " unchanged")
                   << (dynamic ? " dynamic" : " static")
-                  << (serial ? " serial\n" : " native\n");
+                  << (serial ? " serial" : " native") << " complete elapsed_ms="
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - sweep_start)
+                         .count()
+                  << std::endl;
       }
     }
   }
@@ -877,15 +898,25 @@ void ConcurrentRequests() {
     NoStaging(fixture);
   }
 }
+void RunPhase(std::string_view name, void (*phase)()) {
+  const auto start = std::chrono::steady_clock::now();
+  std::cout << "provider request phase start " << name << std::endl;
+  phase();
+  std::cout << "provider request phase complete " << name << " elapsed_ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start)
+                   .count()
+            << std::endl;
+}
 }  // namespace
 int main() {
   try {
-    OriginalRequests();
-    FreshCapsAndLifetime();
-    BorrowedNativeFailuresAndStops();
-    ProducerExceptionsAndCleanup();
-    OccupiedWorkers();
-    ConcurrentRequests();
+    RunPhase("OriginalRequests", OriginalRequests);
+    RunPhase("FreshCapsAndLifetime", FreshCapsAndLifetime);
+    RunPhase("BorrowedNativeFailuresAndStops", BorrowedNativeFailuresAndStops);
+    RunPhase("ProducerExceptionsAndCleanup", ProducerExceptionsAndCleanup);
+    RunPhase("OccupiedWorkers", OccupiedWorkers);
+    RunPhase("ConcurrentRequests", ConcurrentRequests);
     std::cout << "borrowed provider original requests, native roles and "
                  "retained cleanup passed\n";
   } catch (const std::exception& error) {
