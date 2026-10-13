@@ -179,6 +179,7 @@ def main():
                "-DMESHVALE_INTERCHANGE_PYTHON=OFF",
                "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
                "-DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON",
+               "-DMESHVALE_INTERCHANGE_GLTF_FILES=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     for suffix in DEPENDENCY_CONFIGURATIONS.values():
         parser_database = (vcpkg / "buildtrees/tinyobjloader" /
@@ -210,6 +211,7 @@ def main():
                *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
                "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
                "-DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON",
+               "-DMESHVALE_INTERCHANGE_GLTF_FILES=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", consumer, "--parallel", BUILD_WORKERS)
     runner.instrumented(consumer / "compile_commands.json", profile["flags"], True)

@@ -60,6 +60,17 @@ reloaded owners across six comparison phases. The installed
 public ownership and cleanup. This development interface remains under
 qualification; filesystem publication and release support remain separate.
 
+## Optional native glTF JSON file capture
+
+The development [file interface](docs/gltf-files.md) captures a JSON entry and its
+external resources into immutable owners through the opt-in `meshvale::gltf_files`
+target. It retains complete physical bytes, including resource tails, sorted
+unique relative paths and the capped canonical asset. The
+[installed example](examples/consumer/gltf_files.cpp) reads real files and uses
+their retained owners after removing the source files. Limits, strict path
+admission and current qualification scope remain with the contract. GLB capture
+and verified glTF bundle publication are unavailable in this slice.
+
 ## Optional native USD extraction
 
 The opt-in [USD module](docs/usd.md) extracts one selected static polygon cage
