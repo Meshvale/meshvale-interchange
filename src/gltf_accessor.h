@@ -2,6 +2,7 @@
 #ifndef MESHVALE_INTERCHANGE_SRC_GLTF_ACCESSOR_H_
 #define MESHVALE_INTERCHANGE_SRC_GLTF_ACCESSOR_H_
 
+#include <meshvale/geometry/editable_mesh.h>
 #include <meshvale/interchange/gltf.h>
 
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "gltf_allocation.h"
+#include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_detail {
 
@@ -103,7 +105,8 @@ struct AccessorDecodeResult {
     const geometry::ExecutionContext& context,
     const AllocationContext& allocation, std::stop_token stop,
     AccessorExecutionStats* stats = nullptr,
-    const AccessorExecutionHooks* hooks = nullptr);
+    const AccessorExecutionHooks* hooks = nullptr,
+    const NativeExecutionOptions* execution = nullptr);
 
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_ACCESSOR_H_

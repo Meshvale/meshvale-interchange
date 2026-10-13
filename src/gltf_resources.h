@@ -6,6 +6,7 @@
 #include <span>
 
 #include "gltf_asset_state.h"
+#include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_detail {
 struct ResourceExecutionStats {
@@ -25,6 +26,7 @@ struct ResourceExecutionHooks {
 void AdmitResources(AssetState& state,
                     std::span<const SuppliedGltfResource> supplied,
                     ResourceExecutionStats* stats = nullptr,
-                    const ResourceExecutionHooks* hooks = nullptr);
+                    const ResourceExecutionHooks* hooks = nullptr,
+                    const NativeExecutionOptions* execution = nullptr);
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_RESOURCES_H_

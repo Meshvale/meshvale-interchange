@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/interchange/gltf.h>
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -18,7 +20,8 @@
 #include "gltf_accessor.h"
 #include "gltf_asset_state.h"
 #include "gltf_metadata.h"
-#include "meshvale/interchange/gltf.h"
+#include "gltf_operation_workers.h"
+#include "gltf_workflow_test_internal.h"
 
 namespace meshvale::interchange::gltf_detail {
 namespace {
@@ -572,11 +575,13 @@ void DecodeChannel(ChannelStorage& channel, const AssetState& asset,
                    const RoleInventory& inventory,
                    const GltfExtractionRequest& request,
                    const GltfExtractionLimits& limits,
-                   const AllocationContext& allocation, std::stop_token stop) {
+                   const AllocationContext& allocation, std::stop_token stop,
+                   const NativeExecutionOptions* execution) {
   ValidateSharedViewUses(inventory, channel.source, allocation);
   auto decoded = DecodeAccessor(
       channel.source, request.values == GltfValueRequest::kRawAndNormalized,
-      limits, asset.work_policy, asset.context, allocation, stop);
+      limits, asset.work_policy, asset.context, allocation, stop, nullptr,
+      nullptr, execution);
   if (!decoded.values) throw GltfFailure(decoded.diagnostic);
   channel.values = std::move(*decoded.values);
   ValidateBounds(channel, asset.document, allocation);
@@ -667,6 +672,9 @@ GltfPrimitiveExtraction::GltfPrimitiveExtraction(
 GltfPrimitiveExtraction& GltfPrimitiveExtraction::operator=(
     const GltfPrimitiveExtraction&) = default;
 GltfPrimitiveExtraction::~GltfPrimitiveExtraction() = default;
+std::uint64_t GltfPrimitiveExtraction::NewRequestedBytes() const noexcept {
+  return owner_->allocation.OperationActiveBytes();
+}
 std::uint64_t GltfPrimitiveExtraction::SourceMode() const noexcept {
   return owner_->mode;
 }
@@ -693,11 +701,12 @@ std::optional<std::uint64_t> GltfPrimitiveExtraction::MaterialIndex()
   return owner_->material;
 }
 
-GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
-                                          const GltfPrimitiveHandle& primitive,
-                                          const GltfExtractionRequest& request,
-                                          const GltfExtractionLimits& limits,
-                                          std::stop_token stop) {
+namespace {
+GltfExtractionResult ExtractPrimitive(
+    const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
+    const GltfExtractionRequest& request, const GltfExtractionLimits& limits,
+    std::stop_token stop, gltf_detail::AllocationBackend backend,
+    const gltf_detail::NativeExecutionOptions* execution) {
   using namespace gltf_detail;
   try {
     if ((request.triangles != GltfTriangleRequest::kRequireTriangles &&
@@ -723,7 +732,7 @@ GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
       Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kIndexRole, {},
            kSelectionRule);
     const auto& state = Access::State(asset);
-    AllocationContext allocation(state.context, stop);
+    AllocationContext allocation(state.context, stop, backend);
     allocation.Checkpoint();
     // Full actual request admission is supplied by the operation allocator,
     // including rebound shared control storage and replacement overlap.
@@ -782,7 +791,7 @@ GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
       auto& channel = output->channel_storage.back();
       channel.set = set;
       DecodeChannel(channel, state, inventory, request, limits, allocation,
-                    stop);
+                    stop, execution);
       output->channels.push_back(ChannelView(channel));
     }
     std::size_t stream_count = vertex_count;
@@ -796,7 +805,7 @@ GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
              GltfDiagnosticCode::kLimitExceeded, {}, kLimitRule);
       output->indices.emplace(allocation, std::move(source), kIndices);
       DecodeChannel(*output->indices, state, inventory, request, limits,
-                    allocation, stop);
+                    allocation, stop, execution);
     } else if (vertex_count != 0 &&
                vertex_count - 1 > std::numeric_limits<std::uint32_t>::max()) {
       Fail(GltfStatus::kUnsupportedProfile,
@@ -877,4 +886,33 @@ GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
     return {{}, {status, code, {}, {}, {}, {}, kLimitRule}};
   }
 }
+}  // namespace
+GltfExtractionResult ExtractGltfPrimitive(const GltfAsset& asset,
+                                          const GltfPrimitiveHandle& primitive,
+                                          const GltfExtractionRequest& request,
+                                          const GltfExtractionLimits& limits,
+                                          std::stop_token stop) {
+  return ExtractPrimitive(asset, primitive, request, limits, stop,
+                          gltf_detail::DefaultAllocationBackend(), nullptr);
+}
+GltfExtractionResult ExtractGltfPrimitiveCapped(
+    const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
+    const GltfExtractionRequest& request, const GltfExtractionLimits& limits,
+    std::stop_token stop) {
+  const gltf_detail::NativeExecutionOptions execution;
+  return ExtractPrimitive(asset, primitive, request, limits, stop,
+                          gltf_detail::DefaultAllocationBackend(), &execution);
+}
+namespace gltf_detail {
+GltfExtractionResult TestExtractGltfPrimitiveCapped(
+    const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
+    const GltfExtractionRequest& request, const GltfExtractionLimits& limits,
+    std::stop_token stop, AllocationBackend allocation_backend,
+    NativeWorkerBackend worker_backend,
+    const OperationWorkerObserver* observer) {
+  const NativeExecutionOptions execution{worker_backend, observer};
+  return ExtractPrimitive(asset, primitive, request, limits, stop,
+                          allocation_backend, &execution);
+}
+}  // namespace gltf_detail
 }  // namespace meshvale::interchange

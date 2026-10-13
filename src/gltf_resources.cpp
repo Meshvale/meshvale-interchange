@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "gltf_metadata.h"
+#include "gltf_operation_workers.h"
 #include "meshvale/geometry/execution.h"
 
 namespace meshvale::interchange::gltf_detail {
@@ -60,7 +61,8 @@ void BoundExtent(AssetState& state, std::uint64_t bytes, std::uint64_t& total) {
 }
 void CopyBytes(AssetState& state, std::span<const std::byte> source,
                std::span<std::byte> destination, ResourceExecutionStats* stats,
-               const ResourceExecutionHooks* hooks) {
+               const ResourceExecutionHooks* hooks,
+               const NativeExecutionOptions* execution) {
   const auto partition =
       static_cast<std::size_t>(state.work_policy.resource_partition_bytes);
   const auto jobs =
@@ -85,35 +87,72 @@ void CopyBytes(AssetState& state, std::span<const std::byte> source,
   OwnedVector<std::exception_ptr> failures(
       jobs, std::exception_ptr{},
       Allocator<std::exception_ptr>(state.allocation));
-  OwnedVector<std::jthread> workers{Allocator<std::jthread>(state.allocation)};
-  workers.reserve(lease.Count());
   std::exception_ptr launch_exception;
-  try {
-    for (std::size_t worker = 0; worker < lease.Count(); ++worker) {
-      if (hooks && hooks->before_launch)
-        hooks->before_launch(worker, hooks->state);
-      workers.emplace_back([&, worker] {
-        for (auto job = worker; job < jobs; job += lease.Count()) {
-          const auto start = job * partition;
-          const auto end = start + std::min(partition, source.size() - start);
-          try {
-            if (hooks && hooks->before_job)
-              hooks->before_job(job, hooks->state);
-            copy(start, end);
-          } catch (...) {
-            failures[job] = std::current_exception();
-          }
-          if (hooks && hooks->after_job) hooks->after_job(job, hooks->state);
-        }
-      });
-      if (stats) ++stats->launched;
+  if (execution) {
+    struct CopyJob {
+      decltype(copy)& operation;
+      std::size_t partition;
+      std::size_t bytes;
+      std::exception_ptr* failures;
+      const ResourceExecutionHooks* hooks;
+    } work{copy, partition, source.size(), failures.data(), hooks};
+    auto invoke = [](void* argument, std::size_t ordinal) noexcept {
+      auto& job = *static_cast<CopyJob*>(argument);
+      const auto start = ordinal * job.partition;
+      const auto end = start + std::min(job.partition, job.bytes - start);
+      try {
+        if (job.hooks && job.hooks->before_job)
+          job.hooks->before_job(ordinal, job.hooks->state);
+        job.operation(start, end);
+      } catch (...) {
+        job.failures[ordinal] = std::current_exception();
+      }
+      if (job.hooks && job.hooks->after_job)
+        job.hooks->after_job(ordinal, job.hooks->state);
+    };
+    OperationWorkerStats actual;
+    try {
+      RunOperationJobs(state.allocation, lease, jobs, invoke, &work, *execution,
+                       actual, hooks ? hooks->before_launch : nullptr,
+                       hooks ? hooks->state : nullptr);
+    } catch (...) {
+      launch_exception = std::current_exception();
     }
-  } catch (...) {
-    launch_exception = std::current_exception();
-  }
-  for (auto& worker : workers) {
-    worker.join();
-    if (stats) ++stats->joined;
+    if (stats) {
+      stats->launched += actual.launched;
+      stats->joined += actual.joined;
+    }
+  } else {
+    OwnedVector<std::jthread> workers{
+        Allocator<std::jthread>(state.allocation)};
+    workers.reserve(lease.Count());
+    try {
+      for (std::size_t worker = 0; worker < lease.Count(); ++worker) {
+        if (hooks && hooks->before_launch)
+          hooks->before_launch(worker, hooks->state);
+        workers.emplace_back([&, worker] {
+          for (auto job = worker; job < jobs; job += lease.Count()) {
+            const auto start = job * partition;
+            const auto end = start + std::min(partition, source.size() - start);
+            try {
+              if (hooks && hooks->before_job)
+                hooks->before_job(job, hooks->state);
+              copy(start, end);
+            } catch (...) {
+              failures[job] = std::current_exception();
+            }
+            if (hooks && hooks->after_job) hooks->after_job(job, hooks->state);
+          }
+        });
+        if (stats) ++stats->launched;
+      }
+    } catch (...) {
+      launch_exception = std::current_exception();
+    }
+    for (auto& worker : workers) {
+      worker.join();
+      if (stats) ++stats->joined;
+    }
   }
   if (launch_exception) std::rethrow_exception(launch_exception);
   // Actual exceptions precede discovered expected cancellation failures.
@@ -214,7 +253,8 @@ void ImageSignature(const GltfResourceView& resource, std::string_view mime) {
 void AdmitResources(AssetState& state,
                     std::span<const SuppliedGltfResource> supplied,
                     ResourceExecutionStats* stats,
-                    const ResourceExecutionHooks* hooks) {
+                    const ResourceExecutionHooks* hooks,
+                    const NativeExecutionOptions* execution) {
   if (stats) *stats = {};
   const auto& document = state.document;
   std::uint64_t total = document.Original().size();
@@ -340,7 +380,8 @@ void AdmitResources(AssetState& state,
         if (prefix)
           DecodeBase64(encoded, destination, state.allocation);
         else
-          CopyBytes(state, binding->bytes, destination, stats, hooks);
+          CopyBytes(state, binding->bytes, destination, stats, hooks,
+                    execution);
         resource.bytes = destination;
         if (kind == GltfResourceKind::kImage) resource.logical_bytes = bytes;
       }

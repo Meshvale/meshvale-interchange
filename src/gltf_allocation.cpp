@@ -216,4 +216,7 @@ AllocationContext AllocationContext::WithRequestLimit(std::size_t bytes) const {
 std::size_t AllocationContext::OperationActiveBytes() const noexcept {
   return operation_.ActiveBytes();
 }
+bool AllocationContext::HasRequestLimit() const noexcept {
+  return operation_.budget_ != nullptr;
+}
 }  // namespace meshvale::interchange::gltf_detail

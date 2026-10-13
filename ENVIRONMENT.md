@@ -15,6 +15,14 @@ Arbitrary FetchContent source-directory overrides are rejected. This changes bui
 inputs for the [native glTF reader/extractor](docs/gltf-read.md); parser dependency
 headers remain private and are not installed.
 
+The cgltf translation unit propagates allocation/admission exceptions from its
+C++ callbacks and owns cleanup of partial parser blocks. MSVC builds compile
+that unit with `/EHsc-`, explicitly disabling the extern-C no-throw assumption
+from a surrounding `/EHsc` setting while retaining synchronous exception
+unwinding. The source is compiled as C++; this requirement does not modify the
+pinned parser archive. A build that reinstates that assumption can skip owning
+cleanup on callback failure. Native allocation-fault tests exercise this path.
+
 Set `VCPKG_ROOT` to a bootstrapped vcpkg installation compatible with the pinned registry. Set `GEOMETRY_PREFIX` and `INTERCHANGE_PREFIX` to chosen absolute install prefixes, and `VCPKG_TRIPLET` to the target platform (`x64-windows-static-md`, `x64-linux`, or `arm64-osx` in the evaluated desktop lanes). In a compiler environment, use CMake manifest integration:
 
 ```sh

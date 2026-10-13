@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/editable_mesh.h>
+#include <meshvale/interchange/gltf.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -11,9 +14,10 @@
 #include <utility>
 
 #include "gltf_metadata.h"
+#include "gltf_operation_workers.h"
 #include "gltf_parser.h"
 #include "gltf_resources.h"
-#include "meshvale/interchange/gltf.h"
+#include "gltf_workflow_test_internal.h"
 
 namespace meshvale::interchange {
 namespace {
@@ -84,22 +88,35 @@ void RawNumbers(gltf_detail::AssetState& state) {
     state.raw_numbers.push_back({{offset, lexeme.size()}, kind, lexeme});
   }
 }
-}  // namespace
-GltfReadResult ReadGltfAsset(
+GltfReadResult ReadAsset(
     std::span<const std::byte> json,
     std::span<const SuppliedGltfResource> supplied_resources,
     const GltfReadLimits& limits, const GltfWorkPolicy& policy,
-    const geometry::ExecutionContext& context, std::stop_token stop) {
+    const geometry::ExecutionContext& context, std::stop_token stop,
+    std::optional<std::uint64_t> request_cap,
+    gltf_detail::AllocationBackend backend,
+    const gltf_detail::NativeExecutionOptions* execution) {
   using namespace gltf_detail;
   try {
     Configuration(limits, policy);
+    if (request_cap) {
+      if (*request_cap == 0)
+        Fail(GltfStatus::kInvalidLimits, GltfDiagnosticCode::kZeroLimit);
+      if (*request_cap > static_cast<std::uint64_t>(
+                             std::numeric_limits<std::ptrdiff_t>::max()))
+        Fail(GltfStatus::kInvalidLimits,
+             GltfDiagnosticCode::kLimitNotRepresentable);
+    }
     for (const auto& binding : supplied_resources)
       if (binding.kind != GltfResourceKind::kBuffer &&
           binding.kind != GltfResourceKind::kImage)
         Fail(GltfStatus::kInvalidRequest,
              GltfDiagnosticCode::kInvalidBindingKind);
-    const AllocationContext allocation(context, stop);
+    AllocationContext allocation(context, stop, backend);
     allocation.Checkpoint();
+    if (request_cap)
+      allocation =
+          allocation.WithRequestLimit(static_cast<std::size_t>(*request_cap));
     if (json.size() > limits.max_owned_source_resource_bytes)
       Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kLimitExceeded);
     const JsonCaptureLimits capture_limits{
@@ -128,14 +145,19 @@ GltfReadResult ReadGltfAsset(
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kJsonSyntax);
       }
     }
-    auto state = std::allocate_shared<AssetState>(
-        Allocator<AssetState>(allocation), context, stop, limits, policy,
-        std::move(*captured.snapshot));
+    auto state =
+        request_cap
+            ? std::allocate_shared<AssetState>(
+                  Allocator<AssetState>(allocation), allocation, context,
+                  limits, policy, std::move(*captured.snapshot))
+            : std::allocate_shared<AssetState>(
+                  Allocator<AssetState>(allocation), context, stop, limits,
+                  policy, std::move(*captured.snapshot));
     RawNumbers(*state);
     AdmitMetadata(*state);
     BuildGraph(*state);
     CheckDeclaredGraphRelationships(*state);
-    AdmitResources(*state, supplied_resources);
+    AdmitResources(*state, supplied_resources, nullptr, nullptr, execution);
     const auto projection = BuildCoreProjection(*state);
     const auto parsed = InspectCoreProjection(
         {projection.data(), projection.size()}, allocation);
@@ -180,4 +202,38 @@ GltfReadResult ReadGltfAsset(
     throw;
   }
 }
+}  // namespace
+GltfReadResult ReadGltfAsset(
+    std::span<const std::byte> json,
+    std::span<const SuppliedGltfResource> supplied_resources,
+    const GltfReadLimits& limits, const GltfWorkPolicy& policy,
+    const geometry::ExecutionContext& context, std::stop_token stop) {
+  return ReadAsset(json, supplied_resources, limits, policy, context, stop,
+                   std::nullopt, gltf_detail::DefaultAllocationBackend(),
+                   nullptr);
+}
+GltfReadResult ReadGltfAssetCapped(
+    std::span<const std::byte> json,
+    std::span<const SuppliedGltfResource> supplied_resources,
+    const GltfReadOperationLimits& limits, const GltfWorkPolicy& policy,
+    const geometry::ExecutionContext& context, std::stop_token stop) {
+  const gltf_detail::NativeExecutionOptions execution;
+  return ReadAsset(json, supplied_resources, limits.source, policy, context,
+                   stop, limits.max_new_requested_bytes,
+                   gltf_detail::DefaultAllocationBackend(), &execution);
+}
+namespace gltf_detail {
+GltfReadResult TestReadGltfAssetCapped(
+    std::span<const std::byte> json,
+    std::span<const SuppliedGltfResource> supplied_resources,
+    const GltfReadOperationLimits& limits, const GltfWorkPolicy& policy,
+    const geometry::ExecutionContext& context, std::stop_token stop,
+    AllocationBackend allocation_backend, NativeWorkerBackend worker_backend,
+    const OperationWorkerObserver* observer) {
+  const NativeExecutionOptions execution{worker_backend, observer};
+  return ReadAsset(json, supplied_resources, limits.source, policy, context,
+                   stop, limits.max_new_requested_bytes, allocation_backend,
+                   &execution);
+}
+}  // namespace gltf_detail
 }  // namespace meshvale::interchange
