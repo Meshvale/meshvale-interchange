@@ -36,6 +36,7 @@
 #include <variant>
 #include <vector>
 
+#include "gltf_files_internal.h"
 #include "gltf_files_test_internal.h"
 
 namespace {
@@ -276,6 +277,137 @@ ic::GltfFileAsset Capture(const Fixture& fixture,
       context);
   Require(result.asset.has_value(), "actual independent file source");
   return *result.asset;
+}
+void NativeHandleLifetimeAndRegularResources() {
+  constexpr std::uint64_t kObservedFileOrdinal = 17;
+  struct Observer {
+    std::size_t before_open = 0;
+    std::size_t opened = 0;
+    std::size_t closed = 0;
+    std::uint64_t opened_ordinal = 0;
+    std::uint64_t closed_ordinal = 0;
+    detail::GltfFileHooks* input_table = nullptr;
+    bool mutate_on_open = false;
+    static void BeforeOpen(std::uint64_t, void* state) noexcept {
+      auto& observer = *static_cast<Observer*>(state);
+      ++observer.before_open;
+      observer.input_table->opened = nullptr;
+      observer.input_table->closed = nullptr;
+    }
+    static void Opened(std::uint64_t ordinal, void* state) noexcept {
+      auto& observer = *static_cast<Observer*>(state);
+      ++observer.opened;
+      observer.opened_ordinal = ordinal;
+      if (observer.mutate_on_open) observer.input_table->closed = nullptr;
+    }
+    static void Closed(std::uint64_t ordinal, void* state) noexcept {
+      auto& observer = *static_cast<Observer*>(state);
+      ++observer.closed;
+      observer.closed_ordinal = ordinal;
+    }
+    detail::GltfFileHooks Hooks() {
+      return {nullptr, nullptr, Opened, Closed, this};
+    }
+  } observer;
+  Fixture fixture;
+  const auto path = fixture.SourceRoot() / "a.bin";
+  {
+    auto hooks = observer.Hooks();
+    auto handle = detail::OpenFile(path.native(), kObservedFileOrdinal, hooks);
+    Require(observer.opened == 1 && observer.closed == 0 &&
+                observer.opened_ordinal == kObservedFileOrdinal,
+            "actual native file opened with independent observer state");
+    hooks.closed = nullptr;
+    handle.Close();
+    Require(
+        observer.closed == 1 && observer.closed_ordinal == kObservedFileOrdinal,
+        "open handle owns original hook table after live input mutation");
+  }
+  const auto open_from_local_table = [&] {
+    const auto hooks = observer.Hooks();
+    return detail::OpenFile(path.native(), kObservedFileOrdinal, hooks);
+  };
+  struct HandleFailure final : std::exception {};
+  bool propagated = false;
+  try {
+    auto handle = open_from_local_table();
+    Require(detail::Metadata(handle).size == kPhysicalBufferBytes,
+            "escaped native handle preserves literal full regular-file size");
+    throw HandleFailure{};
+  } catch (const HandleFailure&) {
+    propagated = true;
+  }
+  Require(
+      propagated && observer.opened == 2 && observer.closed == 2 &&
+          observer.closed_ordinal == kObservedFileOrdinal,
+      "escaped local hook table closes actual handle during exception unwind");
+  for (const bool mutate_on_open : {false, true}) {
+    const auto opened = observer.opened;
+    const auto closed = observer.closed;
+    auto hooks = observer.Hooks();
+    observer.input_table = &hooks;
+    observer.mutate_on_open = mutate_on_open;
+    if (!mutate_on_open) hooks.before_open = Observer::BeforeOpen;
+    auto handle = detail::OpenFile(path.native(), kObservedFileOrdinal, hooks);
+    handle.Close();
+    Require(observer.opened == opened + 1 && observer.closed == closed + 1,
+            "before-open and opened callbacks retain original dispatch table");
+    observer.input_table = nullptr;
+  }
+  Require(observer.before_open == 1,
+          "actual before-open callback mutates only borrowed input table");
+  observer.mutate_on_open = false;
+  {
+    const auto opened = observer.opened;
+    const auto closed = observer.closed;
+    const auto directory = fixture.SourceRoot();
+    const auto hooks = observer.Hooks();
+    bool rejected_regular_role = false;
+    try {
+      auto handle = detail::OpenFile(directory.native(), kObservedFileOrdinal,
+                                     hooks, true);
+      (void)detail::Metadata(handle);
+    } catch (const detail::Failure& failure) {
+      rejected_regular_role =
+          failure.diagnostic.status ==
+              ic::GltfFileStatus::kUnsupportedProfile &&
+          failure.diagnostic.code ==
+              ic::GltfFileDiagnosticCode::kResourceNotRegularFile;
+    }
+    Require(rejected_regular_role && observer.opened == opened + 1 &&
+                observer.closed == closed + 1,
+            "ordinary-resource metadata rejects a real directory handle");
+  }
+  Require(fs::remove(path) && fs::create_directory(path),
+          "literal buffer URI now resolves to an actual directory");
+  auto context = Context();
+  const auto rejected = ic::ReadGltfFileAsset(
+      fixture.SourceRoot() / kEntry, fixture.Options(),
+      {FileLimits(), ReadLimits(), {kByteLimit, kCountLimit, kRequests}},
+      {{kCheckpointBytes, 1, kPartitionBytes, kCheckpointBytes, kMaxJobs},
+       ReadWork(),
+       {1, kPartitionBytes}},
+      context);
+#ifdef _WIN32
+  constexpr auto kDirectoryStatus = ic::GltfFileStatus::kIoFailure;
+  constexpr auto kDirectoryCode = ic::GltfFileDiagnosticCode::kResourceMissing;
+  constexpr auto kDirectoryStage = ic::GltfFileStage::kCapture;
+#else
+  constexpr auto kDirectoryStatus = ic::GltfFileStatus::kUnsupportedProfile;
+  constexpr auto kDirectoryCode =
+      ic::GltfFileDiagnosticCode::kResourceNotRegularFile;
+  constexpr auto kDirectoryStage = ic::GltfFileStage::kPathPlanning;
+#endif
+  Require(!rejected.asset && rejected.diagnostic.status == kDirectoryStatus &&
+              rejected.diagnostic.code == kDirectoryCode &&
+              rejected.diagnostic.stage == kDirectoryStage &&
+              context.ActiveTrackedPayload() == 0,
+          "native first failure refuses directory buffer without owner or "
+          "retained charge");
+#ifdef _WIN32
+  Require(static_cast<bool>(rejected.diagnostic.system_error),
+          "actual Windows directory-open failure retains its system error");
+#endif
 }
 ic::GltfPrimitiveExtraction Extract(const ic::GltfAsset& asset,
                                     bool convert = false) {
@@ -1080,6 +1212,7 @@ void MissingDestinationParent() {
       "valid source/inspection reaches actual absent parent without staging");
 }
 void UnsupportedDependency() {
+  NativeHandleLifetimeAndRegularResources();
   Fixture fixture;
   auto context = Context();
   const auto file = Capture(fixture, context);
@@ -1104,6 +1237,7 @@ int main(int argc, char** argv) {
       return 0;
     }
     Require(argc == 1, "known publication fixture invocation");
+    NativeHandleLifetimeAndRegularResources();
     ChangedAndNoop();
     UnchangedStripAndFan();
     EntryAsUnusedResource();
