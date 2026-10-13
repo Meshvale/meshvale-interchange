@@ -54,6 +54,7 @@ struct FileRecord {
 };
 struct FileAssetState {
   gltf_detail::AllocationContext allocation;
+  std::optional<GlbContainer> container;
   std::optional<GltfAsset> asset;
   GltfExtensionFilePolicy extensions;
   Vector<FileRecord> records;

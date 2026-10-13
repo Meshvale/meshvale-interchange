@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <stop_token>
 
+#include "glb_detail.h"
 #include "gltf_allocation.h"
 #include "gltf_operation_workers.h"
 
@@ -28,6 +29,9 @@ struct GltfFileTestOptions {
       gltf_detail::DefaultAllocationBackend();
   gltf_detail::NativeExecutionOptions execution;
   GltfFileHooks hooks;
+  // Container requests have their own declared scope on the shared ledger.
+  // This backend state outlives the last retained file-owner copy.
+  glb_detail::Hooks container;
 };
 [[nodiscard]] GltfFileReadResult TestReadGltfFileAsset(
     const std::filesystem::path& input, const GltfFileReadOptions& options,

@@ -73,7 +73,7 @@ const GltfAsset& GltfFileAsset::Asset() const noexcept {
   return *owner_->asset;
 }
 GltfFileFormat GltfFileAsset::Format() const noexcept {
-  return GltfFileFormat::kGltfJson;
+  return owner_->container ? GltfFileFormat::kGlb : GltfFileFormat::kGltfJson;
 }
 std::string_view GltfFileAsset::EntryPath() const noexcept {
   return owner_->records[owner_->entry].path;
@@ -85,7 +85,7 @@ std::span<const GltfFileView> GltfFileAsset::Files() const noexcept {
   return owner_->views;
 }
 const GlbContainer* GltfFileAsset::Container() const noexcept {
-  return nullptr;
+  return owner_->container ? &*owner_->container : nullptr;
 }
 GltfExtensionFilePolicy GltfFileAsset::ExtensionFilesPolicy() const noexcept {
   return owner_->extensions;
@@ -139,6 +139,7 @@ constexpr std::array<std::byte, 4> kGlbMagic{std::byte{'g'}, std::byte{'l'},
 constexpr std::string_view kBuffers = "buffers";
 constexpr std::string_view kImages = "images";
 constexpr std::string_view kUri = "uri";
+constexpr std::string_view kByteLength = "byteLength";
 constexpr std::string_view kDataScheme = "data:";
 constexpr std::string_view kExtensions = "extensions";
 constexpr std::string_view kExtensionsUsed = "extensionsUsed";
@@ -222,6 +223,7 @@ struct Capture {
   detail::String entry;
   detail::Vector<Binding> plan;
   detail::Vector<SuppliedGltfResource> bindings;
+  std::optional<SuppliedGltfResource> container_binding;
   std::uint64_t total_bytes = 0;
   std::uint64_t total_paths = 0;
   Capture(detail::FileAssetState& state, const GltfFileReadOptions& options,
@@ -420,10 +422,110 @@ struct Capture {
     state.entry = Add(entry);
     Read(state.entry);
     const auto& bytes = state.records[state.entry].bytes;
-    if (bytes.size() >= kGlbMagic.size() &&
-        std::equal(kGlbMagic.begin(), kGlbMagic.end(), bytes.begin()))
-      detail::Fail(Status::kUnsupportedProfile, Stage::kContainer,
-                   Code::kContainerBinding, state.entry);
+    if (bytes.size() < kGlbMagic.size() ||
+        !std::equal(kGlbMagic.begin(), kGlbMagic.end(), bytes.begin()))
+      return;
+    auto read = glb_detail::Read(bytes, limits.container, work.container,
+                                 context, stop, testing.container);
+    if (read.status != GlbStatus::kSuccess) {
+      GltfFileDiagnostic diagnostic;
+      switch (read.status) {
+        case GlbStatus::kInvalidOptions:
+          diagnostic.status = Status::kInvalidConfiguration;
+          break;
+        case GlbStatus::kMalformed:
+          diagnostic.status = Status::kMalformed;
+          break;
+        case GlbStatus::kUnsupportedVersion:
+          diagnostic.status = Status::kUnsupportedProfile;
+          break;
+        case GlbStatus::kLimitExceeded:
+          diagnostic.status = Status::kLimitExceeded;
+          break;
+        case GlbStatus::kBudgetExceeded:
+          diagnostic.status = Status::kBudgetExceeded;
+          break;
+        case GlbStatus::kCanceled:
+          diagnostic.status = Status::kCanceled;
+          break;
+        case GlbStatus::kSuccess:
+          break;
+      }
+      diagnostic.stage = Stage::kContainer;
+      diagnostic.code = Code::kDelegatedContainer;
+      diagnostic.file_index = state.entry;
+      diagnostic.container_status = read.status;
+      diagnostic.container_byte_offset = read.error_byte_offset;
+      throw detail::Failure{diagnostic};
+    }
+    state.container.emplace(std::move(read.container));
+  }
+  std::span<const std::byte> Json() const {
+    constexpr std::size_t kJsonChunkIndex = 0;
+    return state.container
+               ? state.container->Chunk(kJsonChunkIndex).bytes
+               : std::span<const std::byte>(state.records[state.entry].bytes);
+  }
+  [[noreturn]] void ContainerFailure(
+      Status status, Code code, std::optional<std::uint64_t> buffer = {},
+      std::optional<std::uint64_t> offset = {}) const {
+    GltfFileDiagnostic diagnostic;
+    diagnostic.status = status;
+    diagnostic.stage = Stage::kContainer;
+    diagnostic.code = code;
+    diagnostic.file_index = state.entry;
+    diagnostic.byte_offset = offset;
+    if (buffer) diagnostic.resource_kind = GltfResourceKind::kBuffer;
+    diagnostic.resource_index = buffer;
+    throw detail::Failure{diagnostic};
+  }
+  void CoupleBin(const allocation::AssetState& asset) {
+    if (!state.container) return;
+    constexpr std::size_t kBinChunkIndex = 1;
+    constexpr std::size_t kMaximumBinPaddingBytes = 3;
+    constexpr std::uint64_t kBinBufferIndex = 0;
+    const auto& container = *state.container;
+    std::optional<std::span<const std::byte>> bin;
+    if (container.ChunkCount() > kBinChunkIndex &&
+        container.Chunk(kBinChunkIndex).type == kGlbBinChunkType)
+      bin = container.Chunk(kBinChunkIndex).bytes;
+    const auto& document = asset.document;
+    const auto buffers = allocation::FindMember(document, 0, kBuffers);
+    const auto count = buffers ? allocation::ChildCount(document, *buffers) : 0;
+    for (std::uint64_t index = 0; index < count; ++index) {
+      state.allocation.Checkpoint();
+      const auto row = *allocation::ChildAt(document, *buffers, index);
+      if (allocation::FindMember(document, row, kUri)) continue;
+      if (index != kBinBufferIndex)
+        ContainerFailure(Status::kUnsupportedProfile, Code::kContainerBinding,
+                         index);
+      if (!bin)
+        ContainerFailure(Status::kMalformed, Code::kContainerBinding, index);
+      const auto logical = allocation::ReadExactUnsigned(
+          document, *allocation::FindMember(document, row, kByteLength));
+      const auto start =
+          static_cast<std::uint64_t>(bin->data() - container.Bytes().data());
+      if (bin->size() < logical)
+        ContainerFailure(Status::kMalformed, Code::kContainerBinding, index,
+                         start + bin->size());
+      const auto padding = bin->size() - logical;
+      if (padding > kMaximumBinPaddingBytes)
+        ContainerFailure(Status::kMalformed, Code::kContainerPadding, index,
+                         start + logical + kMaximumBinPaddingBytes);
+      for (std::uint64_t byte = logical; byte < bin->size(); ++byte)
+        if ((*bin)[static_cast<std::size_t>(byte)] != std::byte{0})
+          ContainerFailure(Status::kMalformed, Code::kContainerPadding, index,
+                           start + byte);
+      detail::Count(1, limits.files.max_resource_bindings);
+      container_binding = SuppliedGltfResource{GltfResourceKind::kBuffer,
+                                               kBinBufferIndex, *bin};
+    }
+    if (bin && !container_binding) {
+      std::optional<std::uint64_t> buffer;
+      if (count) buffer = kBinBufferIndex;
+      ContainerFailure(Status::kUnsupportedProfile, Code::kContainerBinding,
+                       buffer);
+    }
   }
   static std::span<const SuppliedGltfResource> Provide(
       const allocation::AssetState& asset, void* opaque) {
@@ -451,6 +553,7 @@ struct Capture {
                        Code::kOpaqueInventoryRequired);
       }
     }
+    operation.CoupleBin(asset);
     constexpr std::array kResourceTables{
         std::pair{kBuffers, GltfResourceKind::kBuffer},
         std::pair{kImages, GltfResourceKind::kImage}};
@@ -464,7 +567,7 @@ struct Capture {
         const auto uri =
             item ? allocation::FindMember(document, *item, kUri) : std::nullopt;
         if (!uri) {
-          if (kind == GltfResourceKind::kBuffer)
+          if (kind == GltfResourceKind::kBuffer && !operation.container_binding)
             detail::Fail(Status::kUnsupportedProfile, Stage::kPathPlanning,
                          Code::kContainerBinding);
           continue;
@@ -473,8 +576,9 @@ struct Capture {
         if (document.Kind(*uri) != allocation::JsonKind::kString) continue;
         const auto spelling = document.String(*uri);
         if (spelling.starts_with(kDataScheme)) continue;
-        detail::Count(operation.plan.size() + 1,
-                      operation.limits.files.max_resource_bindings);
+        detail::Count(
+            operation.plan.size() + (operation.container_binding ? 1 : 0) + 1,
+            operation.limits.files.max_resource_bindings);
         auto path = detail::ResourcePath(operation.entry, spelling,
                                          operation.state.allocation,
                                          operation.limits.files);
@@ -495,7 +599,10 @@ struct Capture {
       else
         operation.Read(i);
     }
-    operation.bindings.reserve(operation.plan.size());
+    operation.bindings.reserve(operation.plan.size() +
+                               (operation.container_binding ? 1 : 0));
+    if (operation.container_binding)
+      operation.bindings.push_back(*operation.container_binding);
     for (const auto& binding : operation.plan) {
       const auto file = std::find_if(
           operation.state.records.begin(), operation.state.records.end(),
@@ -540,8 +647,8 @@ GltfFileReadResult detail::TestReadGltfFileAsset(
                       result.execution);
     operation.Initialize(input);
     auto read = allocation::ReadGltfAssetFromFiles(
-        state->records[state->entry].bytes, limits.asset, work.asset, context,
-        stop, Capture::Provide, &operation);
+        operation.Json(), limits.asset, work.asset, context, stop,
+        Capture::Provide, &operation);
     if (!read.asset) {
       result.diagnostic.status =
           read.diagnostic.status == GltfStatus::kCanceled ? Status::kCanceled
