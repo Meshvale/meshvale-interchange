@@ -25,7 +25,7 @@ BOOL_CACHE_TYPE = "BOOL"
 TRUE_CACHE_VALUES = frozenset({"ON", "TRUE", "YES", "1"})
 COMMON_TESTS = frozenset({
     "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
-    "gltf_read", "gltf_resources", "gltf_write", "gltf_metadata",
+    "gltf_read", "gltf_execution_budget", "gltf_resources", "gltf_write", "gltf_metadata",
     "gltf_accessor", "gltf_extract", "gltf_json_snapshot",
     "gltf_workflow_read", "gltf_workflow_read_large_index",
 })
@@ -58,8 +58,14 @@ GLTF_FILE_TESTS = frozenset({
     "gltf_files_link", "gltf_files", "gltf_files_glb", "gltf_files_glb_requests",
 })
 GLTF_FILE_INSTALLED_TESTS = frozenset({"installed_gltf_files_link", "installed_gltf_files_consumer"})
-GLTF_FILE_QUALIFIED_TESTS = frozenset({"gltf_file_publish_requests", "gltf_file_publish_semantics"})
-GLTF_FILE_UNSUPPORTED_TESTS = frozenset({"unsupported_gltf_file_publication_dependency"})
+GLTF_FILE_QUALIFIED_TESTS = frozenset({
+    "gltf_file_publish_requests", "gltf_file_publish_semantics",
+    "gltf_file_verified_provider_semantics", "gltf_file_verified_provider_requests",
+})
+GLTF_FILE_UNSUPPORTED_TESTS = frozenset({
+    "unsupported_gltf_file_publication_dependency",
+    "unsupported_gltf_file_verified_provider_dependency",
+})
 GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_file_publish_consumer"})
 
 

@@ -254,6 +254,16 @@ struct GltfFileVerifiedContent {
   const GlbContainer* container;
   std::span<const GltfFileView> files;
 };
+// Optional borrowed producer for charged application-owned supplemental
+// storage. The state remains alive through publication return and every import
+// join. Returned view/path/byte storage stays alive and unchanged through that
+// return. Content references borrow the publisher only during provide. See the
+// owning supplemental-file contract for mutual exclusion and failure behavior.
+struct GltfFileVerifiedFilesProvider {
+  std::span<const GltfFileView> (*provide)(const GltfFileVerifiedContent&,
+                                           void* state) = nullptr;
+  void* state = nullptr;
+};
 struct GltfFilePublicationOptions {
   // Views/functions are borrowed until return; the module never copies a
   // std::function or retains an unowned callback-produced view.
@@ -261,6 +271,9 @@ struct GltfFilePublicationOptions {
   std::function<void(GltfFilePublicationPhase)> on_phase;
   std::function<std::vector<GltfFileSupplement>(const GltfFileVerifiedContent&)>
       on_verified;
+  // Disabled by default. A non-null provide function and on_verified are
+  // mutually exclusive configuration. Null state is allowed.
+  GltfFileVerifiedFilesProvider verified_files_provider{};
 };
 // Published result only. Its inspection retains the actual staged reload;
 // GLB reload JSON is the proven writer-length prefix, excluding only newly

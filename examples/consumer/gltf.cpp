@@ -14,6 +14,7 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 namespace mv = meshvale::interchange;
@@ -58,6 +59,18 @@ mv::GltfPrimitiveExtraction CaptureAndExtract(
       {reinterpret_cast<const std::byte*>(json.data()), json.size()}, bindings,
       ReadLimits(), {1, 4, 1, 1}, context, capture_stop.get_token());
   Require(read.asset && read.diagnostic.status == mv::GltfStatus::kAccepted);
+  const auto source_charge = context.ActiveTrackedPayload();
+  const auto source_requests = read.asset->NewRequestedBytes();
+  auto context_copy = context;
+  auto moved_context = std::move(context_copy);
+  meshvale::geometry::ExecutionContext foreign_context;
+  const auto asset_copy = *read.asset;
+  Require(asset_copy.SharesExecutionBudget(context) &&
+          asset_copy.SharesExecutionBudget(moved_context) &&
+          !asset_copy.SharesExecutionBudget(context_copy) &&
+          !asset_copy.SharesExecutionBudget(foreign_context));
+  Require(context.ActiveTrackedPayload() == source_charge &&
+          read.asset->NewRequestedBytes() == source_requests);
   Require(read.asset->PrimitiveCount() == 2 &&
           read.asset->InstanceCount() == 3);
   Require(read.asset->Nodes().size() == 3 && read.asset->Scenes().size() == 2);

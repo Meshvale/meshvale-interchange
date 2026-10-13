@@ -195,7 +195,7 @@ jobs:
           python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test native adapters, GLB and glTF ownership
-        run: ctest --test-dir .local/build -C ${{ matrix.build_type }} --output-on-failure
+        run: ctest --test-dir .local/build -C ${{ matrix.build_type }} --verbose --output-on-failure
       - name: Check retained JSON with independent lexical oracle
         run: |
           python tests/gltf_json_oracle.py .local/build/meshvale_gltf_json_tests${{ runner.os == 'Windows' && '.exe' || '' }} .local/json-oracle

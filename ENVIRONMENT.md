@@ -76,11 +76,12 @@ With the option ON, the inventory checker additionally requires `gltf_files_link
 and `gltf_files`, `gltf_files_glb` and `gltf_files_glb_requests` in both numerical
 profiles, plus `installed_gltf_files_link` and `installed_gltf_files_consumer`.
 Qualified builds additionally require `gltf_file_publish_semantics`,
-`gltf_file_publish_requests` and `installed_gltf_file_publish_consumer`;
-unsupported builds require `unsupported_gltf_file_publication_dependency`, which
-exercises actual numerical-profile refusal before publication. Qualified builds
-therefore require 28 native and 15 installed entries; unsupported builds require
-21 and 12. JSON/GLB capture and
+`gltf_file_publish_requests`, `gltf_file_verified_provider_semantics`,
+`gltf_file_verified_provider_requests` and `installed_gltf_file_publish_consumer`;
+unsupported builds require `unsupported_gltf_file_publication_dependency` and
+`unsupported_gltf_file_verified_provider_dependency`, which exercise actual
+numerical-profile refusal before publication. The base `gltf_execution_budget`
+fixture also runs with optional modules OFF. JSON/GLB capture and
 extraction do not require numerical materialization admission. Installed examples
 default the option to ON only when the exported target exists. Pass
 `--gltf-files ON` or `OFF` to the inventory checker for an explicit selection; the

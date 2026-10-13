@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <meshvale/geometry/editable_mesh.h>
+#include <meshvale/geometry/execution.h>
 #include <meshvale/interchange/gltf.h>
 
 #include <algorithm>
@@ -54,6 +55,14 @@ int main() {
   if (!read.asset || !read.asset->NewRequestedBytes() ||
       *read.asset->NewRequestedBytes() == 0 ||
       *read.asset->NewRequestedBytes() > kRequestedByteLimit)
+    return 1;
+  const auto source_requests = read.asset->NewRequestedBytes();
+  const auto source_charge = context.ActiveTrackedPayload();
+  meshvale::geometry::ExecutionContext separate_context;
+  if (!read.asset->SharesExecutionBudget(context) ||
+      read.asset->SharesExecutionBudget(separate_context) ||
+      read.asset->NewRequestedBytes() != source_requests ||
+      context.ActiveTrackedPayload() != source_charge)
     return 1;
   auto extraction = mv::ExtractGltfPrimitiveCapped(
       *read.asset, *read.asset->Primitive(0),

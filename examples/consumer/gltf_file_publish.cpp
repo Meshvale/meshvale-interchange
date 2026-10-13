@@ -130,6 +130,23 @@ mv::GltfFileReadWorkPolicy FileReadWork() {
            kChannelPartitionElements},
           {kParallelMinimumBytes, kPartitionBytes}};
 }
+struct VerifiedFilesState {
+  bool called = false;
+  std::array<mv::GltfFileView, 1> files{
+      mv::GltfFileView{"checks/indices.bin", kExpectedBytes}};
+};
+std::span<const mv::GltfFileView> ProvideVerifiedFiles(
+    const mv::GltfFileVerifiedContent& content, void* state) {
+  auto& files = *static_cast<VerifiedFilesState*>(state);
+  Require(content.format == mv::GltfFileFormat::kGltfJson &&
+          !content.container && content.entry_path == kEntry &&
+          content.files.size() == kInitialFiles &&
+          std::ranges::equal(
+              content.inspection.ReloadedExtraction().TriangleIndices(),
+              kExpectedIndices));
+  files.called = true;
+  return files.files;
+}
 }  // namespace
 
 int main() {
@@ -226,6 +243,7 @@ int main() {
               retained->OriginalAsset().OriginalJson().size() ==
                   kDocument.size());
       const auto context = retained->Source().Mesh().ShareExecutionContext();
+      Require(file_source->Asset().SharesExecutionBudget(context));
       const std::array<mv::SuppliedGltfResource, 1> bindings{
           mv::SuppliedGltfResource{mv::GltfResourceKind::kBuffer, 0,
                                    positions}};
@@ -315,6 +333,32 @@ int main() {
           std::ranges::equal(published.bundle->EntryBytes(), retained->Json()));
       auto copy = *published.bundle;
       published.bundle.reset();
+      // This backing and its state survive the entire synchronous publication.
+      VerifiedFilesState borrowed_files;
+      options.on_verified = {};
+      options.verified_files_provider = {ProvideVerifiedFiles, &borrowed_files};
+      next_phase = 0;
+      const auto borrowed_destination = fixture.Root() / "borrowed";
+      auto borrowed = mv::PublishGltfTopologyBundle(
+          {*file_source, *checked.inspection}, borrowed_destination, options,
+          publication_limits, publication_work);
+      Require(borrowed.outcome == mv::GltfFilePublicationOutcome::kPublished &&
+              borrowed.bundle && borrowed_files.called &&
+              next_phase == kPhases.size());
+      auto borrowed_reopened = mv::ReadGltfFileAsset(
+          borrowed_destination / kEntry,
+          {borrowed_destination,
+           mv::GltfExtensionFilePolicy::kExplicitOpaqueInventory, kFinalOpaque},
+          FileReadLimits(), FileReadWork(), context);
+      Require(borrowed_reopened.asset &&
+              borrowed_reopened.asset->Files().size() == kPublishedFiles);
+      const auto borrowed_capture = borrowed_reopened.asset->Files();
+      const auto original_publication = copy.Files();
+      for (std::size_t file = 0; file < borrowed_capture.size(); ++file)
+        Require(borrowed_capture[file].path ==
+                    original_publication[file].path &&
+                std::ranges::equal(borrowed_capture[file].bytes,
+                                   original_publication[file].bytes));
       const auto rejected = mv::PublishGltfTopologyBundle(
           {*file_source, *checked.inspection}, destination, {},
           publication_limits, publication_work);

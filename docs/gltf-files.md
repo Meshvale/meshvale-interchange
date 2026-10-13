@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-FILES-001 |
-| Version | 0.1.0 |
+| Version | 0.1.1 |
 | Status | JSON/GLB capture and JSON publication implementation under qualification; GLB publication unavailable |
 | Interface | [gltf_files.h](../include/meshvale/interchange/gltf_files.h) |
 | Selected target | Optional `meshvale::gltf_files`, requiring `meshvale::gltf_workflow_support`; build/export qualification pending |
@@ -190,12 +190,14 @@ creating fresh internal `std::filesystem::path`, stream buffers or ordinary
 allocator vectors does not satisfy this guarantee. Destruction requires no new
 allocation and releases tracked bytes after free.
 
-Caller-created input/destination/root paths, option/functions and initial spans
-preexist the operation and are borrowed. Callback-created supplement strings/
-vectors and callback computation belong to the caller. Validate their count/path/
-byte limits after return, then import them into charged operation storage before
-writing. Never retain their unowned views or copy a `std::function` into uncharged
-operation state. Opaque OS/kernel handles/enumerators, filesystem/CRT internals,
+Caller-created input/destination/root paths, options/functions and initial spans
+preexist the operation and are borrowed. Producer-created supplement strings,
+vectors, views, path/byte backing and computation belong to the caller. Validate
+returned count/path/byte limits, then import them into charged operation storage
+before writing. An application creating that storage inside its own operation
+must satisfy its own accounting contract; the file-module caller-input exclusion
+does not exempt application requests from its cap. Never retain unowned returned
+storage in a result or copy a `std::function` into uncharged operation state. Opaque OS/kernel handles/enumerators, filesystem/CRT internals,
 native thread-runtime and exception-object internals are outside explicit-request
 accounting. They do not exempt Meshvale-created path/handle/worker records.
 
@@ -285,21 +287,45 @@ staging. They must not collide with entry/source or each other. `on_phase` runs
 synchronously before its phase's work; no callback runs after commit.
 
 After initial actual staged reload/inspection, exact-byte and complete-inventory
-verification, optional `on_verified` receives the actual inspection owner,
-format/relative entry, complete GLB container if present, and path-sorted exact
-entry/resource/opaque/static-supplement bytes. It receives no staging path.
-References/views borrow the publisher through the callback. A caller may copy
-the immutable inspection owner, but that proves staged verification only.
+verification, one optional verified-content producer receives the actual inspection
+owner, format/relative entry, complete GLB container if present, and path-sorted
+exact entry/resource/opaque/static-supplement bytes. It receives no staging path.
+Content references/views borrow the publisher during the producer invocation. A
+caller may copy the immutable inspection owner, but that proves staged verification
+only.
 
-The callback returns caller-owned `GltfFileSupplement` values. Admit/import their
-paths/bytes, reject collisions, write and read back each dynamic supplement, then
-recheck all original verified bytes and the complete inventory. Dynamic files
-are excluded from callback input, avoiding self-referential receipts, and become
-visible only if finalization succeeds. This is a neutral supplemental-file seam;
-application report schemas, hash choices and success predicates stay with callers.
-Callbacks may not mutate source or staging content. Allocation exceptions from
-callbacks propagate; other callback exceptions produce `kCallbackFailure` with
-the applicable fixed callback code and cleanup outcome.
+The existing `on_verified` returns caller-owned `GltfFileSupplement` values.
+Alternatively, `verified_files_provider` supplies a trivial function-pointer/state
+record whose `provide` function returns `std::span<const GltfFileView>`. A null
+function disables the provider; a non-null function may use null state. Copying
+this record allocates nothing and extends no pointed-to lifetime. Options/provider
+state stay alive, with the callback record unchanged, through publication return.
+Returned view arrays, paths and byte backing remain alive and unchanged through
+that return, including all import worker joins and failure cleanup. State may
+mutate synchronously before views are returned; concurrent use requires caller
+synchronization and must not change imported backing. The module retains no
+borrowed returned backing in its result.
+
+`on_verified` and a non-null `provide` function are mutually exclusive. After
+existing nested positive/representational configuration and static descriptor
+host-extent checks, supplying both returns `kInvalidConfiguration` at
+`kConfiguration` with `kInvalidRequest`, before stop, format dispatch, producer
+invocation or any filesystem action. Default-empty options and the owning callback
+route remain compatible; neither producer is required.
+
+Admit/import returned paths/bytes into charged file-owned storage before any
+dynamic write, reject collisions, write and read back each dynamic supplement,
+then recheck all original verified bytes and the complete inventory, including
+when the producer returns no files. Dynamic files are excluded from producer
+input, avoiding self-referential receipts, and become visible only if finalization
+succeeds. This is a neutral supplemental-file seam; application report schemas,
+hash choices and success predicates stay with callers. Producers may not mutate
+source or staging content. Producer `std::bad_alloc` propagates after joined
+cleanup; other producer exceptions produce `kCallbackFailure` with the applicable
+fixed callback code and cleanup outcome. Allocation/native exceptions outside
+producer invocation retain their owning propagation behavior; import/path/count
+failures are not relabeled as callback failures. No producer follows successful
+native finalization.
 
 ## GFILE-FAILURE-001: First diagnostics and cleanup
 
