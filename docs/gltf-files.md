@@ -4,19 +4,30 @@
 |---|---|
 | ID | GLTF-FILES-001 |
 | Version | 0.1.0 |
-| Status | Draft declaration; implementation and qualification pending |
+| Status | JSON capture implementation under qualification; GLB capture and publication unavailable |
 | Interface | [gltf_files.h](../include/meshvale/interchange/gltf_files.h) |
-| Selected target | Optional `meshvale::gltf_files`, requiring `meshvale::gltf_workflow_support`; build/export implementation pending |
+| Selected target | Optional `meshvale::gltf_files`, requiring `meshvale::gltf_workflow_support`; build/export qualification pending |
 
 This additive interface selects immutable native file capture and same-format
 verified topology-output publication. The [reader](gltf-read.md) owns glTF
 admission and primitive decoding; [capped workflow support](gltf-workflow-support.md)
 owns read/extraction accounting and independent output inspection; the
 [topology writer](gltf_topology_write.md) owns supplied-memory edits; the
-[GLB container](glb.md) owns wire capture/assembly. This draft adds no implemented
-file operation, format conversion, Python binding, application report schema,
-command or supported release. The base reader header remains independent of the
-optional file module.
+[GLB container](glb.md) owns wire capture/assembly. The first development slice
+implements JSON file capture; its native, installed and platform qualification
+remains pending. It adds no format conversion, Python binding, application report
+schema, command or supported release. The base reader header remains independent
+of the optional file module.
+
+GLB magic currently returns `kUnsupportedProfile`/`kContainerBinding` at the
+container stage, with no file owner or JSON fallback. `PublishGltfTopologyBundle`
+has a defined unavailable route: validate every explicit positive/representational
+configuration field first, then return initial cancellation or
+`kUnsupportedProfile`/`kPublicationUnsupported`. It performs no filesystem action,
+invokes no callback and returns no published owner. Strong source, destination and
+supplemental-content admission are deferred with publication. The following
+publication/GLB clauses retain their accepted target contract and do not assert
+that those operations are implemented.
 
 ## GFILE-CAPTURE-001: Strong file source
 
@@ -31,6 +42,9 @@ entry must be inside the root, with a portable relative path. Capture regular
 files only. Reject symbolic links and Windows reparse aliases during root,
 directory and file traversal, even when their targets would be inside the root.
 Canonical targets must remain inside the root as an additional check.
+The initial Windows capture route selects ordinary local drive paths; network
+and device namespaces are unavailable. POSIX capture uses native regular files;
+Linux canonical-handle lookup requires `/proc/self/fd`.
 
 The copy-only immutable `GltfFileAsset` strongly retains the admitted `Asset()`,
 source `Format()`, relative `EntryPath()`, complete physical `EntryBytes()`, and
