@@ -43,6 +43,17 @@ jobs:
             compile_flags: /EHsc
             link_flags: ""
             sanitizer: ""
+          - profile_id: windows-msvc-workflow-off
+            os: windows-latest
+            compiler_id: MSVC
+            compiler_version: ""
+            compiler_option: ""
+            build_type: Release
+            materialization_profile: qualified
+            compile_flags: /EHsc
+            link_flags: ""
+            sanitizer: ""
+            optional_gltf: "OFF"
           - profile_id: windows-msvc-asan-qualified
             os: windows-latest
             compiler_id: MSVC
@@ -167,8 +178,8 @@ jobs:
           ${{ matrix.compiler_option }} "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
           "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
-          -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON
-          -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON
+          -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -180,7 +191,7 @@ jobs:
         run: |
           $version = @()
           if ('${{ matrix.compiler_version }}') { $version = @('--compiler-version', '${{ matrix.compiler_version }}') }
-          python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} @version
+          python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test native adapters, GLB and glTF ownership
         run: ctest --test-dir .local/build -C ${{ matrix.build_type }} --output-on-failure
@@ -213,8 +224,8 @@ jobs:
           "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
           "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
-          -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON
-          -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON
+          -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -226,7 +237,7 @@ jobs:
         run: |
           $version = @()
           if ('${{ matrix.compiler_version }}') { $version = @('--compiler-version', '${{ matrix.compiler_version }}') }
-          python scripts/check-native-tests.py --build-dir .local/build --installed-build-dir .local/consumer --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} @version
+          python scripts/check-native-tests.py --build-dir .local/build --installed-build-dir .local/consumer --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify actual matching Windows sanitizer compilation
         if: matrix.sanitizer == 'asan'
