@@ -36,7 +36,9 @@
 #include <utility>
 #include <vector>
 
+#include "gltf_allocation.h"
 #include "gltf_files_test_internal.h"
+#include "gltf_operation_workers.h"
 
 namespace {
 namespace ic = meshvale::interchange;

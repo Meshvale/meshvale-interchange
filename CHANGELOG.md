@@ -9,8 +9,12 @@
   asset ownership and joined shared-budget I/O. The installed example retains
   data after source-file removal. GLB capture additionally retains complete
   JSON/BIN/opaque chunks, checks embedded buffer binding and padding, and delegates
-  canonical extraction under the shared limits. Verified bundle publication
-  remains unavailable; the development interface is under qualification.
+  canonical extraction under the shared limits. JSON topology publication stages
+  full physical bytes, independently verifies reloaded output and commits a new
+  bundle without replacement, including checked static and computed supplements.
+  Its installed example deletes the original source and reopens committed bytes.
+  GLB publication remains unavailable; the development interface is under
+  qualification.
 
 - Additive fully capped glTF supplied-memory read and extraction routes with
   live attributable owner counters. The optional
