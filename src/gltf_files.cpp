@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/execution.h>
 #include <meshvale/interchange/glb.h>
+#include <meshvale/interchange/gltf.h>
 #include <meshvale/interchange/gltf_files.h>
+#include <meshvale/interchange/gltf_workflow_support.h>
 
 #include <algorithm>
 #include <array>
@@ -19,10 +22,12 @@
 #include <utility>
 
 #include "glb_detail.h"
+#include "gltf_allocation.h"
 #include "gltf_asset_state.h"
 #include "gltf_file_read_provider.h"
 #include "gltf_files_internal.h"
 #include "gltf_files_test_internal.h"
+#include "gltf_json_snapshot.h"
 #include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_files_detail {
@@ -54,13 +59,17 @@ FileAssetState::FileAssetState(const gltf_detail::AllocationContext& allocator,
 GltfFileAsset Access::Make(std::shared_ptr<const FileAssetState> state) {
   return GltfFileAsset(std::move(state));
 }
-// The partial development route never constructs this owner, but every declared
-// installed special member/accessor has a definition for ordinary result use.
-struct PublishedBundleState {
-  GltfFileAsset source;
-  GltfTopologyOutputInspection inspection;
-  FileAssetState files;
-};
+const FileAssetState& Access::State(const GltfFileAsset& asset) noexcept {
+  return *asset.owner_;
+}
+GltfPublishedBundle Access::MakePublished(
+    std::shared_ptr<const PublishedBundleState> state) noexcept {
+  return GltfPublishedBundle(std::move(state));
+}
+PublishedBundleState::PublishedBundleState(
+    const GltfFileAsset& original, const GltfTopologyOutputInspection& verified,
+    FileAssetState&& captured)
+    : source(original), inspection(verified), files(std::move(captured)) {}
 }  // namespace meshvale::interchange::gltf_files_detail
 
 namespace meshvale::interchange {
@@ -411,6 +420,18 @@ struct Capture {
     } else
       root = detail::AbsolutePath(options.resource_root.native(),
                                   state.allocation, limits.files);
+    InitializeRoot(absolute);
+  }
+  void InitializeNative(detail::NativeView admitted_root,
+                        std::string_view relative_entry,
+                        bool detect_container = true) {
+    root.assign(admitted_root);
+    const auto absolute =
+        detail::JoinPath(root, relative_entry, state.allocation, limits.files);
+    InitializeRoot(absolute, detect_container);
+  }
+  void InitializeRoot(detail::NativeView absolute,
+                      bool detect_container = true) {
     detail::RejectAliases(root, true, state.allocation, limits.files);
     entry =
         detail::RelativeEntry(root, absolute, state.allocation, limits.files);
@@ -424,7 +445,7 @@ struct Capture {
     state.entry = Add(entry);
     Read(state.entry);
     const auto& bytes = state.records[state.entry].bytes;
-    if (bytes.size() < kGlbMagic.size() ||
+    if (!detect_container || bytes.size() < kGlbMagic.size() ||
         !std::equal(kGlbMagic.begin(), kGlbMagic.end(), bytes.begin()))
       return;
     auto read = glb_detail::Read(bytes, limits.container, work.container,
@@ -614,7 +635,74 @@ struct Capture {
     return operation.bindings;
   }
 };
+GltfFileDiagnostic FinishCapture(Capture& operation) {
+  auto read = allocation::ReadGltfAssetFromFiles(
+      operation.Json(), operation.limits.asset, operation.work.asset,
+      operation.context, operation.stop, Capture::Provide, &operation);
+  GltfFileDiagnostic diagnostic;
+  if (!read.asset) {
+    diagnostic.status =
+        read.diagnostic.status == GltfStatus::kCanceled ? Status::kCanceled
+        : read.diagnostic.status == GltfStatus::kBudgetExceeded
+            ? Status::kBudgetExceeded
+        : read.diagnostic.status == GltfStatus::kUnsupportedProfile
+            ? Status::kUnsupportedProfile
+        : read.diagnostic.status == GltfStatus::kMalformed
+            ? Status::kMalformed
+            : Status::kInvalidRequest;
+    diagnostic.stage = Stage::kAssetRead;
+    diagnostic.code = Code::kDelegatedRead;
+    diagnostic.gltf_diagnostic = read.diagnostic;
+    return diagnostic;
+  }
+  auto& state = operation.state;
+  state.asset = std::move(read.asset);
+  state.views.reserve(state.records.size());
+  for (const auto& file : state.records)
+    state.views.push_back({file.path, file.bytes});
+  state.allocation.Checkpoint();
+  diagnostic.status = Status::kSuccess;
+  diagnostic.stage = Stage::kComplete;
+  return diagnostic;
+}
 }  // namespace
+GltfFileDiagnostic detail::CaptureFiles(
+    FileAssetState& state, NativeView root, std::string_view entry,
+    std::span<const std::string_view> opaque_files,
+    const GltfFileReadLimits& limits, const GltfFileReadWorkPolicy& work,
+    const geometry::ExecutionContext& context, std::stop_token stop,
+    const GltfFileTestOptions& testing, GltfFileExecution& execution) {
+  GltfFileReadOptions options;
+  options.extensions = state.extensions;
+  options.opaque_source_files = opaque_files;
+  Capture operation(state, options, limits, work, context, stop, testing,
+                    execution);
+  operation.InitializeNative(root, entry);
+  return FinishCapture(operation);
+}
+void detail::CapturePhysicalFiles(
+    FileAssetState& state, NativeView root, std::string_view entry,
+    std::span<const std::string_view> paths, const GltfFileReadLimits& limits,
+    const GltfFileReadWorkPolicy& work,
+    const geometry::ExecutionContext& context, std::stop_token stop,
+    const GltfFileTestOptions& testing, GltfFileExecution& execution) {
+  GltfFileReadOptions options;
+  Capture operation(state, options, limits, work, context, stop, testing,
+                    execution);
+  operation.InitializeNative(root, entry, false);
+  for (const auto path : paths) operation.Add(path);
+  std::sort(state.records.begin(), state.records.end(),
+            [](const auto& a, const auto& b) { return a.path < b.path; });
+  for (std::size_t i = 0; i < state.records.size(); ++i) {
+    if (state.records[i].path == entry)
+      state.entry = i;
+    else
+      operation.Read(i);
+  }
+  state.views.reserve(state.records.size());
+  for (const auto& file : state.records)
+    state.views.push_back({file.path, file.bytes});
+}
 GltfFileReadResult detail::TestReadGltfFileAsset(
     const std::filesystem::path& input, const GltfFileReadOptions& options,
     const GltfFileReadLimits& limits, const GltfFileReadWorkPolicy& work,
@@ -648,32 +736,9 @@ GltfFileReadResult detail::TestReadGltfFileAsset(
     Capture operation(*state, options, limits, work, context, stop, testing,
                       result.execution);
     operation.Initialize(input);
-    auto read = allocation::ReadGltfAssetFromFiles(
-        operation.Json(), limits.asset, work.asset, context, stop,
-        Capture::Provide, &operation);
-    if (!read.asset) {
-      result.diagnostic.status =
-          read.diagnostic.status == GltfStatus::kCanceled ? Status::kCanceled
-          : read.diagnostic.status == GltfStatus::kBudgetExceeded
-              ? Status::kBudgetExceeded
-          : read.diagnostic.status == GltfStatus::kUnsupportedProfile
-              ? Status::kUnsupportedProfile
-          : read.diagnostic.status == GltfStatus::kMalformed
-              ? Status::kMalformed
-              : Status::kInvalidRequest;
-      result.diagnostic.stage = Stage::kAssetRead;
-      result.diagnostic.code = Code::kDelegatedRead;
-      result.diagnostic.gltf_diagnostic = read.diagnostic;
-      return result;
-    }
-    state->asset = std::move(read.asset);
-    state->views.reserve(state->records.size());
-    for (const auto& file : state->records)
-      state->views.push_back({file.path, file.bytes});
-    allocator.Checkpoint();
-    result.asset = detail::Access::Make(state);
-    result.diagnostic.status = Status::kSuccess;
-    result.diagnostic.stage = Stage::kComplete;
+    result.diagnostic = FinishCapture(operation);
+    if (result.diagnostic.status == Status::kSuccess)
+      result.asset = detail::Access::Make(state);
   } catch (const detail::Failure& failure) {
     result.diagnostic = failure.diagnostic;
   } catch (const allocation::AdmissionFailure& failure) {
@@ -703,45 +768,31 @@ GltfFileReadResult ReadGltfFileAsset(const std::filesystem::path& input,
   return detail::TestReadGltfFileAsset(input, options, limits, work, context,
                                        stop, {});
 }
-GltfFilePublicationResult PublishGltfTopologyBundle(
-    const GltfFilePublicationRequest&, const std::filesystem::path&,
-    const GltfFilePublicationOptions&, const GltfFilePublicationLimits& limits,
-    const GltfFilePublicationWorkPolicy& work, std::stop_token stop) {
-  GltfFilePublicationResult result;
-  try {
-    Validate(limits.files, work.files, limits.container, work.container);
-    ReadConfiguration(limits.reload, work.reload);
-    for (auto value : {limits.extraction.max_components,
-                       limits.extraction.max_triangle_corners,
-                       limits.extraction.max_output_requested_bytes,
-                       limits.inspection.max_json_bytes,
-                       limits.inspection.max_json_nodes,
-                       limits.inspection.max_json_depth,
-                       limits.inspection.max_resources,
-                       limits.inspection.max_resource_bytes,
-                       limits.inspection.max_vertices,
-                       limits.inspection.max_channels,
-                       limits.inspection.max_attribute_scalars,
-                       limits.inspection.max_descriptor_bytes,
-                       limits.inspection.max_candidate_faces,
-                       limits.inspection.max_candidate_corners,
-                       limits.inspection.max_index_bytes,
-                       limits.inspection.max_new_requested_bytes,
-                       work.inspection.parallel_min_bytes,
-                       work.inspection.partition_bytes,
-                       work.inspection.cancellation_block_bytes,
-                       work.inspection.max_jobs})
-      Positive(value);
-    if (stop.stop_requested())
-      detail::Fail(Status::kCanceled, Stage::kConfiguration,
-                   Code::kStopRequested);
-    detail::Fail(Status::kUnsupportedProfile, Stage::kPublication,
-                 Code::kPublicationUnsupported);
-  } catch (const detail::Failure& failure) {
-    result.diagnostic = failure.diagnostic;
-    if (failure.diagnostic.status == Status::kCanceled)
-      result.outcome = GltfFilePublicationOutcome::kCanceled;
-  }
-  return result;
+void detail::ValidatePublicationConfiguration(
+    const GltfFilePublicationLimits& limits,
+    const GltfFilePublicationWorkPolicy& work) {
+  Validate(limits.files, work.files, limits.container, work.container);
+  ReadConfiguration(limits.reload, work.reload);
+  for (auto value : {limits.extraction.max_components,
+                     limits.extraction.max_triangle_corners,
+                     limits.extraction.max_output_requested_bytes,
+                     limits.inspection.max_json_bytes,
+                     limits.inspection.max_json_nodes,
+                     limits.inspection.max_json_depth,
+                     limits.inspection.max_resources,
+                     limits.inspection.max_resource_bytes,
+                     limits.inspection.max_vertices,
+                     limits.inspection.max_channels,
+                     limits.inspection.max_attribute_scalars,
+                     limits.inspection.max_descriptor_bytes,
+                     limits.inspection.max_candidate_faces,
+                     limits.inspection.max_candidate_corners,
+                     limits.inspection.max_index_bytes,
+                     limits.inspection.max_new_requested_bytes,
+                     work.inspection.parallel_min_bytes,
+                     work.inspection.partition_bytes,
+                     work.inspection.cancellation_block_bytes,
+                     work.inspection.max_jobs})
+    Positive(value);
 }
 }  // namespace meshvale::interchange

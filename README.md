@@ -38,8 +38,8 @@ separate `meshvale::gltf_materialization` target. It retains source ownership,
 channel correspondence and normalization declarations; canonical attributes
 remain raw. Its [installed example](examples/consumer/gltf_materialization.cpp)
 composes transfer, inspection and face selection. The transfer contract owns
-numerical-profile and lifetime limits. Edited filesystem publication and Python
-glTF operations remain forthcoming.
+numerical-profile and lifetime limits. JSON filesystem publication is described below; Python glTF operations remain
+forthcoming.
 
 The [checked topology writer](docs/gltf_topology_write.md) writes an ordered
 triangle subset into supplied-memory glTF JSON through `meshvale::gltf_topology_write`.
@@ -58,9 +58,10 @@ reloaded owners across six comparison phases. The installed
 [capped reader example](examples/consumer/gltf_workflow_read.cpp) and
 [inspection example](examples/consumer/gltf_workflow_support.cpp) demonstrate
 public ownership and cleanup. This development interface remains under
-qualification; filesystem publication and release support remain separate.
+qualification; file publication has its own optional module and release support
+remains pending.
 
-## Optional native glTF and GLB file capture
+## Optional native glTF and GLB files
 
 The development [file interface](docs/gltf-files.md) captures a JSON or GLB entry and its
 external resources into immutable owners through the opt-in `meshvale::gltf_files`
@@ -70,7 +71,12 @@ unique relative paths and the capped canonical asset. The
 their retained owners after removing the source files. Limits, strict path
 admission and current qualification scope remain with the contract. GLB capture
 retains complete JSON, BIN and opaque chunks and binds a supported embedded
-buffer to the canonical asset. Verified glTF bundle publication remains unavailable.
+buffer to the canonical asset. JSON topology output can be staged, reloaded,
+independently inspected and committed to a new destination without replacement.
+The [publication example](examples/consumer/gltf_file_publish.cpp) selects a
+triangle, removes the source files, includes static and computed receipts, and
+reopens the committed bundle. JSON publication remains under qualification;
+GLB publication and glTF Python operations remain forthcoming.
 
 ## Optional native USD extraction
 

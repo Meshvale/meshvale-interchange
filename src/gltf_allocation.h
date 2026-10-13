@@ -94,6 +94,10 @@ class AllocationContext {
   static void Deallocate(void* pointer) noexcept;
   [[nodiscard]] bool SharesBudget(
       const AllocationContext& other) const noexcept;
+  // Ledger identity only. Distinct fresh operation caps remain unequal for
+  // allocator interchangeability through SharesBudget().
+  [[nodiscard]] bool SharesExecutionBudget(
+      const AllocationContext& other) const noexcept;
 
  private:
   std::optional<geometry::ExecutionContext> context_;

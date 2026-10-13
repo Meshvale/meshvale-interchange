@@ -58,6 +58,9 @@ GLTF_FILE_TESTS = frozenset({
     "gltf_files_link", "gltf_files", "gltf_files_glb", "gltf_files_glb_requests",
 })
 GLTF_FILE_INSTALLED_TESTS = frozenset({"installed_gltf_files_link", "installed_gltf_files_consumer"})
+GLTF_FILE_QUALIFIED_TESTS = frozenset({"gltf_file_publish_requests", "gltf_file_publish_semantics"})
+GLTF_FILE_UNSUPPORTED_TESTS = frozenset({"unsupported_gltf_file_publication_dependency"})
+GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_file_publish_consumer"})
 
 
 def cache_entries(path):
@@ -135,6 +138,11 @@ def expected_inventory(profile, installed=False, topology_write=True,
                          WORKFLOW_SUPPORT_QUALIFIED_TESTS)
     if gltf_files:
         expected |= GLTF_FILE_INSTALLED_TESTS if installed else GLTF_FILE_TESTS
+        if profile == QUALIFIED_PROFILE:
+            expected |= (GLTF_FILE_QUALIFIED_INSTALLED_TESTS if installed else
+                         GLTF_FILE_QUALIFIED_TESTS)
+        elif not installed:
+            expected |= GLTF_FILE_UNSUPPORTED_TESTS
     return expected
 
 

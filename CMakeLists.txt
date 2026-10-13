@@ -137,7 +137,7 @@ if(Git_FOUND)
     set(MESHVALE_INTERCHANGE_VERSION "${CMAKE_MATCH_1}")
   endif()
 endif()
-add_library(meshvale_interchange STATIC src/obj_read.cpp src/obj_write.cpp src/obj_file_read.cpp src/obj_file_publish.cpp src/obj_file_detail.cpp
+add_library(meshvale_interchange STATIC src/obj_read.cpp src/obj_write.cpp src/obj_file_read.cpp src/obj_file_publish.cpp src/obj_file_detail.cpp src/file_publication_native.cpp
   src/gltf_write.cpp src/gltf_accessor.cpp src/gltf_extract.cpp src/gltf_admission.cpp src/gltf_read.cpp src/gltf_resources.cpp src/gltf_operation_workers.cpp src/gltf_graph.cpp src/gltf_graph_declarations.cpp src/gltf_asset.cpp src/gltf_metadata.cpp src/gltf_allocation.cpp src/gltf_parser.cpp src/gltf_json_snapshot.cpp src/cgltf_reader.cpp src/glb.cpp)
 add_library(meshvale::interchange ALIAS meshvale_interchange)
 if(MSVC)

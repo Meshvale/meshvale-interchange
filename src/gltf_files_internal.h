@@ -2,14 +2,18 @@
 #ifndef MESHVALE_INTERCHANGE_SRC_GLTF_FILES_INTERNAL_H_
 #define MESHVALE_INTERCHANGE_SRC_GLTF_FILES_INTERNAL_H_
 
+#include <meshvale/geometry/execution.h>
 #include <meshvale/interchange/glb.h>
+#include <meshvale/interchange/gltf.h>
 #include <meshvale/interchange/gltf_files.h>
+#include <meshvale/interchange/gltf_workflow_support.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -64,9 +68,38 @@ struct FileAssetState {
   FileAssetState(const gltf_detail::AllocationContext& allocation,
                  GltfExtensionFilePolicy extensions);
 };
+struct PublishedBundleState {
+  GltfFileAsset source;
+  GltfTopologyOutputInspection inspection;
+  FileAssetState files;
+  PublishedBundleState(const GltfFileAsset& source,
+                       const GltfTopologyOutputInspection& inspection,
+                       FileAssetState&& files);
+};
 struct Access {
   static GltfFileAsset Make(std::shared_ptr<const FileAssetState> state);
+  static const FileAssetState& State(const GltfFileAsset& asset) noexcept;
+  static GltfPublishedBundle MakePublished(
+      std::shared_ptr<const PublishedBundleState> state) noexcept;
 };
+void ValidatePublicationConfiguration(
+    const GltfFilePublicationLimits& limits,
+    const GltfFilePublicationWorkPolicy& work);
+// Reuses the caller's existing file request cap. Canonical reader requests
+// retain their distinct fresh cap on the same ledger. Native root is already
+// admitted; relative entry and opaque paths remain borrowed through all joins.
+GltfFileDiagnostic CaptureFiles(
+    FileAssetState& state, NativeView root, std::string_view entry,
+    std::span<const std::string_view> opaque_files,
+    const GltfFileReadLimits& limits, const GltfFileReadWorkPolicy& work,
+    const geometry::ExecutionContext& context, std::stop_token stop,
+    const GltfFileTestOptions& testing, GltfFileExecution& execution);
+void CapturePhysicalFiles(
+    FileAssetState& state, NativeView root, std::string_view entry,
+    std::span<const std::string_view> paths, const GltfFileReadLimits& limits,
+    const GltfFileReadWorkPolicy& work,
+    const geometry::ExecutionContext& context, std::stop_token stop,
+    const GltfFileTestOptions& testing, GltfFileExecution& execution);
 struct NativeMetadata {
   std::uint64_t volume = 0;
   std::uint64_t identity = 0;
@@ -78,7 +111,10 @@ struct NativeMetadata {
 struct NativeFile {
   std::intptr_t value = kInvalidFileHandle;
   std::uint64_t ordinal = 0;
-  const GltfFileHooks* hooks = nullptr;
+  // The trivial callback table is owned; its state remains caller-borrowed
+  // through every native close and worker join.
+  GltfFileHooks hooks;
+  bool fatal_close_error = true;
   NativeFile() noexcept = default;
   NativeFile(const NativeFile&) = delete;
   NativeFile& operator=(const NativeFile&) = delete;
@@ -115,7 +151,7 @@ NativeFile OpenFile(NativeView path, std::uint64_t ordinal,
 NativeString CanonicalPath(const NativeFile& file,
                            const gltf_detail::AllocationContext& allocation,
                            const GltfFileLimits& limits);
-NativeMetadata Metadata(const NativeFile& file);
+NativeMetadata Metadata(const NativeFile& file, bool directory = false);
 std::uint64_t MaximumReadBlockBytes() noexcept;
 void ReadBlock(const NativeFile& file, std::uint64_t offset,
                std::span<std::byte> bytes);
