@@ -259,17 +259,18 @@ void VerifyResources(const Operation& operation, Stats& stats) {
   for (const auto* actual_pointer :
        {&bundle[ordinal], &reload[*added_reload]}) {
     const auto& actual = *actual_pointer;
-    const auto expected_buffer_index =
+    const bool buffer_index_matches =
         actual_pointer == &bundle[ordinal]
-            ? std::optional(OriginalTableCount(operation, kBuffers))
-            : std::nullopt;
+            ? actual.buffer_index.has_value() &&
+                  *actual.buffer_index ==
+                      OriginalTableCount(operation, kBuffers)
+            : !actual.buffer_index.has_value();
     appended.Require(
         actual.kind == GltfResourceKind::kBuffer &&
             actual.table_index == OriginalTableCount(operation, kBuffers) &&
             actual.origin == GltfResourceOrigin::kDecodedDataUri &&
             actual.logical_bytes == bytes && actual.bytes.size() == bytes &&
-            actual.buffer_index == expected_buffer_index &&
-            !actual.buffer_view_index,
+            buffer_index_matches && !actual.buffer_view_index,
         descriptor);
   }
   appended.Compare(bundle[ordinal].authored_uri,
