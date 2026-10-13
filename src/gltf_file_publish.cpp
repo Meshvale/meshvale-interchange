@@ -275,21 +275,41 @@ class Publication {
     Verify(initial);
     Inventory();
     const auto initial_size = expected_.size();
-    if (options_.on_verified) {
+    if (options_.on_verified || options_.verified_files_provider.provide) {
       const GltfFileVerifiedContent verified{
           *inspection.inspection, GltfFileFormat::kGltfJson,
           request_.source.EntryPath(), nullptr, initial.views};
-      auto supplements = [&] {
-        try {
-          return options_.on_verified(verified);
-        } catch (const std::bad_alloc&) {
-          throw;
-        } catch (...) {
-          detail::Fail(Status::kCallbackFailure, Stage::kSupplemental,
-                       Code::kVerifiedCallback);
-        }
-      }();
-      for (const auto& file : supplements) Import(file.path, file.bytes);
+      if (options_.on_verified) {
+        auto supplements = [&] {
+          try {
+            return options_.on_verified(verified);
+          } catch (const std::bad_alloc&) {
+            throw;
+          } catch (...) {
+            detail::Fail(Status::kCallbackFailure, Stage::kSupplemental,
+                         Code::kVerifiedCallback);
+          }
+        }();
+        for (const auto& file : supplements) Import(file.path, file.bytes);
+      } else {
+        const auto files = [&] {
+          try {
+            return options_.verified_files_provider.provide(
+                verified, options_.verified_files_provider.state);
+          } catch (const std::bad_alloc&) {
+            throw;
+          } catch (...) {
+            detail::Fail(Status::kCallbackFailure, Stage::kSupplemental,
+                         Code::kVerifiedCallback);
+          }
+        }();
+        detail::Count(files.size(),
+                      static_cast<std::uint64_t>(
+                          std::numeric_limits<std::ptrdiff_t>::max()) /
+                          sizeof(GltfFileView),
+                      Stage::kSupplemental);
+        for (const auto& file : files) Import(file.path, file.bytes);
+      }
     }
     // Admit the complete dynamic inventory before its first filesystem write.
     PreparePaths();
@@ -647,6 +667,9 @@ GltfFilePublicationResult detail::TestPublishGltfTopologyBundle(
         static_cast<std::uint64_t>(std::numeric_limits<std::ptrdiff_t>::max()) /
             sizeof(GltfFileView),
         Stage::kConfiguration);
+    if (options.on_verified && options.verified_files_provider.provide)
+      Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
+           Code::kInvalidRequest);
     if (stop.stop_requested())
       Fail(Status::kCanceled, Stage::kConfiguration, Code::kStopRequested);
     if (request.source.Format() != GltfFileFormat::kGltfJson)

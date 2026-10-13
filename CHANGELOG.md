@@ -4,6 +4,12 @@
 
 ### Added
 
+- A nonallocating `GltfAsset::SharesExecutionBudget` query for checking retained
+  source accounting before starting another operation, including base-only builds.
+- A borrowed verified-files provider for JSON glTF publication. Callers can return
+  computed files from their own storage after staged verification; paths and
+  complete bytes undergo the same admission and verification as owning callbacks.
+
 - Opt-in native JSON glTF file capture through `meshvale::gltf_files`, with
   immutable exact entry/resource bytes, unique path inventory, capped canonical
   asset ownership and joined shared-budget I/O. The installed example retains

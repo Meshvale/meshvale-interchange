@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and JSON glTF bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -28,7 +28,9 @@ triangle primitives with typed raw/normalized channels, sparse provenance and
 strip/fan source corner maps. The [native reader contract](docs/gltf-read.md)
 documents its finite metadata/graph/resource profile and explicit unsupported
 capabilities. The [installed consumer](examples/consumer/gltf.cpp) demonstrates
-the public interface and owned lifetimes. The [retained memory writer](docs/gltf_write.md)
+the public interface and owned lifetimes. `GltfAsset::SharesExecutionBudget`
+lets callers check the retained asset's execution ledger before starting work;
+the query does not allocate or change accounting. The [retained memory writer](docs/gltf_write.md)
 emits exact unchanged JSON and shares full immutable resource ownership; its
 [installed example](examples/consumer/gltf_write.cpp) reloads the output.
 
@@ -75,7 +77,9 @@ buffer to the canonical asset. JSON topology output can be staged, reloaded,
 independently inspected and committed to a new destination without replacement.
 The [publication example](examples/consumer/gltf_file_publish.cpp) selects a
 triangle, removes the source files, includes static and computed receipts, and
-reopens the committed bundle. JSON publication remains under qualification;
+reopens the committed bundle. Computed files can use an owning callback or a
+borrowed provider backed by caller-owned storage. Both routes verify every
+staged byte and file before publication. JSON publication remains a development interface;
 GLB publication and glTF Python operations remain forthcoming.
 
 ## Optional native USD extraction
