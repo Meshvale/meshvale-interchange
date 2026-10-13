@@ -27,9 +27,9 @@ struct PublishedBundleState;
 struct Access;
 }  // namespace gltf_files_detail
 
-// Development JSON capture under qualification; GLB capture and publication
-// return typed unavailable outcomes. The optional meshvale::gltf_files target
-// requires gltf_workflow_support. See docs/gltf-files.md for current scope.
+// Development JSON/GLB capture under qualification; publication returns a typed
+// unavailable outcome. The optional meshvale::gltf_files target requires
+// gltf_workflow_support. See docs/gltf-files.md for current scope.
 enum class GltfFileFormat { kGltfJson, kGlb };
 enum class GltfExtensionFilePolicy {
   kRejectOpaqueExtensions,

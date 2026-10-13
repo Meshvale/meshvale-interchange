@@ -63,19 +63,20 @@ python scripts/check-cpp-format.py --formatter clang-format
 
 The checker selects tracked and nonignored untracked `.h`, `.hpp` and `.cpp` files from Git and requires formatter version `23.1.3`; pass a tool executable through `--formatter` when it is outside the shell path. Formatting verifies layout and include ordering, not API naming, ownership or algorithm correctness. Existing public snake-case names retain their contract; a separate verified migration must address naming.
 
-## Optional glTF JSON file capture
+## Optional glTF and GLB file capture
 
 Set `MESHVALE_INTERCHANGE_GLTF_FILES=ON` to build and install `meshvale::gltf_files`
 and its public header. The option defaults to OFF and requires topology writing
 and workflow support ON. It uses the existing Geometry/tinyobjloader/parser
 dependencies; Python wheels explicitly keep it OFF. The
-[file contract](docs/gltf-files.md) owns supported JSON capture and the typed
-unavailable GLB/publication routes.
+[file contract](docs/gltf-files.md) owns supported JSON/GLB capture, embedded BIN
+binding and the typed unavailable publication routes.
 
 With the option ON, the inventory checker additionally requires `gltf_files_link`
-and `gltf_files` in both numerical profiles, plus `installed_gltf_files_link` and
-`installed_gltf_files_consumer`. Qualified builds therefore require 24 native and
-14 installed entries; unsupported builds require 18 and 12. JSON capture and
+and `gltf_files`, `gltf_files_glb` and `gltf_files_glb_requests` in both numerical
+profiles, plus `installed_gltf_files_link` and `installed_gltf_files_consumer`.
+Qualified builds therefore require 26 native and 14 installed entries;
+unsupported builds require 20 and 12. JSON/GLB capture and
 extraction do not require numerical materialization admission. Installed examples
 default the option to ON only when the exported target exists. Pass
 `--gltf-files ON` or `OFF` to the inventory checker for an explicit selection; the
@@ -121,11 +122,11 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; file capture ON | Geometry 16; Interchange 24; installed 14 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file capture ON | Geometry 16; Interchange 24; installed 14 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file capture ON | Geometry 16; Interchange 24; installed 14 |
-| Linux GNU | Release, unsupported; file capture ON | Geometry 13; Interchange 18; installed 12 |
-| macOS AppleClang | Release, unsupported; file capture ON | Geometry 13; Interchange 18; installed 12 |
+| Windows x64 MSVC | Release, qualified; file capture ON | Geometry 16; Interchange 26; installed 14 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file capture ON | Geometry 16; Interchange 26; installed 14 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file capture ON | Geometry 16; Interchange 26; installed 14 |
+| Linux GNU | Release, unsupported; file capture ON | Geometry 13; Interchange 20; installed 12 |
+| macOS AppleClang | Release, unsupported; file capture ON | Geometry 13; Interchange 20; installed 12 |
 | Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 15; installed 8 |
 
 Qualified rows include the focused materialization and independent semantic
@@ -204,7 +205,7 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON file capture and require Interchange's qualified 24 suites and fourteen installed test
+Both lanes enable JSON/GLB file capture and require Interchange's qualified 26 suites and fourteen installed test
 entries. Geometry requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an
