@@ -612,7 +612,8 @@ struct Workers {
 };
 files::GltfFileTestOptions Testing(Requests& requests, Workers& workers,
                                    Handles& handles) {
-  return {requests.Backend(), {workers.Backend(), nullptr}, handles.Hooks()};
+  return {
+      requests.Backend(), {workers.Backend(), nullptr}, handles.Hooks(), {}};
 }
 void RequestFaults() {
   Fixture fixture;
