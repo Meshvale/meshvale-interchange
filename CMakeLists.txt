@@ -309,7 +309,9 @@ if(BUILD_TESTING)
   if(MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE)
     meshvale_add_gltf_topology_write_tests()
   endif()
-  meshvale_add_gltf_workflow_support_tests()
+  if(MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT)
+    meshvale_add_gltf_workflow_support_tests()
+  endif()
 endif()
 
 # Optional format modules own their SDK discovery, exports and installed notices.
