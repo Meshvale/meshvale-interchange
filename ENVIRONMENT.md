@@ -63,6 +63,25 @@ python scripts/check-cpp-format.py --formatter clang-format
 
 The checker selects tracked and nonignored untracked `.h`, `.hpp` and `.cpp` files from Git and requires formatter version `23.1.3`; pass a tool executable through `--formatter` when it is outside the shell path. Formatting verifies layout and include ordering, not API naming, ownership or algorithm correctness. Existing public snake-case names retain their contract; a separate verified migration must address naming.
 
+## Optional glTF JSON file capture
+
+Set `MESHVALE_INTERCHANGE_GLTF_FILES=ON` to build and install `meshvale::gltf_files`
+and its public header. The option defaults to OFF and requires topology writing
+and workflow support ON. It uses the existing Geometry/tinyobjloader/parser
+dependencies; Python wheels explicitly keep it OFF. The
+[file contract](docs/gltf-files.md) owns supported JSON capture and the typed
+unavailable GLB/publication routes.
+
+With the option ON, the inventory checker additionally requires `gltf_files_link`
+and `gltf_files` in both numerical profiles, plus `installed_gltf_files_link` and
+`installed_gltf_files_consumer`. Qualified builds therefore require 24 native and
+14 installed entries; unsupported builds require 18 and 12. JSON capture and
+extraction do not require numerical materialization admission. Installed examples
+default the option to ON only when the exported target exists. Pass
+`--gltf-files ON` or `OFF` to the inventory checker for an explicit selection; the
+default reads the configured native option and checks both caches against it.
+These counts describe configured requirements; completed runs own acceptance.
+
 ## Optional USD native module
 
 Add `-DMESHVALE_INTERCHANGE_USD=ON` to the native build, supply the exact
@@ -102,11 +121,12 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified | Geometry 16; Interchange 22; installed 12 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified | Geometry 16; Interchange 22; installed 12 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified | Geometry 16; Interchange 22; installed 12 |
-| Linux GNU | Release, unsupported | Geometry 13; Interchange 16; installed 10 |
-| macOS AppleClang | Release, unsupported | Geometry 13; Interchange 16; installed 10 |
+| Windows x64 MSVC | Release, qualified; file capture ON | Geometry 16; Interchange 24; installed 14 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file capture ON | Geometry 16; Interchange 24; installed 14 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file capture ON | Geometry 16; Interchange 24; installed 14 |
+| Linux GNU | Release, unsupported; file capture ON | Geometry 13; Interchange 18; installed 12 |
+| macOS AppleClang | Release, unsupported; file capture ON | Geometry 13; Interchange 18; installed 12 |
+| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 15; installed 8 |
 
 Qualified rows include the focused materialization and independent semantic
 suites. Unsupported rows exercise actual nonempty delegated unsupported-profile
@@ -169,7 +189,7 @@ does not establish sanitizer coverage or platform support. The
 revisions matching the ordinary native job, without changing the Python cohort.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange and all twelve installed consumers. Geometry's owning
+Geometry, Interchange and all fourteen installed consumers. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
 fail the qualified suite rather than relabel it unsupported. The ordinary native
@@ -184,7 +204,7 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes require Interchange's qualified 22 suites and twelve installed test
+Both lanes enable JSON file capture and require Interchange's qualified 24 suites and fourteen installed test
 entries. Geometry requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an

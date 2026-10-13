@@ -13,6 +13,7 @@
 #include <string_view>
 #include <utility>
 
+#include "gltf_file_read_provider.h"
 #include "gltf_metadata.h"
 #include "gltf_operation_workers.h"
 #include "gltf_parser.h"
@@ -95,7 +96,9 @@ GltfReadResult ReadAsset(
     const geometry::ExecutionContext& context, std::stop_token stop,
     std::optional<std::uint64_t> request_cap,
     gltf_detail::AllocationBackend backend,
-    const gltf_detail::NativeExecutionOptions* execution) {
+    const gltf_detail::NativeExecutionOptions* execution,
+    gltf_detail::FileResourceProvider provider = nullptr,
+    void* provider_state = nullptr) {
   using namespace gltf_detail;
   try {
     Configuration(limits, policy);
@@ -157,6 +160,7 @@ GltfReadResult ReadAsset(
     AdmitMetadata(*state);
     BuildGraph(*state);
     CheckDeclaredGraphRelationships(*state);
+    if (provider) supplied_resources = provider(*state, provider_state);
     AdmitResources(*state, supplied_resources, nullptr, nullptr, execution);
     const auto projection = BuildCoreProjection(*state);
     const auto parsed = InspectCoreProjection(
@@ -203,6 +207,25 @@ GltfReadResult ReadAsset(
   }
 }
 }  // namespace
+void gltf_detail::ValidateFileReadConfiguration(
+    const GltfReadOperationLimits& limits, const GltfWorkPolicy& policy) {
+  Configuration(limits.source, policy);
+  if (limits.max_new_requested_bytes == 0)
+    Fail(GltfStatus::kInvalidLimits, GltfDiagnosticCode::kZeroLimit);
+  if (limits.max_new_requested_bytes >
+      static_cast<std::uint64_t>(std::numeric_limits<std::ptrdiff_t>::max()))
+    Fail(GltfStatus::kInvalidLimits,
+         GltfDiagnosticCode::kLimitNotRepresentable);
+}
+GltfReadResult gltf_detail::ReadGltfAssetFromFiles(
+    std::span<const std::byte> json, const GltfReadOperationLimits& limits,
+    const GltfWorkPolicy& policy, const geometry::ExecutionContext& context,
+    std::stop_token stop, FileResourceProvider provider, void* provider_state) {
+  const NativeExecutionOptions execution;
+  return ReadAsset(json, {}, limits.source, policy, context, stop,
+                   limits.max_new_requested_bytes, DefaultAllocationBackend(),
+                   &execution, provider, provider_state);
+}
 GltfReadResult ReadGltfAsset(
     std::span<const std::byte> json,
     std::span<const SuppliedGltfResource> supplied_resources,

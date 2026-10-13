@@ -173,6 +173,7 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(cmake/GltfTopologyWrite.cmake)
 include(cmake/GltfWorkflowSupport.cmake)
+include(cmake/GltfFiles.cmake)
 install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization
   EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h
@@ -311,6 +312,9 @@ if(BUILD_TESTING)
   endif()
   if(MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT)
     meshvale_add_gltf_workflow_support_tests()
+  endif()
+  if(MESHVALE_INTERCHANGE_GLTF_FILES)
+    meshvale_add_gltf_file_tests()
   endif()
 endif()
 

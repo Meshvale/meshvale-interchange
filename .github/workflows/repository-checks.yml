@@ -180,6 +180,7 @@ jobs:
           -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
           -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_GLTF_FILES=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -191,7 +192,7 @@ jobs:
         run: |
           $version = @()
           if ('${{ matrix.compiler_version }}') { $version = @('--compiler-version', '${{ matrix.compiler_version }}') }
-          python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} @version
+          python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test native adapters, GLB and glTF ownership
         run: ctest --test-dir .local/build -C ${{ matrix.build_type }} --output-on-failure
@@ -226,6 +227,7 @@ jobs:
           -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
           -DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_GLTF_FILES=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -237,7 +239,7 @@ jobs:
         run: |
           $version = @()
           if ('${{ matrix.compiler_version }}') { $version = @('--compiler-version', '${{ matrix.compiler_version }}') }
-          python scripts/check-native-tests.py --build-dir .local/build --installed-build-dir .local/consumer --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} @version
+          python scripts/check-native-tests.py --build-dir .local/build --installed-build-dir .local/consumer --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify actual matching Windows sanitizer compilation
         if: matrix.sanitizer == 'asan'

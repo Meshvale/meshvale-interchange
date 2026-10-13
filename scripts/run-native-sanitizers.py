@@ -179,6 +179,7 @@ def main():
                "-DMESHVALE_INTERCHANGE_PYTHON=OFF",
                "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
                "-DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON",
+               "-DMESHVALE_INTERCHANGE_GLTF_FILES=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     for suffix in DEPENDENCY_CONFIGURATIONS.values():
         parser_database = (vcpkg / "buildtrees/tinyobjloader" /
@@ -186,7 +187,8 @@ def main():
         runner.instrumented(parser_database, profile["flags"], False)
     runner.run("cmake", "--build", build, "--parallel", BUILD_WORKERS)
     runner.instrumented(build / "compile_commands.json", profile["flags"], True)
-    runner.inventory(build, expected_inventory(MATERIALIZATION_PROFILE, workflow_support=True), "interchange")
+    runner.inventory(build, expected_inventory(MATERIALIZATION_PROFILE, workflow_support=True,
+                                               gltf_files=True), "interchange")
     runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
                "--configuration", BUILD_CONFIGURATION,
                "--materialization-profile", MATERIALIZATION_PROFILE,
@@ -210,10 +212,12 @@ def main():
                *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
                "-DMESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE=ON",
                "-DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=ON",
+               "-DMESHVALE_INTERCHANGE_GLTF_FILES=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", consumer, "--parallel", BUILD_WORKERS)
     runner.instrumented(consumer / "compile_commands.json", profile["flags"], True)
-    runner.inventory(consumer, expected_inventory(MATERIALIZATION_PROFILE, installed=True, workflow_support=True),
+    runner.inventory(consumer, expected_inventory(MATERIALIZATION_PROFILE, installed=True, workflow_support=True,
+                                                  gltf_files=True),
                      "installed")
     runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
                "--installed-build-dir", consumer, "--configuration", BUILD_CONFIGURATION,
