@@ -70,6 +70,7 @@ def inspect(path):
                          "src/gltf_file_paths.cpp", "src/gltf_file_native.cpp",
                          "src/gltf_files_internal.h", "src/gltf_files_test_internal.h",
                          "src/gltf_file_read_provider.h", "tests/gltf_files.cpp",
+                         "tests/gltf_files_glb.cpp", "tests/gltf_files_glb_requests.cpp",
                          "tests/headers/gltf_files_h.cpp", "examples/consumer/gltf_files.cpp",
                          "examples/consumer/gltf_files_link.cpp",
                          "src/gltf_operation_workers.h", "src/gltf_operation_workers.cpp",

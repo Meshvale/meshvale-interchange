@@ -7,8 +7,10 @@
 - Opt-in native JSON glTF file capture through `meshvale::gltf_files`, with
   immutable exact entry/resource bytes, unique path inventory, capped canonical
   asset ownership and joined shared-budget I/O. The installed example retains
-  data after source-file removal. GLB capture and verified bundle publication
-  remain unavailable; the development interface is under qualification.
+  data after source-file removal. GLB capture additionally retains complete
+  JSON/BIN/opaque chunks, checks embedded buffer binding and padding, and delegates
+  canonical extraction under the shared limits. Verified bundle publication
+  remains unavailable; the development interface is under qualification.
 
 - Additive fully capped glTF supplied-memory read and extraction routes with
   live attributable owner counters. The optional
