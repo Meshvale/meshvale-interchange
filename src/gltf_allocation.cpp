@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "gltf_allocation.h"
 
+#include <meshvale/geometry/execution.h>
+
 #include <algorithm>
 #include <atomic>
 #include <bit>
+#include <cstddef>
 #include <limits>
 #include <new>
+#include <stop_token>
 #include <utility>
 
 namespace meshvale::interchange::gltf_detail {
@@ -151,6 +155,11 @@ bool AllocationContext::SharesBudget(
   if (!context_ || !other.context_) return !context_ && !other.context_;
   return geometry::SharesExecutionBudget(*context_, *other.context_) &&
          operation_.SameOwner(other.operation_);
+}
+bool AllocationContext::SharesExecutionBudget(
+    const AllocationContext& other) const noexcept {
+  if (!context_ || !other.context_) return !context_ && !other.context_;
+  return geometry::SharesExecutionBudget(*context_, *other.context_);
 }
 OperationOwner::OperationOwner() noexcept = default;
 OperationOwner::OperationOwner(OperationBudget* budget) noexcept

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/geometry/attributes.h>
+#include <meshvale/interchange/obj_files.h>
+
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <ios>
 #include <map>
@@ -15,18 +18,8 @@
 #include <utility>
 #include <vector>
 
+#include "file_publication_native.h"
 #include "obj_file_detail.h"
-#ifdef _WIN32
-#define NOMINMAX
-#include <windows.h>
-#elif defined(__linux__)
-#include <fcntl.h>
-#include <linux/fs.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#elif defined(__APPLE__)
-#include <stdio.h>
-#endif
 
 namespace meshvale::interchange {
 namespace {
@@ -90,28 +83,24 @@ void write_bytes(const fs::path& root, const ObjResource& file,
   cancelled(stop);
 }
 void finalize(const fs::path& source, const fs::path& destination) {
-#ifdef _WIN32
-  if (MoveFileExW(source.c_str(), destination.c_str(), 0)) return;
-  const auto error = GetLastError();
-  fail(error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS
-           ? "obj.destination_exists"
-           : "obj.publication_failed",
-       "publication");
-#elif defined(__linux__)
-  if (syscall(SYS_renameat2, AT_FDCWD, source.c_str(), AT_FDCWD,
-              destination.c_str(), RENAME_NOREPLACE) == 0)
-    return;
-  fail(errno == EEXIST ? "obj.destination_exists" : "obj.publication_failed",
-       "publication");
-#elif defined(__APPLE__)
-  if (renamex_np(source.c_str(), destination.c_str(), RENAME_EXCL) == 0) return;
-  fail(errno == EEXIST ? "obj.destination_exists" : "obj.publication_failed",
-       "publication");
-#else
-  (void)source;
-  (void)destination;
-  fail("obj.publication_unsupported", "platform");
-#endif
+  constexpr char kDestinationExists[] = "obj.destination_exists";
+  constexpr char kPublicationFailed[] = "obj.publication_failed";
+  constexpr char kPublicationUnsupported[] = "obj.publication_unsupported";
+  constexpr char kPublicationSubject[] = "publication";
+  constexpr char kPlatformSubject[] = "platform";
+  using file_publication_detail::CommitStatus;
+  const auto result = file_publication_detail::CommitNoReplace(
+      source.c_str(), destination.c_str());
+  switch (result.status) {
+    case CommitStatus::kCommitted:
+      return;
+    case CommitStatus::kDestinationExists:
+      fail(kDestinationExists, kPublicationSubject);
+    case CommitStatus::kFailed:
+      fail(kPublicationFailed, kPublicationSubject);
+    case CommitStatus::kUnsupported:
+      fail(kPublicationUnsupported, kPlatformSubject);
+  }
 }
 std::string file_obj(const ObjFileAsset& asset, const std::string& canonical) {
   std::string references;

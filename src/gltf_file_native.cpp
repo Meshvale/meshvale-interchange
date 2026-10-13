@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/interchange/gltf_files.h>
+
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -13,7 +15,9 @@
 #include <system_error>
 #include <utility>
 
+#include "gltf_allocation.h"
 #include "gltf_files_internal.h"
+#include "gltf_files_test_internal.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -46,13 +50,15 @@ std::error_code NativeError() {
 NativeFile::NativeFile(NativeFile&& other) noexcept
     : value(std::exchange(other.value, kInvalidFileHandle)),
       ordinal(other.ordinal),
-      hooks(other.hooks) {}
+      hooks(other.hooks),
+      fatal_close_error(other.fatal_close_error) {}
 NativeFile& NativeFile::operator=(NativeFile&& other) noexcept {
   if (this != &other) {
     Close();
     value = std::exchange(other.value, kInvalidFileHandle);
     ordinal = other.ordinal;
     hooks = other.hooks;
+    fatal_close_error = other.fatal_close_error;
   }
   return *this;
 }
@@ -60,10 +66,13 @@ NativeFile::~NativeFile() noexcept { Close(); }
 void NativeFile::Close() noexcept {
   if (value == kInvalidFileHandle) return;
 #ifdef _WIN32
-  if (!CloseHandle(reinterpret_cast<HANDLE>(value))) std::terminate();
+  if (!CloseHandle(reinterpret_cast<HANDLE>(value)) && fatal_close_error)
+    std::terminate();
 #else
   // Do not retry EINTR: descriptor ownership may already have been released.
-  if (close(static_cast<int>(value)) != 0 && errno != EINTR) std::terminate();
+  if (close(static_cast<int>(value)) != 0 && errno != EINTR &&
+      fatal_close_error)
+    std::terminate();
 #endif
   value = kInvalidFileHandle;
   if (hooks && hooks->closed) hooks->closed(ordinal, hooks->state);
