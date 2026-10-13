@@ -226,7 +226,7 @@ void NativePublication::CreateStage() {
     const GltfFileHooks hooks;
     root_handles_[0] = OpenFile(stage_, 0, hooks, true);
     root_handles_[0].fatal_close_error = false;
-    identity_ = Metadata(root_handles_[0]);
+    identity_ = Metadata(root_handles_[0], true);
     CloseWrittenFile(root_handles_[0]);
     if (hooks_.stage_ready) hooks_.stage_ready(stage_, hooks_.state);
     return;
@@ -451,9 +451,10 @@ NativeFile OpenWrite(NativeView path, std::uint64_t ordinal,
                      const GltfFileHooks& hooks, bool exclusive) {
   NativeFile result;
   result.ordinal = ordinal;
-  result.hooks = &hooks;
+  result.hooks = hooks;
   result.fatal_close_error = false;
-  if (hooks.before_open) hooks.before_open(ordinal, hooks.state);
+  if (result.hooks.before_open)
+    result.hooks.before_open(ordinal, result.hooks.state);
 #ifdef _WIN32
   const auto handle =
       CreateFileW(path.data(), GENERIC_WRITE,
@@ -464,7 +465,7 @@ NativeFile OpenWrite(NativeView path, std::uint64_t ordinal,
     NativeFailure(GltfFileStage::kStaging, GltfFileDiagnosticCode::kFileWrite,
                   ordinal);
   result.value = reinterpret_cast<std::intptr_t>(handle);
-  if (hooks.opened) hooks.opened(ordinal, hooks.state);
+  if (result.hooks.opened) result.hooks.opened(ordinal, result.hooks.state);
   FILE_ATTRIBUTE_TAG_INFO tag{};
   if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &tag,
                                     sizeof(tag)))
@@ -484,7 +485,7 @@ NativeFile OpenWrite(NativeView path, std::uint64_t ordinal,
   if (result.value == kInvalidFileHandle)
     NativeFailure(GltfFileStage::kStaging, GltfFileDiagnosticCode::kFileWrite,
                   ordinal);
-  if (hooks.opened) hooks.opened(ordinal, hooks.state);
+  if (result.hooks.opened) result.hooks.opened(ordinal, result.hooks.state);
   struct stat info{};
   if (fstat(static_cast<int>(result.value), &info) != 0)
     NativeFailure(GltfFileStage::kStaging, GltfFileDiagnosticCode::kFileWrite,
@@ -504,8 +505,7 @@ void CloseWrittenFile(NativeFile& file) {
   const bool failed = close(static_cast<int>(value)) != 0;
 #endif
   const auto error = failed ? Error() : std::error_code{};
-  if (file.hooks && file.hooks->closed)
-    file.hooks->closed(file.ordinal, file.hooks->state);
+  if (file.hooks.closed) file.hooks.closed(file.ordinal, file.hooks.state);
   if (error)
     Fail(GltfFileStatus::kIoFailure, GltfFileStage::kStaging,
          GltfFileDiagnosticCode::kFileWrite, file.ordinal, {}, error);

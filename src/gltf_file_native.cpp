@@ -75,7 +75,7 @@ void NativeFile::Close() noexcept {
     std::terminate();
 #endif
   value = kInvalidFileHandle;
-  if (hooks && hooks->closed) hooks->closed(ordinal, hooks->state);
+  if (hooks.closed) hooks.closed(ordinal, hooks.state);
 }
 void RejectAliases(NativeView path, bool directory,
                    const gltf_detail::AllocationContext& allocation,
@@ -124,8 +124,9 @@ NativeFile OpenFile(NativeView path, std::uint64_t ordinal,
                     const GltfFileHooks& hooks, bool directory) {
   NativeFile result;
   result.ordinal = ordinal;
-  result.hooks = &hooks;
-  if (hooks.before_open) hooks.before_open(ordinal, hooks.state);
+  result.hooks = hooks;
+  if (result.hooks.before_open)
+    result.hooks.before_open(ordinal, result.hooks.state);
 #ifdef _WIN32
   const auto handle = CreateFileW(
       path.data(), GENERIC_READ,
@@ -137,7 +138,7 @@ NativeFile OpenFile(NativeView path, std::uint64_t ordinal,
   if (handle == INVALID_HANDLE_VALUE)
     IoFailure(result, GltfFileDiagnosticCode::kResourceMissing);
   result.value = reinterpret_cast<std::intptr_t>(handle);
-  if (hooks.opened) hooks.opened(ordinal, hooks.state);
+  if (result.hooks.opened) result.hooks.opened(ordinal, result.hooks.state);
   FILE_ATTRIBUTE_TAG_INFO tag{};
   if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &tag,
                                     sizeof(tag)))
@@ -155,16 +156,20 @@ NativeFile OpenFile(NativeView path, std::uint64_t ordinal,
                             (directory ? O_DIRECTORY : 0));
   if (result.value == kInvalidFileHandle)
     IoFailure(result, GltfFileDiagnosticCode::kResourceMissing);
-  if (hooks.opened) hooks.opened(ordinal, hooks.state);
+  if (result.hooks.opened) result.hooks.opened(ordinal, result.hooks.state);
 #endif
   return result;
 }
-NativeMetadata Metadata(const NativeFile& file) {
+NativeMetadata Metadata(const NativeFile& file, bool directory) {
 #ifdef _WIN32
   constexpr unsigned kWordBits = 32;
   BY_HANDLE_FILE_INFORMATION info{};
   if (!GetFileInformationByHandle(reinterpret_cast<HANDLE>(file.value), &info))
     IoFailure(file, GltfFileDiagnosticCode::kFileRead);
+  if (((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) != directory ||
+      GetFileType(reinterpret_cast<HANDLE>(file.value)) != FILE_TYPE_DISK)
+    Fail(GltfFileStatus::kUnsupportedProfile, GltfFileStage::kCapture,
+         GltfFileDiagnosticCode::kResourceNotRegularFile, file.ordinal);
   return {info.dwVolumeSerialNumber,
           (static_cast<std::uint64_t>(info.nFileIndexHigh) << kWordBits) |
               info.nFileIndexLow,
@@ -179,7 +184,8 @@ NativeMetadata Metadata(const NativeFile& file) {
   struct stat info{};
   if (fstat(static_cast<int>(file.value), &info) != 0)
     IoFailure(file, GltfFileDiagnosticCode::kFileRead);
-  if (!S_ISREG(info.st_mode) || info.st_size < 0)
+  if (!(directory ? S_ISDIR(info.st_mode) : S_ISREG(info.st_mode)) ||
+      info.st_size < 0)
     Fail(GltfFileStatus::kUnsupportedProfile, GltfFileStage::kCapture,
          GltfFileDiagnosticCode::kResourceNotRegularFile, file.ordinal);
 #ifdef __APPLE__
@@ -251,8 +257,8 @@ std::uint64_t MaximumReadBlockBytes() noexcept {
 }
 void ReadBlock(const NativeFile& file, std::uint64_t offset,
                std::span<std::byte> bytes) {
-  if (file.hooks && file.hooks->before_read)
-    file.hooks->before_read(file.ordinal, offset, file.hooks->state);
+  if (file.hooks.before_read)
+    file.hooks.before_read(file.ordinal, offset, file.hooks.state);
 #ifdef _WIN32
   Count(bytes.size(), std::numeric_limits<DWORD>::max(),
         GltfFileStage::kCapture);

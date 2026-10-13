@@ -111,7 +111,9 @@ struct NativeMetadata {
 struct NativeFile {
   std::intptr_t value = kInvalidFileHandle;
   std::uint64_t ordinal = 0;
-  const GltfFileHooks* hooks = nullptr;
+  // The trivial callback table is owned; its state remains caller-borrowed
+  // through every native close and worker join.
+  GltfFileHooks hooks;
   bool fatal_close_error = true;
   NativeFile() noexcept = default;
   NativeFile(const NativeFile&) = delete;
@@ -149,7 +151,7 @@ NativeFile OpenFile(NativeView path, std::uint64_t ordinal,
 NativeString CanonicalPath(const NativeFile& file,
                            const gltf_detail::AllocationContext& allocation,
                            const GltfFileLimits& limits);
-NativeMetadata Metadata(const NativeFile& file);
+NativeMetadata Metadata(const NativeFile& file, bool directory = false);
 std::uint64_t MaximumReadBlockBytes() noexcept;
 void ReadBlock(const NativeFile& file, std::uint64_t offset,
                std::span<std::byte> bytes);
