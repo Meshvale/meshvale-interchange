@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <meshvale/geometry/execution.h>
+#include <meshvale/interchange/glb.h>
+#include <meshvale/interchange/gltf.h>
 #include <meshvale/interchange/gltf_files.h>
 
 #include <algorithm>

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/interchange/glb.h>
 #include <meshvale/interchange/gltf_files.h>
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 #include <system_error>
 #include <utility>
 
+#include "glb_detail.h"
 #include "gltf_asset_state.h"
 #include "gltf_file_read_provider.h"
 #include "gltf_files_internal.h"

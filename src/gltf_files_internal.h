@@ -2,6 +2,7 @@
 #ifndef MESHVALE_INTERCHANGE_SRC_GLTF_FILES_INTERNAL_H_
 #define MESHVALE_INTERCHANGE_SRC_GLTF_FILES_INTERNAL_H_
 
+#include <meshvale/interchange/glb.h>
 #include <meshvale/interchange/gltf_files.h>
 
 #include <cstddef>
