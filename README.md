@@ -50,6 +50,16 @@ changed output. Identity output retains the exact original JSON. The
 selection, writing and independent reload. This native development operation
 does not establish edited GLB publication, Python operations or a stable release.
 
+The additive [retained workflow support](docs/gltf-workflow-support.md) provides
+fully capped read/extraction entrypoints and live attributable owner counters.
+Its optional `meshvale::gltf_workflow_support` target independently inspects
+supplied topology output against the retained source, candidate and actual
+reloaded owners across six comparison phases. The installed
+[capped reader example](examples/consumer/gltf_workflow_read.cpp) and
+[inspection example](examples/consumer/gltf_workflow_support.cpp) demonstrate
+public ownership and cleanup. This development interface remains under
+qualification; filesystem publication and release support remain separate.
+
 ## Optional native USD extraction
 
 The opt-in [USD module](docs/usd.md) extracts one selected static polygon cage
