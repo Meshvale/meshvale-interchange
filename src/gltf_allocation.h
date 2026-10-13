@@ -2,6 +2,7 @@
 #ifndef MESHVALE_INTERCHANGE_SRC_GLTF_ALLOCATION_H_
 #define MESHVALE_INTERCHANGE_SRC_GLTF_ALLOCATION_H_
 
+#include <meshvale/geometry/editable_mesh.h>
 #include <meshvale/geometry/execution.h>
 
 #include <cstddef>
@@ -89,6 +90,7 @@ class AllocationContext {
   // preserve both counters. Copies/rebounds retain the same operation cap.
   [[nodiscard]] AllocationContext WithRequestLimit(std::size_t bytes) const;
   [[nodiscard]] std::size_t OperationActiveBytes() const noexcept;
+  [[nodiscard]] bool HasRequestLimit() const noexcept;
   static void Deallocate(void* pointer) noexcept;
   [[nodiscard]] bool SharesBudget(
       const AllocationContext& other) const noexcept;

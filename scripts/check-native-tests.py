@@ -12,6 +12,7 @@ MATERIALIZATION_PROFILES = (QUALIFIED_PROFILE, UNSUPPORTED_PROFILE)
 COMPILER_IDS = ("MSVC", "Clang", "GNU", "AppleClang")
 PROFILE_CACHE_KEY = "MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE"
 TOPOLOGY_WRITE_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE"
+WORKFLOW_SUPPORT_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT"
 TOPOLOGY_WRITE_ON = "ON"
 TOPOLOGY_WRITE_OFF = "OFF"
 TOPOLOGY_WRITE_STATES = (TOPOLOGY_WRITE_ON, TOPOLOGY_WRITE_OFF)
@@ -25,6 +26,7 @@ COMMON_TESTS = frozenset({
     "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
     "gltf_read", "gltf_resources", "gltf_write", "gltf_metadata",
     "gltf_accessor", "gltf_extract", "gltf_json_snapshot",
+    "gltf_workflow_read", "gltf_workflow_read_large_index",
 })
 PROFILE_TESTS = {
     QUALIFIED_PROFILE: frozenset({"gltf_materialization", "gltf_materialization_semantics"}),
@@ -34,6 +36,7 @@ COMMON_INSTALLED_TESTS = frozenset({
     "installed_interchange_consumer", "installed_obj_bundle_consumer",
     "installed_execution_dependency_consumer", "installed_gltf_consumer",
     "installed_glb_consumer", "installed_gltf_write_consumer",
+    "installed_gltf_workflow_read_consumer",
 })
 PROFILE_INSTALLED_TESTS = {
     QUALIFIED_PROFILE: frozenset({"installed_gltf_materialization_consumer"}),
@@ -46,6 +49,10 @@ TOPOLOGY_WRITE_QUALIFIED_TESTS = frozenset({
 })
 TOPOLOGY_WRITE_INSTALLED_TESTS = frozenset({"installed_gltf_topology_write_link"})
 TOPOLOGY_WRITE_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_topology_write_consumer"})
+WORKFLOW_SUPPORT_TESTS = frozenset({"gltf_workflow_support_link"})
+WORKFLOW_SUPPORT_QUALIFIED_TESTS = frozenset({"gltf_workflow_inspection", "gltf_workflow_inspection_large_index"})
+WORKFLOW_SUPPORT_INSTALLED_TESTS = frozenset({"installed_gltf_workflow_support_link"})
+WORKFLOW_SUPPORT_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_workflow_support_consumer"})
 
 
 def cache_entries(path):
@@ -68,7 +75,8 @@ def cache_value(cache, name, expected_type):
     return cache[name][1]
 
 
-def validate_cache(cache, profile, configuration, topology_write=True):
+def validate_cache(cache, profile, configuration, topology_write=True,
+                   workflow_support=None):
     if cache_value(cache, PROFILE_CACHE_KEY, STRING_CACHE_TYPE) != profile:
         raise ValueError("materialization CLI profile differs from configured CMake profile")
     if cache_value(cache, TESTING_CACHE_KEY, BOOL_CACHE_TYPE).upper() not in TRUE_CACHE_VALUES:
@@ -76,6 +84,10 @@ def validate_cache(cache, profile, configuration, topology_write=True):
     actual_topology_write = cache_value(cache, TOPOLOGY_WRITE_CACHE_KEY, BOOL_CACHE_TYPE)
     if (actual_topology_write.upper() in TRUE_CACHE_VALUES) != topology_write:
         raise ValueError("topology writer CLI selection differs from configured CMake option")
+    if workflow_support is not None:
+        actual_support = cache_value(cache, WORKFLOW_SUPPORT_CACHE_KEY, BOOL_CACHE_TYPE)
+        if (actual_support.upper() in TRUE_CACHE_VALUES) != workflow_support:
+            raise ValueError("workflow support selection differs from configured CMake option")
     if CONFIGURATIONS_CACHE_KEY in cache:
         configurations = cache_value(cache, CONFIGURATIONS_CACHE_KEY, STRING_CACHE_TYPE).split(";")
         if configuration not in configurations:
@@ -97,7 +109,8 @@ def validate_compiler(build_dir, expected_id, expected_version):
         raise ValueError("configured C++ compiler version differs from declared admitted cohort")
 
 
-def expected_inventory(profile, installed=False, topology_write=True):
+def expected_inventory(profile, installed=False, topology_write=True,
+                       workflow_support=False):
     common = COMMON_INSTALLED_TESTS if installed else COMMON_TESTS
     specific = PROFILE_INSTALLED_TESTS if installed else PROFILE_TESTS
     expected = common | specific[profile]
@@ -106,6 +119,11 @@ def expected_inventory(profile, installed=False, topology_write=True):
         if profile == QUALIFIED_PROFILE:
             expected |= (TOPOLOGY_WRITE_QUALIFIED_INSTALLED_TESTS if installed else
                          TOPOLOGY_WRITE_QUALIFIED_TESTS)
+    if workflow_support:
+        expected |= WORKFLOW_SUPPORT_INSTALLED_TESTS if installed else WORKFLOW_SUPPORT_TESTS
+        if profile == QUALIFIED_PROFILE:
+            expected |= (WORKFLOW_SUPPORT_QUALIFIED_INSTALLED_TESTS if installed else
+                         WORKFLOW_SUPPORT_QUALIFIED_TESTS)
     return expected
 
 
@@ -130,27 +148,35 @@ def main():
                         required=True)
     parser.add_argument("--topology-write", choices=TOPOLOGY_WRITE_STATES,
                         default=TOPOLOGY_WRITE_ON)
+    parser.add_argument("--workflow-support", choices=TOPOLOGY_WRITE_STATES,
+                        help="Defaults to the native configured support option")
     args = parser.parse_args()
     try:
         checked = []
+        native_cache = cache_entries(args.build_dir / "CMakeCache.txt")
+        support = (cache_value(native_cache, WORKFLOW_SUPPORT_CACHE_KEY, BOOL_CACHE_TYPE)
+                   if args.workflow_support is None else args.workflow_support)
+        workflow_support = support.upper() in TRUE_CACHE_VALUES
         for build_dir, installed in ((args.build_dir, False),
                                      (args.installed_build_dir, True)):
             if build_dir is None:
                 continue
             validate_cache(cache_entries(build_dir / "CMakeCache.txt"),
                            args.materialization_profile, args.configuration,
-                           args.topology_write == TOPOLOGY_WRITE_ON)
+                           args.topology_write == TOPOLOGY_WRITE_ON, workflow_support)
             validate_compiler(build_dir, args.compiler_id, args.compiler_version)
             checked.append(("installed" if installed else "native",
                             validate_inventory(build_dir, args.configuration,
                                                expected_inventory(args.materialization_profile,
                                                                   installed,
-                                                                  args.topology_write == TOPOLOGY_WRITE_ON))))
+                                                                  args.topology_write == TOPOLOGY_WRITE_ON,
+                                                                  workflow_support))))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     for label, names in checked:
         print(f"{label}: verified {len(names)} test entries; materialization "
               f"{args.materialization_profile}; topology writer {args.topology_write}; "
+              f"workflow support {support}; "
               f"{args.configuration}; {names}")
 
 

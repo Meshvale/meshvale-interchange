@@ -35,6 +35,10 @@ struct AssetState {
   AssetState(const geometry::ExecutionContext& context, std::stop_token stop,
              const GltfReadLimits& limits, const GltfWorkPolicy& work_policy,
              JsonSnapshot document);
+  AssetState(const AllocationContext& allocation,
+             const geometry::ExecutionContext& context,
+             const GltfReadLimits& limits, const GltfWorkPolicy& work_policy,
+             JsonSnapshot document);
   geometry::ExecutionContext context;
   AllocationContext allocation;
   GltfReadLimits limits;

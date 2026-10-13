@@ -12,6 +12,7 @@
 #include <string_view>
 #include <variant>
 
+#include "meshvale/geometry/editable_mesh.h"
 #include "meshvale/geometry/execution.h"
 
 namespace meshvale::interchange {
@@ -242,6 +243,9 @@ class GltfAsset {
   [[nodiscard]] std::span<const GltfSceneView> Scenes() const noexcept;
   [[nodiscard]] std::uint64_t PrimitiveCount() const noexcept;
   [[nodiscard]] std::uint64_t InstanceCount() const noexcept;
+  // Draft workflow-support accessor under qualification. Current live fresh
+  // capped-read requests; legacy ReadGltfAsset owners report nullopt, not zero.
+  [[nodiscard]] std::optional<std::uint64_t> NewRequestedBytes() const noexcept;
   [[nodiscard]] std::optional<GltfPrimitiveHandle> Primitive(
       std::uint64_t ordinal) const;
   [[nodiscard]] std::optional<GltfInstanceHandle> Instance(
@@ -265,6 +269,21 @@ struct GltfReadResult {
     std::span<const SuppliedGltfResource> supplied_resources,
     const GltfReadLimits& limits, const GltfWorkPolicy& work_policy,
     const geometry::ExecutionContext& context, std::stop_token stop);
+
+// Draft capped-reader implementation under qualification.
+// Existing source-admission limits remain unchanged. The additional positive
+// cap covers every fresh read request, including retained and temporary blocks.
+struct GltfReadOperationLimits {
+  GltfReadLimits source;
+  std::uint64_t max_new_requested_bytes = 0;
+};
+// Same source admission/result semantics as ReadGltfAsset; unlike that legacy
+// entrypoint, this operation has a complete fresh-request cap and live counter.
+[[nodiscard]] GltfReadResult ReadGltfAssetCapped(
+    std::span<const std::byte> json,
+    std::span<const SuppliedGltfResource> supplied_resources,
+    const GltfReadOperationLimits& limits, const GltfWorkPolicy& work_policy,
+    const geometry::ExecutionContext& context, std::stop_token stop = {});
 
 enum class GltfComponentType {
   kInt8,
@@ -333,6 +352,9 @@ class GltfPrimitiveExtraction {
   GltfPrimitiveExtraction& operator=(const GltfPrimitiveExtraction&);
   ~GltfPrimitiveExtraction();
   [[nodiscard]] std::uint64_t SourceMode() const noexcept;
+  // Draft workflow-support accessor under qualification. Current live fresh
+  // extraction requests under the existing mandatory extraction cap.
+  [[nodiscard]] std::uint64_t NewRequestedBytes() const noexcept;
   [[nodiscard]] std::span<const std::uint32_t> TriangleIndices() const noexcept;
   [[nodiscard]] std::span<const GltfSourceCorner> SourceCorners()
       const noexcept;
@@ -354,6 +376,16 @@ struct GltfExtractionResult {
     const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
     const GltfExtractionRequest& request, const GltfExtractionLimits& limits,
     std::stop_token stop);
+
+// Draft fully accounted extraction implementation under qualification.
+// Same binary admission/decoder/result as ExtractGltfPrimitive. The existing
+// max_output_requested_bytes also covers every explicit native callable,
+// handle and exception record; legacy stdthread runtime exclusions stay legacy.
+// Uses the work policy and execution ledger retained by the source asset.
+[[nodiscard]] GltfExtractionResult ExtractGltfPrimitiveCapped(
+    const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
+    const GltfExtractionRequest& request, const GltfExtractionLimits& limits,
+    std::stop_token stop = {});
 
 }  // namespace meshvale::interchange
 #endif  // MESHVALE_INTERCHANGE_GLTF_H_

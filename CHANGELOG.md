@@ -4,6 +4,14 @@
 
 ### Added
 
+- Additive fully capped glTF supplied-memory read and extraction routes with
+  live attributable owner counters. The optional
+  `meshvale::gltf_workflow_support` target independently checks canonical data,
+  topology correspondence, JSON preservation, resource bytes, reloaded channels
+  and source provenance against retained inputs. Public installed examples
+  exercise owner lifetime and cleanup. This development API remains under
+  qualification; it adds no filesystem publication or Python glTF operation.
+
 - Checked supplied-memory glTF triangle-selection output through
   `meshvale::gltf_topology_write`, with inspected candidate validation, owned
   correspondence and append-only UINT32 index resources. Original vertex/channel

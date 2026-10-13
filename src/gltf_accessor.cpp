@@ -18,6 +18,7 @@
 #include <utility>
 #include <variant>
 
+#include "gltf_operation_workers.h"
 #include "meshvale/geometry/execution.h"
 
 namespace meshvale::interchange::gltf_detail {
@@ -294,8 +295,8 @@ void RunRows(const AccessorSource& source, const AccessorLayout& layout,
              DecodedAccessor& output, const GltfWorkPolicy& policy,
              const geometry::ExecutionContext& context,
              const AllocationContext& allocation, std::stop_token stop,
-             AccessorExecutionStats* stats,
-             const AccessorExecutionHooks* hooks) {
+             AccessorExecutionStats* stats, const AccessorExecutionHooks* hooks,
+             const NativeExecutionOptions* execution) {
   const auto partition =
       static_cast<std::size_t>(policy.channel_partition_elements);
   const auto job_count =
@@ -319,39 +320,79 @@ void RunRows(const AccessorSource& source, const AccessorLayout& layout,
   }
   ChargedValues<JobResult> results(job_count, JobResult{},
                                    Allocator<JobResult>(allocation));
-  ChargedValues<std::jthread> threads{Allocator<std::jthread>(allocation)};
-  threads.reserve(workers.Count());
-  // workers precedes threads in destruction order; explicit joins also cover
-  // launch exceptions. Thread/exception runtime allocations remain exclusions.
   std::exception_ptr launch_exception;
-  try {
-    for (std::size_t worker = 0; worker < workers.Count(); ++worker) {
-      if (hooks && hooks->before_launch)
-        hooks->before_launch(worker, hooks->state);
-      threads.emplace_back([&, worker] {
-        for (auto job = worker; job < job_count; job += workers.Count()) {
-          const auto first = job * partition;
-          const auto last = first + std::min(partition, source.count - first);
-          try {
-            if (hooks && hooks->before_job)
-              hooks->before_job(job, hooks->state);
-            execute(first, last);
-          } catch (const DecodeFailure& failure) {
-            results[job].diagnostic = failure.diagnostic;
-          } catch (...) {
-            results[job].exception = std::current_exception();
-          }
-          if (hooks && hooks->after_job) hooks->after_job(job, hooks->state);
-        }
-      });
-      if (stats) ++stats->launched;
+  if (execution) {
+    struct DecodeJob {
+      decltype(execute)& operation;
+      std::size_t partition;
+      std::size_t rows;
+      JobResult* results;
+      const AccessorExecutionHooks* hooks;
+    } work{execute, partition, source.count, results.data(), hooks};
+    auto invoke = [](void* argument, std::size_t ordinal) noexcept {
+      auto& job = *static_cast<DecodeJob*>(argument);
+      const auto first = ordinal * job.partition;
+      const auto last = first + std::min(job.partition, job.rows - first);
+      try {
+        if (job.hooks && job.hooks->before_job)
+          job.hooks->before_job(ordinal, job.hooks->state);
+        job.operation(first, last);
+      } catch (const DecodeFailure& failure) {
+        job.results[ordinal].diagnostic = failure.diagnostic;
+      } catch (...) {
+        job.results[ordinal].exception = std::current_exception();
+      }
+      if (job.hooks && job.hooks->after_job)
+        job.hooks->after_job(ordinal, job.hooks->state);
+    };
+    OperationWorkerStats actual;
+    try {
+      RunOperationJobs(allocation, workers, job_count, invoke, &work,
+                       *execution, actual,
+                       hooks ? hooks->before_launch : nullptr,
+                       hooks ? hooks->state : nullptr);
+    } catch (...) {
+      launch_exception = std::current_exception();
     }
-  } catch (...) {
-    launch_exception = std::current_exception();
-  }
-  for (auto& thread : threads) {
-    thread.join();
-    if (stats) ++stats->joined;
+    if (stats) {
+      stats->launched += actual.launched;
+      stats->joined += actual.joined;
+    }
+  } else {
+    ChargedValues<std::jthread> threads{Allocator<std::jthread>(allocation)};
+    threads.reserve(workers.Count());
+    // workers precedes threads in destruction order; explicit joins also cover
+    // launch exceptions. Thread/exception runtime allocations remain
+    // exclusions.
+    try {
+      for (std::size_t worker = 0; worker < workers.Count(); ++worker) {
+        if (hooks && hooks->before_launch)
+          hooks->before_launch(worker, hooks->state);
+        threads.emplace_back([&, worker] {
+          for (auto job = worker; job < job_count; job += workers.Count()) {
+            const auto first = job * partition;
+            const auto last = first + std::min(partition, source.count - first);
+            try {
+              if (hooks && hooks->before_job)
+                hooks->before_job(job, hooks->state);
+              execute(first, last);
+            } catch (const DecodeFailure& failure) {
+              results[job].diagnostic = failure.diagnostic;
+            } catch (...) {
+              results[job].exception = std::current_exception();
+            }
+            if (hooks && hooks->after_job) hooks->after_job(job, hooks->state);
+          }
+        });
+        if (stats) ++stats->launched;
+      }
+    } catch (...) {
+      launch_exception = std::current_exception();
+    }
+    for (auto& thread : threads) {
+      thread.join();
+      if (stats) ++stats->joined;
+    }
   }
   if (launch_exception) std::rethrow_exception(launch_exception);
   for (const auto& result : results)
@@ -451,7 +492,8 @@ AccessorDecodeResult DecodeAccessor(
     const GltfExtractionLimits& limits, const GltfWorkPolicy& policy,
     const geometry::ExecutionContext& context,
     const AllocationContext& allocation, std::stop_token stop,
-    AccessorExecutionStats* stats, const AccessorExecutionHooks* hooks) {
+    AccessorExecutionStats* stats, const AccessorExecutionHooks* hooks,
+    const NativeExecutionOptions* execution) {
   if (stats) *stats = {};
   try {
     constexpr auto kHostMaximum = std::numeric_limits<std::size_t>::max();
@@ -514,7 +556,7 @@ AccessorDecodeResult DecodeAccessor(
       }
     }
     RunRows(source, layout, output, policy, context, allocation, stop, stats,
-            hooks);
+            hooks, execution);
     allocation.Checkpoint();
     return {std::move(output),
             Diagnostic(GltfStatus::kAccepted, GltfDiagnosticCode::kNone)};

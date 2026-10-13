@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "gltf_allocation.h"
 #include "gltf_asset_state.h"
 #include "meshvale/interchange/gltf.h"
 
@@ -15,8 +16,14 @@ namespace meshvale::interchange::gltf_detail {
 AssetState::AssetState(const geometry::ExecutionContext& execution,
                        std::stop_token stop, const GltfReadLimits& read_limits,
                        const GltfWorkPolicy& policy, JsonSnapshot snapshot)
+    : AssetState(AllocationContext(execution, stop), execution, read_limits,
+                 policy, std::move(snapshot)) {}
+AssetState::AssetState(const AllocationContext& operation,
+                       const geometry::ExecutionContext& execution,
+                       const GltfReadLimits& read_limits,
+                       const GltfWorkPolicy& policy, JsonSnapshot snapshot)
     : context(execution),
-      allocation(execution, stop),
+      allocation(operation),
       limits(read_limits),
       work_policy(policy),
       document(std::move(snapshot)),
@@ -120,6 +127,10 @@ GltfAsset::GltfAsset(std::shared_ptr<const gltf_detail::AssetState> owner)
 GltfAsset::GltfAsset(const GltfAsset&) = default;
 GltfAsset& GltfAsset::operator=(const GltfAsset&) = default;
 GltfAsset::~GltfAsset() = default;
+std::optional<std::uint64_t> GltfAsset::NewRequestedBytes() const noexcept {
+  if (!owner_->allocation.HasRequestLimit()) return std::nullopt;
+  return owner_->allocation.OperationActiveBytes();
+}
 GltfAdmissionProfile GltfAsset::AdmissionProfile() const noexcept {
   return GltfAdmissionProfile::kRetainedCoreMetadataV1;
 }

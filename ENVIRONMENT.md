@@ -15,6 +15,14 @@ Arbitrary FetchContent source-directory overrides are rejected. This changes bui
 inputs for the [native glTF reader/extractor](docs/gltf-read.md); parser dependency
 headers remain private and are not installed.
 
+The cgltf translation unit propagates allocation/admission exceptions from its
+C++ callbacks and owns cleanup of partial parser blocks. MSVC builds compile
+that unit with `/EHsc-`, explicitly disabling the extern-C no-throw assumption
+from a surrounding `/EHsc` setting while retaining synchronous exception
+unwinding. The source is compiled as C++; this requirement does not modify the
+pinned parser archive. A build that reinstates that assumption can skip owning
+cleanup on callback failure. Native allocation-fault tests exercise this path.
+
 Set `VCPKG_ROOT` to a bootstrapped vcpkg installation compatible with the pinned registry. Set `GEOMETRY_PREFIX` and `INTERCHANGE_PREFIX` to chosen absolute install prefixes, and `VCPKG_TRIPLET` to the target platform (`x64-windows-static-md`, `x64-linux`, or `arm64-osx` in the evaluated desktop lanes). In a compiler environment, use CMake manifest integration:
 
 ```sh
@@ -86,19 +94,19 @@ build configuration and complete native/installed test sets. No profile selects
 an empty suite or silently skips unsupported numerical capture.
 
 Native and sanitizer rows pin Geometry to
-`1a364acb0cba4fbf8cd9cccde5c04a1fa4428536`, independently of its development
-package version. Its [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/1a364acb0cba4fbf8cd9cccde5c04a1fa4428536/docs/materialization.md#compiled-allocation-profiles)
+`48298b24be7c132816fb5580d22d58bde61558d0`, independently of its development
+package version. Its [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/48298b24be7c132816fb5580d22d58bde61558d0/docs/materialization.md#compiled-allocation-profiles)
 owns the numerical admission tuple. Geometry is configured as a standalone
 producer without the Interchange/vcpkg toolchain. Native lanes disable system
 Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified | Geometry 16; Interchange 17; installed 9 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified | Geometry 16; Interchange 17; installed 9 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified | Geometry 16; Interchange 17; installed 9 |
-| Linux GNU | Release, unsupported | Geometry 13; Interchange 13; installed 8 |
-| macOS AppleClang | Release, unsupported | Geometry 13; Interchange 13; installed 8 |
+| Windows x64 MSVC | Release, qualified | Geometry 16; Interchange 22; installed 12 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified | Geometry 16; Interchange 22; installed 12 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified | Geometry 16; Interchange 22; installed 12 |
+| Linux GNU | Release, unsupported | Geometry 13; Interchange 16; installed 10 |
+| macOS AppleClang | Release, unsupported | Geometry 13; Interchange 16; installed 10 |
 
 Qualified rows include the focused materialization and independent semantic
 suites. Unsupported rows exercise actual nonempty delegated unsupported-profile
@@ -109,13 +117,15 @@ These are configured gates; only completed actual runs establish acceptance of
 the candidate's implementation. The [draft transfer contract](docs/gltf-materialization.md)
 owns interface availability and scope.
 
-Native builds enable `MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` by default. The
+Native builds enable `MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` and
+`MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT` by default. The
 [topology output contract](docs/gltf_topology_write.md#gtw-build-001-native-target-and-dependency)
 owns its compiled Geometry sharing requirement and installed target. Configuration
 checks callable `MaterializedMesh::ShareExecutionContext()` and
-`SharesExecutionBudget()` symbols. An explicit OFF selection keeps the prior
-native inventories: qualified 13/installed 7 or unsupported 12/installed 7, and
-installs neither the writer target nor its header.
+`SharesExecutionBudget()` symbols. Explicitly disabling both options keeps the
+base capped reader/extractor available, with qualified 15/installed 8 or
+unsupported 14/installed 8 tests. It installs neither optional target nor its
+header. Workflow support requires the topology writer when enabled.
 
 With the writer ON, qualified rows also require its focused request/worker/fault
 suite, independent preservation/reload suite, public UINT32 index above2^24 case,
@@ -124,6 +134,14 @@ and declares a 2048 MiB resource budget; CTest schedules it alone while its oper
 still uses admitted workers. Unsupported rows add the real dependency link check
 without pretending that nonempty numerical materialization is admitted. These
 inventory definitions are configured requirements, not completed hosted proof.
+
+With workflow support ON, qualified rows additionally require independent
+six-phase output inspection, actual UINT32 inspection above2^24, an installed
+link consumer and a public operation/lifetime consumer. Both large-index tests
+use a 2048 MiB resource budget and run separately. Unsupported rows retain the
+optional target link checks without claiming numerical-profile admission. The
+[workflow support contract](docs/gltf-workflow-support.md) owns capped read and
+extraction accounting, retained live counters and independent inspection scope.
 
 Native rows use Ninja and record their compile-command inventories and test
 results. Windows loads the installed Visual Studio x64 compiler environment.
@@ -151,7 +169,7 @@ does not establish sanitizer coverage or platform support. The
 revisions matching the ordinary native job, without changing the Python cohort.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange and all nine installed consumers. Geometry's owning
+Geometry, Interchange and all twelve installed consumers. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
 fail the qualified suite rather than relabel it unsupported. The ordinary native
@@ -166,7 +184,7 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes require Interchange's qualified 17 suites and nine installed test
+Both lanes require Interchange's qualified 22 suites and twelve installed test
 entries. Geometry requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an
