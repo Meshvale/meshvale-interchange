@@ -22,6 +22,7 @@
 
 #include "gltf_allocation.h"
 #include "gltf_files_test_internal.h"
+#include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_files_detail {
 template <class T>
@@ -85,6 +86,10 @@ struct Access {
 void ValidatePublicationConfiguration(
     const GltfFilePublicationLimits& limits,
     const GltfFilePublicationWorkPolicy& work);
+// Translate only an actual delegated container result, without synthesizing
+// nested failures for file-owned preflight or preservation checks.
+void RequireContainerSuccess(const GlbResult& result,
+                             std::optional<std::uint64_t> file = {});
 // Reuses the caller's existing file request cap. Canonical reader requests
 // retain their distinct fresh cap on the same ledger. Native root is already
 // admitted; relative entry and opaque paths remain borrowed through all joins.
@@ -93,7 +98,18 @@ GltfFileDiagnostic CaptureFiles(
     std::span<const std::string_view> opaque_files,
     const GltfFileReadLimits& limits, const GltfFileReadWorkPolicy& work,
     const geometry::ExecutionContext& context, std::stop_token stop,
-    const GltfFileTestOptions& testing, GltfFileExecution& execution);
+    const GltfFileTestOptions& testing, GltfFileExecution& execution,
+    std::optional<std::span<const std::byte>> expected_json_prefix = {},
+    const gltf_detail::NativeExecutionOptions& verification_execution = {});
+// Equal-length borrowed spans survive every job and join. Returns the first
+// differing byte, with known mismatch finalized before cooperative
+// cancellation.
+std::optional<std::uint64_t> CompareFileBytes(
+    std::span<const std::byte> expected, std::span<const std::byte> actual,
+    const gltf_detail::AllocationContext& allocation,
+    const GltfFileWorkPolicy& work, const geometry::ExecutionContext& context,
+    const gltf_detail::NativeExecutionOptions& testing,
+    GltfFileExecutionStats& execution);
 void CapturePhysicalFiles(
     FileAssetState& state, NativeView root, std::string_view entry,
     std::span<const std::string_view> paths, const GltfFileReadLimits& limits,
