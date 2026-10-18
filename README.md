@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and JSON glTF bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -50,7 +50,8 @@ vertex/channel accessors and resources, and appends a UINT32 index resource for
 changed output. Identity output retains the exact original JSON. The
 [installed example](examples/consumer/gltf_topology_write.cpp) demonstrates
 selection, writing and independent reload. This native development operation
-does not establish edited GLB publication, Python operations or a stable release.
+has a separate [same-format file publication contract](docs/gltf-files.md);
+Python operations and a stable release remain forthcoming.
 
 The additive [retained workflow support](docs/gltf-workflow-support.md) provides
 fully capped read/extraction entrypoints and live attributable owner counters.
@@ -73,14 +74,16 @@ unique relative paths and the capped canonical asset. The
 their retained owners after removing the source files. Limits, strict path
 admission and current qualification scope remain with the contract. GLB capture
 retains complete JSON, BIN and opaque chunks and binds a supported embedded
-buffer to the canonical asset. JSON topology output can be staged, reloaded,
+buffer to the canonical asset. JSON and GLB topology output can be staged, reloaded,
 independently inspected and committed to a new destination without replacement.
 The [publication example](examples/consumer/gltf_file_publish.cpp) selects a
 triangle, removes the source files, includes static and computed receipts, and
 reopens the committed bundle. Computed files can use an owning callback or a
 borrowed provider backed by caller-owned storage. Both routes verify every
-staged byte and file before publication. JSON publication remains a development interface;
-GLB publication and glTF Python operations remain forthcoming.
+staged byte and file before publication. The [GLB publication example](examples/consumer/gltf_file_publish_glb.cpp)
+preserves embedded BIN and ordered opaque chunks and reopens changed output;
+identity output retains the exact original wire. Publication remains a development
+interface under qualification. glTF Python operations remain forthcoming.
 
 ## Optional native USD extraction
 

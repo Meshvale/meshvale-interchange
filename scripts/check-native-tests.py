@@ -61,12 +61,16 @@ GLTF_FILE_INSTALLED_TESTS = frozenset({"installed_gltf_files_link", "installed_g
 GLTF_FILE_QUALIFIED_TESTS = frozenset({
     "gltf_file_publish_requests", "gltf_file_publish_semantics",
     "gltf_file_verified_provider_semantics", "gltf_file_verified_provider_requests",
+    "gltf_file_publish_glb_semantics", "gltf_file_publish_glb_requests",
 })
 GLTF_FILE_UNSUPPORTED_TESTS = frozenset({
     "unsupported_gltf_file_publication_dependency",
     "unsupported_gltf_file_verified_provider_dependency",
+    "unsupported_gltf_glb_publication_dependency",
 })
-GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_file_publish_consumer"})
+GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({
+    "installed_gltf_file_publish_consumer", "installed_gltf_file_publish_glb_consumer",
+})
 
 
 def cache_entries(path):
