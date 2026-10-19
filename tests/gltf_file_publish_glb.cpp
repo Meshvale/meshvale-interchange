@@ -731,7 +731,8 @@ void PhaseStopsAndDestinationConflicts() {
                                ic::GltfFilePublicationPhase::kStaging,
                                ic::GltfFilePublicationPhase::kVerification,
                                ic::GltfFilePublicationPhase::kPublication};
-  static constexpr std::string_view kOtherBytes = "existing destination owner\n";
+  static constexpr std::string_view kOtherBytes =
+      "existing destination owner\n";
   static constexpr std::string_view kOtherPath = "owner.txt";
   for (const bool changed : {false, true}) {
     fixture::Fixture source(changed);
