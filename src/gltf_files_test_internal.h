@@ -61,6 +61,9 @@ struct GltfFilePublicationTestOptions {
   gltf_detail::NativeExecutionOptions write_execution;
   GltfFileHooks file_hooks;
   GltfFilePublicationHooks hooks;
+  // Assembly and actual staged read retain distinct fresh container caps;
+  // backend state remains borrowed through every join and retained owner free.
+  glb_detail::Hooks container;
 };
 [[nodiscard]] GltfFilePublicationResult TestPublishGltfTopologyBundle(
     const GltfFilePublicationRequest& request,

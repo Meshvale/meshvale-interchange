@@ -50,7 +50,21 @@ function(meshvale_add_gltf_file_tests)
   target_include_directories(meshvale_gltf_file_verified_provider_tests PRIVATE src)
   target_link_libraries(meshvale_gltf_file_verified_provider_tests PRIVATE meshvale::gltf_files)
   meshvale_warnings(meshvale_gltf_file_verified_provider_tests)
+  add_executable(meshvale_gltf_file_publish_glb_tests tests/gltf_file_publish_glb.cpp)
+  target_include_directories(meshvale_gltf_file_publish_glb_tests PRIVATE src)
+  target_link_libraries(meshvale_gltf_file_publish_glb_tests PRIVATE meshvale::gltf_files)
+  meshvale_warnings(meshvale_gltf_file_publish_glb_tests)
   if(MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "${_MESHVALE_INTERCHANGE_PROFILE_QUALIFIED}")
+    add_test(NAME gltf_file_publish_glb_semantics COMMAND meshvale_gltf_file_publish_glb_tests)
+    add_executable(meshvale_gltf_file_publish_glb_requests_tests tests/gltf_file_publish_glb_requests.cpp)
+    target_include_directories(meshvale_gltf_file_publish_glb_requests_tests PRIVATE src)
+    target_link_libraries(meshvale_gltf_file_publish_glb_requests_tests PRIVATE meshvale::gltf_files)
+    meshvale_warnings(meshvale_gltf_file_publish_glb_requests_tests)
+    add_test(NAME gltf_file_publish_glb_requests COMMAND meshvale_gltf_file_publish_glb_requests_tests)
+    # Full-wire publication adds container allocation sweeps to the file sweeps.
+    set(_MESHVALE_GLTF_GLB_PUBLICATION_REQUEST_TIMEOUT_SECONDS 600)
+    set_tests_properties(gltf_file_publish_glb_requests PROPERTIES
+      TIMEOUT "${_MESHVALE_GLTF_GLB_PUBLICATION_REQUEST_TIMEOUT_SECONDS}" RUN_SERIAL TRUE)
     add_test(NAME gltf_file_publish_semantics COMMAND meshvale_gltf_file_publish_tests)
     add_executable(meshvale_gltf_file_publish_requests_tests tests/gltf_file_publish_requests.cpp)
     target_include_directories(meshvale_gltf_file_publish_requests_tests PRIVATE src)
@@ -68,6 +82,8 @@ function(meshvale_add_gltf_file_tests)
     set_tests_properties(gltf_file_verified_provider_requests PROPERTIES
       TIMEOUT "${_MESHVALE_GLTF_VERIFIED_PROVIDER_REQUEST_TIMEOUT_SECONDS}" RUN_SERIAL TRUE)
   else()
+    add_test(NAME unsupported_gltf_glb_publication_dependency
+      COMMAND meshvale_gltf_file_publish_glb_tests --unsupported-profile)
     add_test(NAME unsupported_gltf_file_publication_dependency
       COMMAND meshvale_gltf_file_publish_tests --unsupported-profile)
     add_test(NAME unsupported_gltf_file_verified_provider_dependency

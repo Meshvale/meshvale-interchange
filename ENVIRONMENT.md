@@ -70,16 +70,19 @@ and its public header. The option defaults to OFF and requires topology writing
 and workflow support ON. It uses the existing Geometry/tinyobjloader/parser
 dependencies; Python wheels explicitly keep it OFF. The
 [file contract](docs/gltf-files.md) owns supported JSON/GLB capture, embedded BIN
-binding, JSON verified publication and the typed unavailable GLB publication route.
+binding and same-format JSON/GLB verified publication.
 
 With the option ON, the inventory checker additionally requires `gltf_files_link`
 and `gltf_files`, `gltf_files_glb` and `gltf_files_glb_requests` in both numerical
 profiles, plus `installed_gltf_files_link` and `installed_gltf_files_consumer`.
 Qualified builds additionally require `gltf_file_publish_semantics`,
 `gltf_file_publish_requests`, `gltf_file_verified_provider_semantics`,
-`gltf_file_verified_provider_requests` and `installed_gltf_file_publish_consumer`;
-unsupported builds require `unsupported_gltf_file_publication_dependency` and
-`unsupported_gltf_file_verified_provider_dependency`, which exercise actual
+`gltf_file_verified_provider_requests`, `gltf_file_publish_glb_semantics` and
+`gltf_file_publish_glb_requests`, plus `installed_gltf_file_publish_consumer` and
+`installed_gltf_file_publish_glb_consumer`;
+unsupported builds require `unsupported_gltf_file_publication_dependency`,
+`unsupported_gltf_file_verified_provider_dependency` and
+`unsupported_gltf_glb_publication_dependency`, which exercise actual
 numerical-profile refusal before publication. The base `gltf_execution_budget`
 fixture also runs with optional modules OFF. JSON/GLB capture and
 extraction do not require numerical materialization admission. Installed examples
@@ -127,12 +130,12 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; file capture ON | Geometry 16; Interchange 26; installed 14 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file capture ON | Geometry 16; Interchange 26; installed 14 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file capture ON | Geometry 16; Interchange 26; installed 14 |
-| Linux GNU | Release, unsupported; file capture ON | Geometry 13; Interchange 20; installed 12 |
-| macOS AppleClang | Release, unsupported; file capture ON | Geometry 13; Interchange 20; installed 12 |
-| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 15; installed 8 |
+| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 33; installed 16 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 33; installed 16 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 33; installed 16 |
+| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 24; installed 12 |
+| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 24; installed 12 |
+| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 16; installed 8 |
 
 Qualified rows include the focused materialization and independent semantic
 suites. Unsupported rows exercise actual nonempty delegated unsupported-profile
@@ -149,8 +152,8 @@ Native builds enable `MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` and
 owns its compiled Geometry sharing requirement and installed target. Configuration
 checks callable `MaterializedMesh::ShareExecutionContext()` and
 `SharesExecutionBudget()` symbols. Explicitly disabling both options keeps the
-base capped reader/extractor available, with qualified 15/installed 8 or
-unsupported 14/installed 8 tests. It installs neither optional target nor its
+base capped reader/extractor available, with qualified 16/installed 8 or
+unsupported 15/installed 8 tests. It installs neither optional target nor its
 header. Workflow support requires the topology writer when enabled.
 
 With the writer ON, qualified rows also require its focused request/worker/fault
@@ -195,7 +198,7 @@ does not establish sanitizer coverage or platform support. The
 revisions matching the ordinary native job, without changing the Python cohort.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange and all fourteen installed consumers. Geometry's owning
+Geometry, Interchange and all sixteen installed consumers. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
 fail the qualified suite rather than relabel it unsupported. The ordinary native
@@ -210,7 +213,7 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON/GLB file capture and require Interchange's qualified 26 suites and fourteen installed test
+Both lanes enable JSON/GLB files and require Interchange's qualified 33 suites and sixteen installed test
 entries. Geometry requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an

@@ -50,6 +50,39 @@ void Count(std::uint64_t value, std::uint64_t maximum, GltfFileStage stage) {
     Fail(GltfFileStatus::kLimitExceeded, stage,
          GltfFileDiagnosticCode::kCountLimit);
 }
+void RequireContainerSuccess(const GlbResult& result,
+                             std::optional<std::uint64_t> file) {
+  if (result.status == GlbStatus::kSuccess) return;
+  GltfFileDiagnostic diagnostic;
+  switch (result.status) {
+    case GlbStatus::kInvalidOptions:
+      diagnostic.status = GltfFileStatus::kInvalidConfiguration;
+      break;
+    case GlbStatus::kMalformed:
+      diagnostic.status = GltfFileStatus::kMalformed;
+      break;
+    case GlbStatus::kUnsupportedVersion:
+      diagnostic.status = GltfFileStatus::kUnsupportedProfile;
+      break;
+    case GlbStatus::kLimitExceeded:
+      diagnostic.status = GltfFileStatus::kLimitExceeded;
+      break;
+    case GlbStatus::kBudgetExceeded:
+      diagnostic.status = GltfFileStatus::kBudgetExceeded;
+      break;
+    case GlbStatus::kCanceled:
+      diagnostic.status = GltfFileStatus::kCanceled;
+      break;
+    case GlbStatus::kSuccess:
+      break;
+  }
+  diagnostic.stage = GltfFileStage::kContainer;
+  diagnostic.code = GltfFileDiagnosticCode::kDelegatedContainer;
+  diagnostic.file_index = file;
+  diagnostic.container_status = result.status;
+  diagnostic.container_byte_offset = result.error_byte_offset;
+  throw Failure{diagnostic};
+}
 FileAssetState::FileAssetState(const gltf_detail::AllocationContext& allocator,
                                GltfExtensionFilePolicy policy)
     : allocation(allocator),
@@ -121,7 +154,8 @@ const GltfTopologyOutputInspection& GltfPublishedBundle::Inspection()
   return owner_->inspection;
 }
 GltfFileFormat GltfPublishedBundle::Format() const noexcept {
-  return GltfFileFormat::kGltfJson;
+  return owner_->files.container ? GltfFileFormat::kGlb
+                                 : GltfFileFormat::kGltfJson;
 }
 std::string_view GltfPublishedBundle::EntryPath() const noexcept {
   return owner_->files.records[owner_->files.entry].path;
@@ -133,7 +167,7 @@ std::span<const GltfFileView> GltfPublishedBundle::Files() const noexcept {
   return owner_->files.views;
 }
 const GlbContainer* GltfPublishedBundle::Container() const noexcept {
-  return nullptr;
+  return owner_->files.container ? &*owner_->files.container : nullptr;
 }
 std::uint64_t GltfPublishedBundle::NewRequestedBytes() const noexcept {
   return owner_->files.allocation.OperationActiveBytes();
@@ -216,6 +250,45 @@ bool FoldPrefix(std::string_view a, std::string_view b) {
          std::equal(b.begin(), b.end(), a.begin(),
                     [](char x, char y) { return Fold(x) == Fold(y); });
 }
+struct ComparisonJob {
+  const allocation::AllocationContext* allocation = nullptr;
+  const GltfFileWorkPolicy* work = nullptr;
+  std::span<const std::byte> expected;
+  std::span<const std::byte> actual;
+  std::uint64_t offset = 0;
+  std::optional<std::uint64_t> mismatch;
+  std::exception_ptr exception;
+  bool canceled = false;
+};
+void RunComparisonJob(void* opaque, std::size_t ordinal) noexcept {
+  auto& job = static_cast<ComparisonJob*>(opaque)[ordinal];
+  try {
+    for (std::size_t begin = 0; begin < job.expected.size();) {
+      job.allocation->Checkpoint();
+      const auto count = std::min<std::size_t>(
+          {job.expected.size() - begin,
+           static_cast<std::size_t>(job.work->io_block_bytes),
+           static_cast<std::size_t>(job.work->cancellation_block_bytes),
+           static_cast<std::size_t>(detail::MaximumReadBlockBytes())});
+      const auto expected = job.expected.subspan(begin, count);
+      const auto found = std::mismatch(expected.begin(), expected.end(),
+                                       job.actual.begin() + begin);
+      if (found.first != expected.end()) {
+        job.mismatch = job.offset + begin +
+                       static_cast<std::size_t>(found.first - expected.begin());
+        return;
+      }
+      begin += count;
+    }
+  } catch (const allocation::AdmissionFailure& failure) {
+    if (failure.Code() == allocation::AdmissionCode::kCanceled)
+      job.canceled = true;
+    else
+      job.exception = std::current_exception();
+  } catch (...) {
+    job.exception = std::current_exception();
+  }
+}
 struct Binding {
   GltfResourceKind kind;
   std::uint64_t index;
@@ -235,6 +308,8 @@ struct Capture {
   detail::Vector<Binding> plan;
   detail::Vector<SuppliedGltfResource> bindings;
   std::optional<SuppliedGltfResource> container_binding;
+  std::optional<std::span<const std::byte>> expected_json_prefix;
+  const allocation::NativeExecutionOptions* verification_execution = nullptr;
   std::uint64_t total_bytes = 0;
   std::uint64_t total_paths = 0;
   Capture(detail::FileAssetState& state, const GltfFileReadOptions& options,
@@ -445,49 +520,52 @@ struct Capture {
     state.entry = Add(entry);
     Read(state.entry);
     const auto& bytes = state.records[state.entry].bytes;
-    if (!detect_container || bytes.size() < kGlbMagic.size() ||
-        !std::equal(kGlbMagic.begin(), kGlbMagic.end(), bytes.begin()))
+    if (!detect_container ||
+        (!expected_json_prefix &&
+         (bytes.size() < kGlbMagic.size() ||
+          !std::equal(kGlbMagic.begin(), kGlbMagic.end(), bytes.begin()))))
       return;
     auto read = glb_detail::Read(bytes, limits.container, work.container,
                                  context, stop, testing.container);
-    if (read.status != GlbStatus::kSuccess) {
-      GltfFileDiagnostic diagnostic;
-      switch (read.status) {
-        case GlbStatus::kInvalidOptions:
-          diagnostic.status = Status::kInvalidConfiguration;
-          break;
-        case GlbStatus::kMalformed:
-          diagnostic.status = Status::kMalformed;
-          break;
-        case GlbStatus::kUnsupportedVersion:
-          diagnostic.status = Status::kUnsupportedProfile;
-          break;
-        case GlbStatus::kLimitExceeded:
-          diagnostic.status = Status::kLimitExceeded;
-          break;
-        case GlbStatus::kBudgetExceeded:
-          diagnostic.status = Status::kBudgetExceeded;
-          break;
-        case GlbStatus::kCanceled:
-          diagnostic.status = Status::kCanceled;
-          break;
-        case GlbStatus::kSuccess:
-          break;
-      }
-      diagnostic.stage = Stage::kContainer;
-      diagnostic.code = Code::kDelegatedContainer;
-      diagnostic.file_index = state.entry;
-      diagnostic.container_status = read.status;
-      diagnostic.container_byte_offset = read.error_byte_offset;
-      throw detail::Failure{diagnostic};
-    }
+    detail::RequireContainerSuccess(read, state.entry);
     state.container.emplace(std::move(read.container));
+    ValidateJsonPrefix();
+  }
+  void ValidateJsonPrefix() {
+    if (!expected_json_prefix) return;
+    constexpr std::size_t kJsonChunkIndex = 0;
+    constexpr std::size_t kGlbAlignmentBytes = sizeof(std::uint32_t);
+    constexpr std::byte kJsonPadding{' '};
+    const auto expected = *expected_json_prefix;
+    const auto& container = *state.container;
+    const auto actual = container.Chunk(kJsonChunkIndex).bytes;
+    const auto start =
+        static_cast<std::uint64_t>(actual.data() - container.Bytes().data());
+    const auto padding =
+        (kGlbAlignmentBytes - expected.size() % kGlbAlignmentBytes) %
+        kGlbAlignmentBytes;
+    if (actual.size() < expected.size() ||
+        actual.size() - expected.size() != padding)
+      ContainerFailure(Status::kPreservationMismatch,
+                       Code::kContainerPreservation, {},
+                       start + std::min(actual.size(), expected.size()));
+    for (std::size_t byte = expected.size(); byte < actual.size(); ++byte)
+      if (actual[byte] != kJsonPadding)
+        ContainerFailure(Status::kPreservationMismatch, Code::kContainerPadding,
+                         {}, start + byte);
+    const auto mismatch = detail::CompareFileBytes(
+        expected, actual.first(expected.size()), state.allocation, work.files,
+        context, *verification_execution, execution.byte_verification);
+    if (mismatch)
+      ContainerFailure(Status::kPreservationMismatch,
+                       Code::kContainerPreservation, {}, start + *mismatch);
   }
   std::span<const std::byte> Json() const {
     constexpr std::size_t kJsonChunkIndex = 0;
-    return state.container
-               ? state.container->Chunk(kJsonChunkIndex).bytes
-               : std::span<const std::byte>(state.records[state.entry].bytes);
+    if (!state.container) return state.records[state.entry].bytes;
+    const auto bytes = state.container->Chunk(kJsonChunkIndex).bytes;
+    return expected_json_prefix ? bytes.first(expected_json_prefix->size())
+                                : bytes;
   }
   [[noreturn]] void ContainerFailure(
       Status status, Code code, std::optional<std::uint64_t> buffer = {},
@@ -666,17 +744,86 @@ GltfFileDiagnostic FinishCapture(Capture& operation) {
   return diagnostic;
 }
 }  // namespace
+std::optional<std::uint64_t> detail::CompareFileBytes(
+    std::span<const std::byte> expected, std::span<const std::byte> actual,
+    const allocation::AllocationContext& allocator,
+    const GltfFileWorkPolicy& work, const geometry::ExecutionContext& context,
+    const allocation::NativeExecutionOptions& testing,
+    GltfFileExecutionStats& execution) {
+  const auto bytes = expected.size();
+  auto count = std::max<std::size_t>(
+      1, std::min<std::size_t>(work.max_jobs,
+                               bytes / work.partition_bytes +
+                                   (bytes % work.partition_bytes != 0)));
+  auto lease = bytes >= work.parallel_min_bytes
+                   ? geometry::TryReserveWorkers(context, count)
+                   : geometry::WorkerLease{};
+  const bool native = lease.Count() >= kMinimumWorkers;
+  if (!native) count = 1;
+  detail::Vector<ComparisonJob> jobs{
+      allocation::Allocator<ComparisonJob>(allocator)};
+  jobs.resize(count);
+  const auto width = bytes / count;
+  const auto remainder = bytes % count;
+  std::size_t begin = 0;
+  for (std::size_t i = 0; i < count; ++i) {
+    allocator.Checkpoint();
+    auto& job = jobs[i];
+    job.allocation = &allocator;
+    job.work = &work;
+    job.offset = begin;
+    const auto size = width + (i < remainder ? 1 : 0);
+    job.expected = expected.subspan(begin, size);
+    job.actual = actual.subspan(begin, size);
+    begin += size;
+  }
+  execution.planned_jobs += count;
+  allocation::OperationWorkerStats stats;
+  if (native) {
+    try {
+      allocation::RunOperationJobs(allocator, lease, count, RunComparisonJob,
+                                   jobs.data(), testing, stats);
+    } catch (...) {
+      execution.launched_workers += stats.launched;
+      execution.joined_workers += stats.joined;
+      throw;
+    }
+    execution.launched_workers += stats.launched;
+    execution.joined_workers += stats.joined;
+  } else {
+    ++execution.caller_jobs;
+    RunComparisonJob(jobs.data(), 0);
+  }
+  for (const auto& job : jobs)
+    if (job.exception) std::rethrow_exception(job.exception);
+  for (const auto& job : jobs)
+    if (job.mismatch) {
+      const auto found =
+          std::mismatch(expected.begin(), expected.begin() + *job.mismatch + 1,
+                        actual.begin());
+      return static_cast<std::uint64_t>(found.first - expected.begin());
+    }
+  for (const auto& job : jobs)
+    if (job.canceled)
+      detail::Fail(Status::kCanceled, Stage::kSupplemental,
+                   Code::kStopRequested);
+  return {};
+}
 GltfFileDiagnostic detail::CaptureFiles(
     FileAssetState& state, NativeView root, std::string_view entry,
     std::span<const std::string_view> opaque_files,
     const GltfFileReadLimits& limits, const GltfFileReadWorkPolicy& work,
     const geometry::ExecutionContext& context, std::stop_token stop,
-    const GltfFileTestOptions& testing, GltfFileExecution& execution) {
+    const GltfFileTestOptions& testing, GltfFileExecution& execution,
+    std::optional<std::span<const std::byte>> expected_json_prefix,
+    const allocation::NativeExecutionOptions& verification_execution) {
   GltfFileReadOptions options;
   options.extensions = state.extensions;
   options.opaque_source_files = opaque_files;
   Capture operation(state, options, limits, work, context, stop, testing,
                     execution);
+  operation.expected_json_prefix = expected_json_prefix;
+  operation.verification_execution = &verification_execution;
   operation.InitializeNative(root, entry);
   return FinishCapture(operation);
 }

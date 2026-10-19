@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-FILES-001 |
-| Version | 0.1.1 |
-| Status | JSON/GLB capture and JSON publication implementation under qualification; GLB publication unavailable |
+| Version | 0.2.0 |
+| Status | JSON/GLB capture and same-format verified publication implementation under qualification |
 | Interface | [gltf_files.h](../include/meshvale/interchange/gltf_files.h) |
 | Selected target | Optional `meshvale::gltf_files`, requiring `meshvale::gltf_workflow_support`; build/export qualification pending |
 
@@ -14,7 +14,7 @@ admission and primitive decoding; [capped workflow support](gltf-workflow-suppor
 owns read/extraction accounting and independent output inspection; the
 [topology writer](gltf_topology_write.md) owns supplied-memory edits; the
 [GLB container](glb.md) owns wire capture/assembly. The native development
-implementation captures JSON and GLB files and publishes verified JSON bundles;
+implementation captures JSON and GLB files and publishes verified bundles in the source format;
 broader native, installed and platform qualification remains pending. It adds no format conversion, Python
 binding, application report schema, command or supported release. The base reader
 header remains independent of the optional file module.
@@ -23,7 +23,7 @@ GLB magic selects the actual container reader and retains the complete original
 JSON chunk, BIN padding and ordered opaque chunks. The file module independently
 admits buffer-zero BIN binding and exact logical extent/padding before reader
 resource admission. Wire failures retain actual container status/offsets with no
-JSON fallback. `PublishGltfTopologyBundle` stages retained JSON output and full
+JSON fallback. `PublishGltfTopologyBundle` stages retained topology output and full
 resource bytes, reloads and independently inspects those actual bytes, verifies
 supplements and inventory, then commits with native no-replace publication. The
 [installed example](../examples/consumer/gltf_file_publish.cpp) reads a real file,
@@ -31,11 +31,13 @@ selects a triangle, deletes the original files, publishes with static and comput
 receipts, and reopens the committed bundle. This implementation is under
 qualification.
 
-GLB publication retains its unavailable route: validate every explicit
-positive/representational configuration field first, then return initial
-cancellation or `kUnsupportedProfile`/`kPublicationUnsupported`. It performs no
-filesystem action, invokes no callback and returns no published owner. Its
-publication clauses below retain the target contract for a separate GLB gate.
+The [installed GLB example](../examples/consumer/gltf_file_publish_glb.cpp)
+captures embedded BIN and an opaque chunk, publishes an edited triangle subset
+through both verified-content producer routes, and reopens the actual output.
+It also publishes an identity selection with the exact original complete wire.
+These operations preserve the admitted GLB processing subset; they do not add
+format conversion or broader glTF semantics. Complete independent semantic,
+request, sanitizer, package and platform qualification remains required.
 
 ## GFILE-CAPTURE-001: Strong file source
 

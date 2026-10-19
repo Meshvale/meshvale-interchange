@@ -71,6 +71,17 @@ class Runner:
             raise RuntimeError(f"{name}: expected {sorted(expected)}, found {actual}")
         print(f"{name}: verified {len(actual)} actual test entries", flush=True)
 
+    def test(self, build, name):
+        actual_log = Path(build) / "Testing" / "Temporary" / "LastTest.log"
+        try:
+            self.run("ctest", "--test-dir", build, "-C", BUILD_CONFIGURATION,
+                     "--verbose", "--output-on-failure")
+        finally:
+            if actual_log.is_file():
+                shutil.copyfile(actual_log, self.evidence / (name + "-actual-LastTest.log"))
+        if not actual_log.is_file():
+            raise RuntimeError("Executed CTest did not retain its actual test log")
+
     def instrumented(self, database, compile_flags, warnings_as_errors):
         entries = json.loads(database.read_text(encoding="utf-8"))
         if not entries:
@@ -164,8 +175,7 @@ def main():
                "--allocation-probe", profile["allocation_probe"],
                "--materialization-profile", MATERIALIZATION_PROFILE,
                "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
-    runner.run("ctest", "--test-dir", geometry_build, "-C", BUILD_CONFIGURATION,
-               "--output-on-failure")
+    runner.test(geometry_build, "geometry")
     runner.run("cmake", "--install", geometry_build, "--config", BUILD_CONFIGURATION,
                "--prefix", prefix)
     build, dependencies = work / "interchange-build", work / "dependencies"
@@ -193,8 +203,7 @@ def main():
                "--configuration", BUILD_CONFIGURATION,
                "--materialization-profile", MATERIALIZATION_PROFILE,
                "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
-    runner.run("ctest", "--test-dir", build, "-C", BUILD_CONFIGURATION,
-               "--output-on-failure")
+    runner.test(build, "interchange")
     runner.run("python", "tests/gltf_json_oracle.py", build / "meshvale_gltf_json_tests",
                work / "json-oracle")
     for name, mode in (("accessor-oracle", []), ("read-extract-oracle", ["read"])):
@@ -223,8 +232,7 @@ def main():
                "--installed-build-dir", consumer, "--configuration", BUILD_CONFIGURATION,
                "--materialization-profile", MATERIALIZATION_PROFILE,
                "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
-    runner.run("ctest", "--test-dir", consumer, "-C", BUILD_CONFIGURATION,
-               "--output-on-failure")
+    runner.test(consumer, "installed")
     (evidence / "completed.json").write_text(json.dumps(identity, indent=2) + "\n",
                                              encoding="utf-8")
 

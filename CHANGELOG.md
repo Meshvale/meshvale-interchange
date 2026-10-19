@@ -4,6 +4,13 @@
 
 ### Added
 
+- Verified same-format GLB topology publication, retaining embedded BIN and
+  ordered opaque chunks. Changed output replaces JSON through the existing
+  container writer; identity output preserves the complete original wire.
+  Staged reload checks the exact writer prefix and derived alignment padding.
+  Both verified-content producers retain actual container views, and the new
+  installed example reopens changed and unchanged committed bundles.
+
 - A nonallocating `GltfAsset::SharesExecutionBudget` query for checking retained
   source accounting before starting another operation, including base-only builds.
 - A borrowed verified-files provider for JSON glTF publication. Callers can return
@@ -19,8 +26,7 @@
   full physical bytes, independently verifies reloaded output and commits a new
   bundle without replacement, including checked static and computed supplements.
   Its installed example deletes the original source and reopens committed bytes.
-  GLB publication remains unavailable; the development interface is under
-  qualification.
+  The development interface is under qualification.
 
 - Additive fully capped glTF supplied-memory read and extraction routes with
   live attributable owner counters. The optional
