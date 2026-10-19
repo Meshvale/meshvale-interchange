@@ -183,7 +183,7 @@ Binary-cache reuse is disabled, and build/dependency concurrency is bounded to
 two. This lane is separate from Linux ASan/UBSan and TSan.
 
 The six ordinary Python rows retain the Release OBJ interface and matching
-Geometry wheel/native prefix (`48bb348112f49a07aec03bc69b9875ea6b62128a`).
+Geometry wheel/native prefix (`48298b24be7c132816fb5580d22d58bde61558d0`).
 Python packaging explicitly disables the topology writer. These rows do not qualify a glTF Python operation,
 charged transfer or Linux Release materialization profile. The separate portable
 OBJ candidate workflow retains its own package/dependency preparation checks.
