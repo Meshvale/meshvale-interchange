@@ -40,7 +40,7 @@ separate `meshvale::gltf_materialization` target. It retains source ownership,
 channel correspondence and normalization declarations; canonical attributes
 remain raw. Its [installed example](examples/consumer/gltf_materialization.cpp)
 composes transfer, inspection and face selection. The transfer contract owns
-numerical-profile and lifetime limits. JSON filesystem publication is described below; Python glTF operations remain
+numerical-profile and lifetime limits. Same-format JSON glTF/GLB filesystem publication is described below; Python glTF operations remain
 forthcoming.
 
 The [checked topology writer](docs/gltf_topology_write.md) writes an ordered
