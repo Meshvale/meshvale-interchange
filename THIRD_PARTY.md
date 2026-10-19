@@ -13,9 +13,12 @@ The vcpkg manifest pins registry baseline `cb5a41b03cde4086d554b3f3e2eac39206b16
 
 ## glTF parser foundation
 
-These selected private build inputs support the [parser/allocation foundation](docs/gltf-foundation.md).
-There is no public glTF reader, extraction or writer API yet. The complete
-[proposed asset contract](docs/gltf.md) remains future work.
+These private implementation dependencies support the
+[parser/allocation foundation](docs/gltf-foundation.md), the public native
+[reader and extraction](docs/gltf-read.md), [retained writer](docs/gltf_write.md)
+and optional [file publication](docs/gltf-files.md) interfaces. Upstream parser
+types stay private. The broader [asset proposal](docs/gltf.md) remains partly
+unimplemented; the product contracts own each implemented subset and its limits.
 
 | Dependency | Pinned input | Constraints | Bundled notice |
 |---|---|---|---|
@@ -33,8 +36,9 @@ public archives and explicit offline archive inputs. Upstream headers are privat
 no third-party source is vendored or installed as a new public Interchange API.
 Native distributions and Python license metadata include the exact notices above.
 The foundation uses neither cgltf sparse unpacking nor parser file-loading helpers.
-Retained documents, independent typed extraction and serialization are separate
-implementation gates; their constraints in the table do not imply completed support.
+Retained documents, independent typed extraction, serialization and publication
+have separate preservation contracts. The dependency choices do not imply full
+glTF feature coverage or Python glTF operations; see the [current interfaces](README.md).
 
 ## Optional native USD module
 
