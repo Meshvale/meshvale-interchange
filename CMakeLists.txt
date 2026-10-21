@@ -169,14 +169,27 @@ target_compile_features(meshvale_interchange_gltf_materialization PUBLIC cxx_std
 target_link_libraries(meshvale_interchange_gltf_materialization PUBLIC
   meshvale::interchange meshvale::materialization)
 meshvale_warnings(meshvale_interchange_gltf_materialization)
+add_library(meshvale_interchange_stl STATIC src/stl.cpp)
+add_library(meshvale::stl ALIAS meshvale_interchange_stl)
+set_target_properties(meshvale_interchange_stl PROPERTIES
+  EXPORT_NAME stl POSITION_INDEPENDENT_CODE ON)
+target_compile_features(meshvale_interchange_stl PUBLIC cxx_std_20)
+target_link_libraries(meshvale_interchange_stl PUBLIC
+  meshvale::interchange meshvale::materialization)
+meshvale_warnings(meshvale_interchange_stl)
+if(MSVC)
+  target_compile_options(meshvale_interchange_stl PRIVATE /fp:strict)
+else()
+  target_compile_options(meshvale_interchange_stl PRIVATE -fno-fast-math -ffp-contract=off)
+endif()
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(cmake/GltfTopologyWrite.cmake)
 include(cmake/GltfWorkflowSupport.cmake)
 include(cmake/GltfFiles.cmake)
-install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization
+install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization meshvale_interchange_stl
   EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h
+install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h include/meshvale/interchange/stl.h
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/meshvale/interchange")
 install(EXPORT MeshvaleInterchangeTargets NAMESPACE meshvale::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
@@ -219,9 +232,28 @@ if(BUILD_TESTING)
     tests/headers/gltf_h.cpp
     tests/headers/obj_h.cpp
     tests/headers/obj_files_h.cpp tests/headers/glb_h.cpp
-    tests/headers/gltf_materialization_h.cpp)
-  target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::gltf_materialization)
+    tests/headers/gltf_materialization_h.cpp tests/header_stl.cpp)
+  target_link_libraries(meshvale_interchange_header_checks PRIVATE meshvale::gltf_materialization meshvale::stl)
   meshvale_warnings(meshvale_interchange_header_checks)
+  add_executable(meshvale_stl_tests tests/stl.cpp)
+  add_executable(meshvale_stl_request_tests tests/stl_requests.cpp)
+  target_include_directories(meshvale_stl_request_tests PRIVATE src)
+  foreach(meshvale_stl_test IN ITEMS meshvale_stl_tests meshvale_stl_request_tests)
+    target_link_libraries(${meshvale_stl_test} PRIVATE meshvale::stl)
+    meshvale_warnings(${meshvale_stl_test})
+    if(MSVC)
+      target_compile_options(${meshvale_stl_test} PRIVATE /fp:strict)
+    else()
+      target_compile_options(${meshvale_stl_test} PRIVATE -fno-fast-math -ffp-contract=off)
+    endif()
+  endforeach()
+  if(MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "${_MESHVALE_INTERCHANGE_PROFILE_QUALIFIED}")
+    add_test(NAME stl_interchange COMMAND meshvale_stl_tests)
+    add_test(NAME stl_requests COMMAND meshvale_stl_request_tests)
+  else()
+    add_test(NAME stl_interchange COMMAND meshvale_stl_tests --unsupported-profile)
+    add_test(NAME stl_requests COMMAND meshvale_stl_request_tests --unsupported-profile)
+  endif()
   add_executable(meshvale_glb_tests tests/glb.cpp)
   target_include_directories(meshvale_glb_tests PRIVATE src)
   target_link_libraries(meshvale_glb_tests PRIVATE meshvale::interchange meshvale::editing)

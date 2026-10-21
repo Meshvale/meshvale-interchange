@@ -4,6 +4,12 @@
 
 ### Added
 
+- Development ASCII/binary STL supplied-byte read/write through `meshvale::stl`,
+  with immutable charged Geometry ownership, retained raw facet normals,
+  explicit metadata and corner-expansion facts, exact binary32 export checks,
+  independent literal-wire fixtures and an installed reload example.
+  Native qualification is in progress; this adds no Python or file publisher.
+
 - Verified same-format GLB topology publication, retaining embedded BIN and
   ordered opaque chunks. Changed output replaces JSON through the existing
   container writer; identity output preserves the complete original wire.

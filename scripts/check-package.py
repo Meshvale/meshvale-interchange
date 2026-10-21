@@ -58,6 +58,11 @@ def inspect(path):
             assert not name.endswith((".pyc",".pyd",".so",".obj",".log",".dll",".lib",".exe")),name
         for required in [".clang-format","python/meshvale_interchange/_version.py","python/bindings.cpp","tests/python/test_obj.py","src/obj_read.cpp",
                          "include/meshvale/interchange/obj.h",
+                         "include/meshvale/interchange/stl.h", "docs/stl.md",
+                         "src/stl.cpp", "src/stl_test_internal.h",
+                         "tests/header_stl.cpp", "tests/stl.cpp", "tests/stl_requests.cpp",
+                         "tests/stl_fixture.h", "examples/stl-consumer/CMakeLists.txt",
+                         "examples/stl-consumer/main.cpp",
                          "include/meshvale/interchange/obj_files.h",
                          "src/obj_file_detail.h","src/obj_file_detail.cpp","tests/headers/obj_h.cpp",
                          "tests/headers/obj_files_h.cpp",
