@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | ID | STL-IO-001 |
-| Version | 0.1.0 |
-| Status | Selected development interface; implementation and qualification pending |
+| Version | 0.1.1 |
+| Status | Development implementation under qualification |
 | Owner | Supplied-byte ASCII/binary STL admission, canonical ownership and serialization |
 
 This module reads and writes an explicitly selected STL encoding through
@@ -77,7 +77,9 @@ coordinates are never rescaled.
 ## STL-NUMERIC-001: Precision without silent quantization
 
 Binary32 values widen exactly to canonical binary64, including signed zero and
-subnormals. ASCII decimal conversion is bounded, locale-independent binary64;
+subnormals, independent of caller rounding or subnormal-flush modes. Exact
+binary32 admission/encoding uses bit representations without changing the
+caller's floating-point environment. ASCII decimal conversion is bounded, locale-independent binary64;
 invalid syntax, nonfinite results and out-of-range conversion fail explicitly.
 Do not silently replace overflow/underflow by infinity/zero. Preserve finite
 negative coordinates and signed zero; do not inherit historical positive-only
@@ -148,6 +150,11 @@ deterministic ordering and join every started worker on every exit. Do not claim
 parallel execution from configured policy alone.
 
 Observe pre-stop, bounded scan/decode/write checkpoints and the pre-handoff stop.
+Lexical scans and name comparisons observe the configured byte blocks. Decimal
+conversion observes stop immediately before and after one already-admitted
+numeric token; its standard-library conversion is indivisible and bounded by
+`max_token_bytes`. Select that limit to bound cancellation latency through a
+conversion. No checkpoints inside the standard-library conversion are claimed.
 Typed malformed, unsupported, limit, budget, cancellation, invalid-storage and
 delegated Geometry failures return no partial document/output. Preserve actual
 delegated stage/status/diagnostics, including unsupported numerical/allocation
