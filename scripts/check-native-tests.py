@@ -25,6 +25,7 @@ STRING_CACHE_TYPE = "STRING"
 BOOL_CACHE_TYPE = "BOOL"
 TRUE_CACHE_VALUES = frozenset({"ON", "TRUE", "YES", "1"})
 COMMON_TESTS = frozenset({
+    "ply_interchange", "ply_requests",
     "stl_interchange", "stl_requests",
     "off_interchange", "off_requests",
     "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
@@ -37,6 +38,7 @@ PROFILE_TESTS = {
     UNSUPPORTED_PROFILE: frozenset({"unsupported_gltf_materialization_profile"}),
 }
 COMMON_INSTALLED_TESTS = frozenset({
+    "installed_ply_consumer",
     "installed_stl_consumer",
     "installed_off_consumer",
     "installed_interchange_consumer", "installed_obj_bundle_consumer",

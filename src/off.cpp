@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "finite_double_format.h"
 #include "gltf_allocation.h"
 #include "off_test_internal.h"
 
@@ -631,9 +632,16 @@ struct Writer {
   void Number(double value) {
     std::array<char, kNumberBytes> bytes;
     session.Check(Stage::kEncode);
-    const auto result = std::to_chars(
-        bytes.data(), bytes.data() + bytes.size(), value,
-        std::chars_format::general, std::numeric_limits<double>::max_digits10);
+    const auto result = numeric_format_detail::FiniteDoubleToChars(
+        bytes, value, std::numeric_limits<double>::max_digits10,
+        session.work.cancellation_block_bytes,
+        [&](numeric_format_detail::Phase phase, std::uint64_t completed,
+            std::uint64_t total) {
+          if (session.test.numeric_format_checkpoint)
+            session.test.numeric_format_checkpoint(
+                Stage::kEncode, phase, completed, total, session.test.state);
+          session.Check(Stage::kEncode);
+        });
     session.Check(Stage::kEncode);
     if (result.ec != std::errc{})
       Fail(Status::kInvalidStorage, Stage::kEncode, Code::kNumericRange);

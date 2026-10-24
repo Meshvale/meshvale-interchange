@@ -19,7 +19,7 @@
 #include <variant>
 #include <vector>
 
-#if defined(_MSC_VER) && defined(_M_X64)
+#if defined(_M_X64) || defined(__SSE2__)
 #include <xmmintrin.h>
 #endif
 
@@ -362,7 +362,7 @@ void ReversedAndDegenerateTriangles() {
 }
 
 void NumericFidelity(bool flush_subnormals, unsigned rounding_mode = 0) {
-#if defined(_MSC_VER) && defined(_M_X64)
+#if defined(_M_X64) || defined(__SSE2__)
   struct RestoreControl {
     unsigned original = _mm_getcsr();
     ~RestoreControl() { _mm_setcsr(original); }
@@ -468,6 +468,66 @@ void NumericFidelity(bool flush_subnormals, unsigned rounding_mode = 0) {
                   f::kRecordOffset + i * sizeof(std::uint32_t)) == expected[i],
           "float32 face-normal bits survive exact export");
   }
+  // ASCII admits binary64 values beyond the binary32 wire range. These
+  // literal words independently check true double subnormals, not widened
+  // binary32 subnormals (which are normal binary64 values).
+  constexpr std::string_view kDoubleAscii =
+      "solid binary64\nfacet normal 4.9406564584124654e-324 "
+      "-4.9406564584124654e-324 -0\nouter loop\n"
+      "vertex 4.9406564584124654e-324 -4.9406564584124654e-324 -0\n"
+      "vertex 1.7976931348623157e308 -1.7976931348623157e308 .1\n"
+      "vertex 0 1 -1\nendloop\nendfacet\nendsolid binary64\n";
+  constexpr std::array<std::uint64_t, 9> kDoublePositions{1,
+                                                          0x8000000000000001,
+                                                          0x8000000000000000,
+                                                          0x7fefffffffffffff,
+                                                          0xffefffffffffffff,
+                                                          0x3fb999999999999a,
+                                                          0,
+                                                          0x3ff0000000000000,
+                                                          0xbff0000000000000};
+  constexpr std::array<std::uint64_t, 3> kDoubleNormals{1, 0x8000000000000001,
+                                                        0x8000000000000000};
+  {
+    const auto check = [&](const ic::StlDocument& document) {
+      const auto view = document.Mesh().View();
+      Require(view.positions.size() == kDoublePositions.size() &&
+                  view.attributes.size() == 1,
+              "ASCII binary64 boundary shape is literal");
+      for (std::size_t i = 0; i < kDoublePositions.size(); ++i)
+        Require(std::bit_cast<std::uint64_t>(view.positions[i]) ==
+                    kDoublePositions[i],
+                "ASCII binary64 position subnormal/extrema/signedzero bits");
+      const auto normals =
+          std::get<std::span<const double>>(view.attributes[0].values);
+      Require(normals.size() == kDoubleNormals.size(),
+              "ASCII binary64 normal cardinality is literal");
+      for (std::size_t i = 0; i < kDoubleNormals.size(); ++i)
+        Require(std::bit_cast<std::uint64_t>(normals[i]) == kDoubleNormals[i],
+                "ASCII binary64 normal subnormal/signedzero bits");
+    };
+    const auto read =
+        ic::ReadStl(f::Bytes(kDoubleAscii), ic::StlEncoding::kAscii,
+                    f::ReadLimits(), f::Work(), context);
+    check_modes();
+    Require(read.document.has_value(),
+            "true binary64 ASCII boundary source is admitted");
+    check(*read.document);
+    const auto output =
+        ic::WriteStl(read.document->Mesh(),
+                     f::Options(*read.document, ic::StlEncoding::kAscii),
+                     f::WriteLimits(), f::Work());
+    check_modes();
+    Require(output.output.has_value(),
+            "true binary64 ASCII boundary serialization succeeds");
+    const auto reload =
+        ic::ReadStl(output.output->Bytes(), ic::StlEncoding::kAscii,
+                    f::ReadLimits(), f::Work(), context);
+    check_modes();
+    Require(reload.document.has_value(),
+            "true binary64 ASCII boundary output actually reloads");
+    check(*reload.document);
+  }
   Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
           "numeric boundary owners release all tracked work");
 }
@@ -483,7 +543,7 @@ int main(int argc, char** argv) {
       WriterControls();
       ReversedAndDegenerateTriangles();
       NumericFidelity(false);
-#if defined(_MSC_VER) && defined(_M_X64)
+#if defined(_M_X64) || defined(__SSE2__)
       const unsigned original_control = _mm_getcsr();
       for (const unsigned rounding : {_MM_ROUND_NEAREST, _MM_ROUND_DOWN,
                                       _MM_ROUND_UP, _MM_ROUND_TOWARD_ZERO}) {
