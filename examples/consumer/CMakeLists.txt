@@ -53,6 +53,7 @@ if(MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT)
 endif()
 include(../../cmake/MaterializationTestProfile.cmake)
 add_subdirectory(../stl-consumer "${CMAKE_CURRENT_BINARY_DIR}/stl-consumer")
+add_subdirectory(../off-consumer "${CMAKE_CURRENT_BINARY_DIR}/off-consumer")
 if(MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT AND MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "${_MESHVALE_INTERCHANGE_PROFILE_QUALIFIED}")
   add_executable(meshvale_gltf_workflow_support_consumer gltf_workflow_support.cpp)
   target_link_libraries(meshvale_gltf_workflow_support_consumer PRIVATE meshvale::gltf_workflow_support)
@@ -146,8 +147,8 @@ add_library(meshvale_interchange_installed_header_checks OBJECT
   ../../tests/headers/gltf_h.cpp
   ../../tests/headers/obj_h.cpp
   ../../tests/headers/obj_files_h.cpp ../../tests/headers/glb_h.cpp
-  ../../tests/headers/gltf_materialization_h.cpp ../../tests/header_stl.cpp)
-target_link_libraries(meshvale_interchange_installed_header_checks PRIVATE meshvale::gltf_materialization meshvale::stl)
+  ../../tests/headers/gltf_materialization_h.cpp ../../tests/header_stl.cpp ../../tests/header_off.cpp)
+target_link_libraries(meshvale_interchange_installed_header_checks PRIVATE meshvale::gltf_materialization meshvale::stl meshvale::off)
 if(MESHVALE_INTERCHANGE_GLTF_FILES)
   target_sources(meshvale_interchange_installed_header_checks PRIVATE ../../tests/headers/gltf_files_h.cpp)
   target_link_libraries(meshvale_interchange_installed_header_checks PRIVATE meshvale::gltf_files)

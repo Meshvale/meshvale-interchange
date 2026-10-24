@@ -20,6 +20,10 @@ struct TestOptions {
   // Observe actual bounded checkpoints; caller can request its own stop source.
   void (*checkpoint)(StlStage, std::uint64_t, void*) noexcept = nullptr;
   void* state = nullptr;
+  // Real completed-copy count at bounded relocation checkpoints, then total.
+  // The same state is borrowed through return; stop is checked after callback.
+  void (*relocation_checkpoint)(StlStage, std::uint64_t, std::uint64_t,
+                                void*) noexcept = nullptr;
 };
 [[nodiscard]] StlReadResult ReadStlForTest(
     std::span<const std::byte> bytes, StlEncoding encoding,

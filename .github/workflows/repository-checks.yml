@@ -120,6 +120,11 @@ jobs:
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: Meshvale/meshvale-repair
+          ref: 99c2fb742dd16a7d147d7994a8db80088289505d
+          path: .local/repair-source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: microsoft/vcpkg
           ref: cb5a41b03cde4086d554b3f3e2eac39206b16eda
           path: .local/vcpkg-runtime
@@ -172,6 +177,33 @@ jobs:
         run: ctest --test-dir .local/geometry-build -C ${{ matrix.build_type }} --output-on-failure
       - name: Install geometry dependency
         run: cmake --install .local/geometry-build --config ${{ matrix.build_type }} --prefix .local/install
+      - name: Verify immutable standalone Repair source
+        run: |
+          $expected = '99c2fb742dd16a7d147d7994a8db80088289505d'
+          $actual = git -C .local/repair-source rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dirty = git -C .local/repair-source status --porcelain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($actual -ne $expected -or $dirty) { throw 'Repair source must match the clean pinned public revision' }
+          @{ Repair = $actual; Expected = $expected; Configuration = '${{ matrix.build_type }}'; Compiler = '${{ matrix.compiler_id }}' } |
+            ConvertTo-Json | Set-Content -LiteralPath .local/off-repair-source-identity.json
+      - name: Configure matching standalone Repair producer
+        run: >-
+          cmake -S .local/repair-source -B .local/repair-build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ${{ matrix.compiler_option }}
+          "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
+          "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DBUILD_TESTING=OFF -DMESHVALE_REPAIR_PYTHON=OFF
+          -DMESHVALE_REPAIR_MATERIALIZED_DUPLICATES=ON -DMESHVALE_REPAIR_GLTF_WORKFLOW=OFF
+          -DMESHVALE_REPAIR_GLTF_FILE_WORKFLOW=OFF
+          "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
+          2>&1 | Tee-Object -FilePath .local/off-repair-configure.log
+      - name: Build and install matching standalone Repair producer
+        run: |
+          cmake --build .local/repair-build --config ${{ matrix.build_type }} --parallel 2 --verbose 2>&1 | Tee-Object -FilePath .local/off-repair-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install .local/repair-build --config ${{ matrix.build_type }} --prefix .local/install 2>&1 | Tee-Object -FilePath .local/off-repair-install.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Configure interchange and matching manifest dependencies
         run: >-
           cmake -S . -B .local/build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -235,6 +267,34 @@ jobs:
           -DVCPKG_MANIFEST_MODE=OFF "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
       - name: Build installed consumer
         run: cmake --build .local/consumer --config ${{ matrix.build_type }} --parallel 2
+      - name: Configure separate installed OFF Repair composition
+        run: >-
+          cmake -S examples/off-repair-consumer -B .local/off-repair-consumer -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ${{ matrix.compiler_option }}
+          "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
+          "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
+          "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
+          "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies"
+          -DVCPKG_MANIFEST_MODE=OFF "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
+          2>&1 | Tee-Object -FilePath .local/off-repair-consumer-configure.log
+      - name: Build separate installed OFF Repair composition
+        run: |
+          cmake --build .local/off-repair-consumer --config ${{ matrix.build_type }} --parallel 2 --verbose 2>&1 | Tee-Object -FilePath .local/off-repair-consumer-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify exact standalone OFF Repair profile and inventory
+        run: |
+          $inventory = ctest --test-dir .local/off-repair-consumer -C ${{ matrix.build_type }} --show-only=json-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $inventory | Set-Content -LiteralPath .local/off-repair-consumer-inventory.json
+          $tests = @(($inventory -join "`n" | ConvertFrom-Json).tests)
+          if ($tests.Count -ne 1 -or $tests[0].name -ne 'installed_off_repair_consumer') { throw 'Unexpected OFF Repair CTest inventory' }
+          $arguments = @($tests[0].command | Select-Object -Skip 1)
+          $unsupported = '${{ matrix.materialization_profile }}' -eq 'unsupported'
+          if (($unsupported -and ($arguments.Count -ne 1 -or $arguments[0] -ne '--unsupported-profile')) -or
+              (-not $unsupported -and $arguments.Count -ne 0)) { throw 'OFF Repair CTest command does not match the selected producer profile' }
       - name: Verify exact installed profile and all consumer entries
         run: |
           $version = @()
@@ -248,6 +308,8 @@ jobs:
             @{ Path = '.local/geometry-build/compile_commands.json'; Meshvale = $true },
             @{ Path = '.local/build/compile_commands.json'; Meshvale = $true },
             @{ Path = '.local/consumer/compile_commands.json'; Meshvale = $true },
+            @{ Path = '.local/repair-build/compile_commands.json'; Meshvale = $true },
+            @{ Path = '.local/off-repair-consumer/compile_commands.json'; Meshvale = $true },
             @{ Path = '.local/vcpkg-runtime/buildtrees/tinyobjloader/x64-windows-static-md-asan-rel/compile_commands.json'; Meshvale = $false }
           )
           $observations = @()
@@ -263,12 +325,20 @@ jobs:
                   throw "Missing required sanitizer/compiler flag $flag in $($entry.file)"
                 }
               }
+              if ($command -notmatch '(^|\s)[/-]MD(?=\s|$)' -or
+                  $command -match '(^|\s)[/-](MTd?|MDd)(?=\s|$)') {
+                throw "Windows sanitizer producer/consumer must use the matching Release dynamic CRT in $($entry.file)"
+              }
             }
             $observations += @{ Path = $database.Path; TranslationUnits = $entries.Count; RequiredFlags = $requiredFlags }
           }
           $observations | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath .local/windows-asan-instrumentation.json
       - name: Test installed consumer
         run: ctest --test-dir .local/consumer -C ${{ matrix.build_type }} --output-on-failure
+      - name: Test actual standalone OFF Repair and reload
+        run: |
+          ctest --test-dir .local/off-repair-consumer -C ${{ matrix.build_type }} --verbose --output-on-failure 2>&1 | Tee-Object -FilePath .local/off-repair-consumer-actual.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain actual profile configuration, compilation and test evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -277,6 +347,13 @@ jobs:
           path: |
             .local/*-oracle
             .local/windows-asan-instrumentation.json
+            .local/off-repair-*.json
+            .local/off-repair-*.log
+            .local/repair-build/CMakeCache.txt
+            .local/repair-build/compile_commands.json
+            .local/off-repair-consumer/CMakeCache.txt
+            .local/off-repair-consumer/compile_commands.json
+            .local/off-repair-consumer/Testing
             .local/vcpkg-runtime/buildtrees/tinyobjloader/x64-windows-static-md-asan-rel/compile_commands.json
             .local/geometry-build/CMakeCache.txt
             .local/geometry-build/compile_commands.json
@@ -309,13 +386,19 @@ jobs:
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: Meshvale/meshvale-repair
+          ref: 99c2fb742dd16a7d147d7994a8db80088289505d
+          path: .local/repair-source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           repository: microsoft/vcpkg
           ref: cb5a41b03cde4086d554b3f3e2eac39206b16eda
           path: .local/vcpkg-runtime
       - name: Evaluate actual native interfaces with matched instrumentation
         run: >-
           python scripts/run-native-sanitizers.py --profile ${{ matrix.profile }}
-          --geometry-source .local/geometry-source --vcpkg-root .local/vcpkg-runtime
+          --geometry-source .local/geometry-source --repair-source .local/repair-source
+          --vcpkg-root .local/vcpkg-runtime
       - name: Retain sanitizer inputs, commands, inventories and oracle evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -325,6 +408,8 @@ jobs:
             .local/native-sanitizers/${{ matrix.profile }}/evidence
             .local/native-sanitizers/${{ matrix.profile }}/*-oracle
             .local/native-sanitizers/${{ matrix.profile }}/*-build/Testing
+            .local/native-sanitizers/${{ matrix.profile }}/*-build/CMakeCache.txt
+            .local/native-sanitizers/${{ matrix.profile }}/*-build/compile_commands.json
           include-hidden-files: true
           if-no-files-found: error
 

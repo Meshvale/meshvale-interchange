@@ -648,6 +648,36 @@ struct Writer {
   const Session& session;
   std::size_t line = 0;
   std::size_t tokens = 0;
+  void GrowOutput() {
+    auto& bytes = state.bytes;
+    const auto host_limit = Host(limits.max_output_bytes);
+    const auto extent =
+        static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
+    const auto maximum = host_limit < extent ? host_limit : extent;
+    if (bytes.size() >= maximum)
+      Fail(Status::kLimitExceeded, Stage::kEncode, Code::kOutputLimit);
+    const auto capacity = bytes.capacity();
+    const auto next =
+        capacity == 0 ? 1 : (capacity <= maximum / 2 ? capacity * 2 : maximum);
+    detail::Vector<std::byte> replacement(bytes.get_allocator());
+    session.Check(Stage::kEncode);
+    // Empty reserve does not relocate existing bytes. Both real blocks remain
+    // charged during the explicit checkpointed transfer.
+    replacement.reserve(next);
+    const auto checkpoint = [&](std::size_t copied) {
+      if (session.test.relocation_checkpoint)
+        session.test.relocation_checkpoint(Stage::kEncode, copied, bytes.size(),
+                                           session.test.state);
+      session.Check(Stage::kEncode, copied);
+    };
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+      if (i % session.work.cancellation_block_bytes == 0) checkpoint(i);
+      replacement.push_back(bytes[i]);
+    }
+    checkpoint(bytes.size());
+    static_assert(noexcept(bytes.swap(replacement)));
+    bytes.swap(replacement);
+  }
   void Append(std::string_view text) {
     if (text.size() > limits.max_output_bytes - state.bytes.size())
       Fail(Status::kLimitExceeded, Stage::kEncode, Code::kOutputLimit);
@@ -657,6 +687,7 @@ struct Writer {
         line = 0;
       else if (++line > limits.max_line_bytes)
         Fail(Status::kLimitExceeded, Stage::kEncode, Code::kLineLimit);
+      if (state.bytes.size() == state.bytes.capacity()) GrowOutput();
       state.bytes.push_back(static_cast<std::byte>(value));
     }
   }

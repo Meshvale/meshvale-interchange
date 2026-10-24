@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Run matching Linux sanitizer builds and the actual native glTF interfaces."""
+"""Run matching Linux sanitizer builds and actual native interchange/Repair."""
 import argparse
 import json
 import os
@@ -19,9 +19,11 @@ CLANG_CXX = "clang++-18"
 CLANG_C = "clang-18"
 CLANG_VERSION = "18.1.3"
 GEOMETRY_REVISION = "48298b24be7c132816fb5580d22d58bde61558d0"
+REPAIR_REVISION = "99c2fb742dd16a7d147d7994a8db80088289505d"
 VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 MATERIALIZATION_PROFILE = "qualified"
 BUILD_WORKERS = 2
+OFF_REPAIR_TEST = "installed_off_repair_consumer"
 DEPENDENCY_CONFIGURATIONS = {"Debug": "dbg", "Release": "rel"}
 PROFILES = {
     "asan-ubsan": {
@@ -83,6 +85,9 @@ class Runner:
             raise RuntimeError("Executed CTest did not retain its actual test log")
 
     def instrumented(self, database, compile_flags, warnings_as_errors):
+        # Preserve the complete input even when verification rejects a unit.
+        target = self.evidence / (database.parent.name + "-compile-commands.json")
+        shutil.copyfile(database, target)
         entries = json.loads(database.read_text(encoding="utf-8"))
         if not entries:
             raise RuntimeError(f"No compilation commands in {database}")
@@ -97,8 +102,6 @@ class Runner:
                 required.append("-Werror")
             if not all(flag in arguments for flag in required):
                 raise RuntimeError(f"Missing instrumentation/Werror in {entry['file']}")
-        target = self.evidence / (database.parent.name + "-compile-commands.json")
-        target.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
         print(f"Verified {len(entries)} instrumented compile commands: {database}",
               flush=True)
 
@@ -107,12 +110,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=PROFILES, required=True)
     parser.add_argument("--geometry-source", type=Path, required=True)
+    parser.add_argument("--repair-source", type=Path, required=True)
     parser.add_argument("--vcpkg-root", type=Path, required=True)
     args = parser.parse_args()
     if platform.system() != "Linux" or platform.machine() not in {"x86_64", "AMD64"}:
         parser.error("This runner evaluates Linux x64 native sanitizer execution")
     root = Path(__file__).resolve().parents[1]
     geometry = (root / args.geometry_source).resolve()
+    repair = (root / args.repair_source).resolve()
     vcpkg = (root / args.vcpkg_root).resolve()
     profile = PROFILES[args.profile]
     triplet = f"x64-linux-{args.profile}"
@@ -138,12 +143,14 @@ def main():
                 "configuration": BUILD_CONFIGURATION,
                 "interchange": runner.run("git", "rev-parse", "HEAD").strip(),
                 "geometry": runner.run("git", "-C", geometry, "rev-parse", "HEAD").strip(),
+                "repair": runner.run("git", "-C", repair, "rev-parse", "HEAD").strip(),
                 "vcpkg": runner.run("git", "-C", vcpkg, "rev-parse", "HEAD").strip()}
     (evidence / "inputs.json").write_text(json.dumps(identity, indent=2) + "\n",
                                          encoding="utf-8")
-    if identity["geometry"] != GEOMETRY_REVISION or identity["vcpkg"] != VCPKG_REVISION:
+    if (identity["geometry"] != GEOMETRY_REVISION or
+            identity["repair"] != REPAIR_REVISION or identity["vcpkg"] != VCPKG_REVISION):
         raise RuntimeError("Dependency source revision differs from the selected cohort")
-    for source in (geometry, vcpkg):
+    for source in (geometry, repair, vcpkg):
         if runner.run("git", "-C", source, "status", "--porcelain").strip():
             raise RuntimeError("Dependency source checkout must be clean: " + str(source))
     compiler_identity = runner.run(CLANG_CXX, "--version")
@@ -177,6 +184,18 @@ def main():
                "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
     runner.test(geometry_build, "geometry")
     runner.run("cmake", "--install", geometry_build, "--config", BUILD_CONFIGURATION,
+               "--prefix", prefix)
+    repair_build = work / "repair-build"
+    runner.run("cmake", "-S", repair, "-B", repair_build, *common,
+               f"-DCMAKE_PREFIX_PATH={prefix}", "-DBUILD_TESTING=OFF",
+               "-DMESHVALE_REPAIR_PYTHON=OFF",
+               "-DMESHVALE_REPAIR_MATERIALIZED_DUPLICATES=ON",
+               "-DMESHVALE_REPAIR_GLTF_WORKFLOW=OFF",
+               "-DMESHVALE_REPAIR_GLTF_FILE_WORKFLOW=OFF")
+    runner.run("cmake", "--build", repair_build, "--parallel", BUILD_WORKERS)
+    runner.instrumented(repair_build / "compile_commands.json", profile["flags"], True)
+    shutil.copyfile(repair_build / "CMakeCache.txt", evidence / "repair-build-CMakeCache.txt")
+    runner.run("cmake", "--install", repair_build, "--config", BUILD_CONFIGURATION,
                "--prefix", prefix)
     build, dependencies = work / "interchange-build", work / "dependencies"
     toolchain = [f"-DCMAKE_TOOLCHAIN_FILE={vcpkg}/scripts/buildsystems/vcpkg.cmake",
@@ -233,6 +252,15 @@ def main():
                "--materialization-profile", MATERIALIZATION_PROFILE,
                "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
     runner.test(consumer, "installed")
+    off_repair = work / "off-repair-build"
+    runner.run("cmake", "-S", "examples/off-repair-consumer", "-B", off_repair,
+               *common, *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
+               f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
+    runner.run("cmake", "--build", off_repair, "--parallel", BUILD_WORKERS)
+    runner.instrumented(off_repair / "compile_commands.json", profile["flags"], True)
+    shutil.copyfile(off_repair / "CMakeCache.txt", evidence / "off-repair-build-CMakeCache.txt")
+    runner.inventory(off_repair, {OFF_REPAIR_TEST}, "off-repair")
+    runner.test(off_repair, "off-repair")
     (evidence / "completed.json").write_text(json.dumps(identity, indent=2) + "\n",
                                              encoding="utf-8")
 

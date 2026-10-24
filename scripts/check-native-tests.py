@@ -25,6 +25,7 @@ BOOL_CACHE_TYPE = "BOOL"
 TRUE_CACHE_VALUES = frozenset({"ON", "TRUE", "YES", "1"})
 COMMON_TESTS = frozenset({
     "stl_interchange", "stl_requests",
+    "off_interchange", "off_requests",
     "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
     "gltf_read", "gltf_execution_budget", "gltf_resources", "gltf_write", "gltf_metadata",
     "gltf_accessor", "gltf_extract", "gltf_json_snapshot",
@@ -36,6 +37,7 @@ PROFILE_TESTS = {
 }
 COMMON_INSTALLED_TESTS = frozenset({
     "installed_stl_consumer",
+    "installed_off_consumer",
     "installed_interchange_consumer", "installed_obj_bundle_consumer",
     "installed_execution_dependency_consumer", "installed_gltf_consumer",
     "installed_glb_consumer", "installed_gltf_write_consumer",
