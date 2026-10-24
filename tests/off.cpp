@@ -152,9 +152,9 @@ void RefusedWire() {
                 result.diagnostic.code != ic::OffDiagnosticCode::kNone,
             "missing/truncated/wrapped/concatenated data is never admitted");
   }
-  for (const auto bytes : {std::string("\xef\xbb\xbfOFF\n0 0 0\n"),
-                           std::string("OFF\n0 0 0\n#\xc3\xa9\n"),
-                           std::string("OFF\n0 0 0\n#") + char{0} + "\n"}) {
+  for (const auto& bytes : {std::string("\xef\xbb\xbfOFF\n0 0 0\n"),
+                            std::string("OFF\n0 0 0\n#\xc3\xa9\n"),
+                            std::string("OFF\n0 0 0\n#") + char{0} + "\n"}) {
     const auto result =
         ic::ReadOff(f::Bytes(bytes), f::ReadLimits(), f::Work(), context);
     Require(
