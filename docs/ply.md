@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | PLY-IO-001 |
-| Version | 0.1.0 |
+| Version | 0.1.1 |
 | Status | Selected development profile; implementation and qualification pending |
 | Owner | Supplied-byte PLY admission, typed schema binding and serialization |
 
@@ -132,6 +132,11 @@ tab, form feed, NUL and non-ASCII bytes are refused. No comments, quotes, braces
 or string escapes apply in the body. The final scalar can end at EOF. After all
 declared rows, only the admitted whitespace may remain; extra data or another
 object is refused.
+
+Extra ASCII tokens or binary bytes after the complete declared body are an
+unsupported trailing payload (`kUnsupportedVariant`, `kTrailingData`), with no
+partial owner. A truncated declared record is malformed. This classification
+does not authorize consuming an extra object or silently discarding a suffix.
 
 Header counts, ASCII list counts and structural vertex indices contain decimal
 digits only, including when their declared wire type is signed. Negative and
