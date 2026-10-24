@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -11,6 +11,17 @@ Import/export mixed polygon faces with separate corner UVs/normals, missingness,
 Read the [OBJ/MTL text contract](docs/obj.md) for mesh semantics and numerical limits, and the [file/bundle contract](docs/obj-files.md) for material/texture resolution, resource boundaries and publication outcomes. Separate installed consumers demonstrate [text interchange](examples/consumer/main.cpp) and [resource-aware file publication](examples/consumer/files.cpp). Texture files retain their bytes; image decoding and shader equivalence are outside current coverage.
 
 The [Python interface](docs/python.md) exposes the same operations through canonical Geometry snapshots, frozen asset values and owned resource bytes. It supports cooperative cancellation and synchronous publication callbacks. A verified-content callback can prepare receipts from reloaded assets and exact staged bytes for checked inclusion in the same bundle. See the [installed bundle example](examples/python/obj_bundle.py) for load → inspect → publish → reload.
+
+## Native STL triangles
+
+The development [STL interface](docs/stl.md) reads and writes explicitly selected
+ASCII or binary supplied bytes through `meshvale::stl`. It retains facet order,
+raw normals and source metadata, uses charged canonical Geometry storage, and
+refuses unsupported attributes or inexact binary32 export. Import gives each
+facet three distinct vertices; it does not infer shared connectivity. The
+[installed consumer](examples/stl-consumer/main.cpp) demonstrates inspection and
+physical reload. Qualification is in progress; filesystem publication, Python
+and application entry points remain separate.
 
 ## Native GLB containers
 
