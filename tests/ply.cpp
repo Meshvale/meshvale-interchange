@@ -11,8 +11,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -171,14 +173,33 @@ void NumericCases(bool wide, std::span<const std::uint64_t> source_words,
 #endif
   };
   geo::ExecutionContext context({4, 1, kContextBytes});
-  const auto check = [&](const ic::PlyDocument& document) {
+  const auto check = [&](const ic::PlyDocument& document,
+                         std::string_view phase, ic::PlyEncoding source,
+                         ic::PlyEncoding destination) {
     const auto view = document.Mesh().View();
     Require(view.positions.size() == expected.size() &&
                 view.face_offsets.size() == 1 && view.attributes.empty(),
             "numeric point-only schema exact shape");
-    for (std::size_t i = 0; i < expected.size(); ++i)
-      Require(std::bit_cast<std::uint64_t>(view.positions[i]) == expected[i],
-              "independent IEEE literal exact coordinate bits");
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+      const auto actual = std::bit_cast<std::uint64_t>(view.positions[i]);
+      if (actual != expected[i]) {
+        std::ostringstream message;
+        message << "independent IEEE literal exact coordinate bits: phase="
+                << phase << " source=" << f::EncodingWord(source)
+                << " destination=" << f::EncodingWord(destination)
+                << " width=" << (wide ? 64 : 32) << " index=" << i
+                << " expected=0x" << std::hex << std::setfill('0')
+                << std::setw(16) << expected[i] << " actual=0x" << std::setw(16)
+                << actual << " mode_mask=0x" << mode_mask
+                << " selected_controls=0x" << selected;
+#if defined(_M_X64) || defined(__SSE2__)
+        message << " mxcsr=0x" << _mm_getcsr();
+#else
+        message << " mxcsr=unavailable";
+#endif
+        Require(actual == expected[i], message.str());
+      }
+    }
   };
   for (const auto source : f::kEncodings) {
     const auto bytes = f::PointWire(source, wide, source_words, ascii);
@@ -186,7 +207,7 @@ void NumericCases(bool wide, std::span<const std::uint64_t> source_words,
     check_mode();
     Require(read.status == ic::PlyStatus::kSuccess && read.document,
             "all finite declared-width extrema/subnormals admit");
-    check(*read.document);
+    check(*read.document, "read", source, source);
     for (const auto destination : f::kEncodings) {
       auto write =
           ic::WritePly(read.document->Mesh(), *read.document,
@@ -204,7 +225,7 @@ void NumericCases(bool wide, std::span<const std::uint64_t> source_words,
       check_mode();
       Require(reload.status == ic::PlyStatus::kSuccess && reload.document,
               "numeric output actually reloads");
-      check(*reload.document);
+      check(*reload.document, "reload", source, destination);
     }
   }
 }
