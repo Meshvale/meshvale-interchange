@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- ASCII STL and OFF writers check cancellation while growing output buffers.
+  Replacement storage remains charged alongside the original until transfer
+  completes; cancellation and allocation failures return no partial output.
+
 ### Added
 
 - Development indexed base ASCII OFF read/write through `meshvale::off`, retaining

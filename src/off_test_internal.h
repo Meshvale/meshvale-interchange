@@ -22,6 +22,10 @@ struct TestOptions {
   // return.
   void (*checkpoint)(OffStage, std::uint64_t, void*) noexcept = nullptr;
   void* state = nullptr;
+  // Real completed-copy count at bounded relocation checkpoints, then total.
+  // The same state is borrowed through return; stop is checked after callback.
+  void (*relocation_checkpoint)(OffStage, std::uint64_t, std::uint64_t,
+                                void*) noexcept = nullptr;
 };
 [[nodiscard]] OffReadResult ReadOffForTest(
     std::span<const std::byte> bytes, const OffReadLimits& limits,
