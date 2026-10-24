@@ -21,7 +21,8 @@ ctest --test-dir .local/off-repair-consumer -C Release --output-on-failure
 PowerShell uses `$env:INTERCHANGE_PREFIX` and corresponding environment expansions.
 The numerical profile helper selects the expected actual producer outcome;
 unsupported profiles must show the real nonempty Geometry refusal. Qualified
-profiles exercise actual Repair. This is development evidence, not a stable
+profiles exercise actual Repair. Every profile also requires an actual empty
+read, unchanged Repair request, write and independent reload. This is development evidence, not a stable
 release or every-platform support claim.
 
 By default the executable uses and removes its own new temporary directory. Pass

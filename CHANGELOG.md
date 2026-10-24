@@ -4,6 +4,14 @@
 
 ### Added
 
+- Development indexed base ASCII OFF read/write through `meshvale::off`, retaining
+  shared vertex IDs, unused rows, polygon start/order/winding and finite binary64
+  values. Explicit canonical text and unknown-edge-zero policies expose lexical
+  changes; unsupported variants and attributes refuse. Installed examples cover
+  codec reload and separate composition with the existing charged Repair engine.
+  Qualification is in progress; filesystem publication, Python and application
+  commands remain separate.
+
 - Development ASCII/binary STL supplied-byte read/write through `meshvale::stl`,
   with immutable charged Geometry ownership, retained raw facet normals,
   explicit metadata and corner-expansion facts, exact binary32 export checks,

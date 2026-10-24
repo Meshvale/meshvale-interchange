@@ -4,7 +4,7 @@
 |---|---|
 | ID | OFF-IO-001 |
 | Version | 0.1.0 |
-| Status | Selected development interface; implementation and qualification pending |
+| Status | Implemented development interface; qualification in progress |
 | Owner | Supplied-byte base OFF admission, canonical ownership and serialization |
 
 This module selects an explicitly bounded ASCII OFF profile through
@@ -155,3 +155,20 @@ and equal-coordinate/different-ID controls distinguish the operation's equivalen
 from geometric welding. Codec identity maps never replace Repair provenance.
 Interchange acquires no Repair dependency; file publication, reports, Python and
 CLI/batch workflows require their own contracts and acceptance.
+
+## Installed use
+
+Follow the [native build instructions](../ENVIRONMENT.md) to install matching
+Geometry, tinyobjloader and Interchange packages. The public [header](../include/meshvale/interchange/off.h)
+defines required limits, work policies, owners, results and writer policies.
+Consume the exported target with `find_package(MeshvaleInterchange CONFIG REQUIRED)`
+and link `meshvale::off`. It is part of the base native package; optional glTF
+workflow modules need not be enabled.
+
+The [codec consumer](../examples/off-consumer/main.cpp) reads supplied bytes,
+inspects complete polygon storage and writes/reloads physical output. It runs in
+the parent [installed consumer build](../examples/consumer/CMakeLists.txt). The
+standalone [existing-Repair example](../examples/off-repair-consumer/README.md)
+additionally needs a matching installed Repair package. Its checked correspondence
+comes from the actual Repair operation; file I/O remains caller-owned example
+code. Neither example establishes a verified file publisher or stable release.

@@ -171,6 +171,49 @@ void RejectedEquivalence(std::string_view wire,
                   repair::MaterializedDuplicateDiagnosticCode::kNotEquivalent,
           "Reversed or different-index loops must not become duplicates");
 }
+void CheckEmpty(const geo::ExecutionContext& context) {
+  {
+    constexpr std::string_view kEmptyWire = "OFF\n0 0 0\n";
+    constexpr std::array<geo::index_t, 1> kEmptyOffsets{0};
+    auto read = ic::ReadOff(Bytes(kEmptyWire), ReadLimits(), kWork, context);
+    Require(read.status == ic::OffStatus::kSuccess && read.document &&
+                read.document->Inspection().IsStorageValid(),
+            "The actual empty numerical profile must remain admissible");
+    auto result = repair::RemoveMaterializedDuplicateFaces(
+        read.document->Mesh(), {}, {}, RepairLimits(), kGeometryWork);
+    Require(
+        result.status == repair::MaterializedDuplicateStatus::kSuccess &&
+            result.repair &&
+            result.repair->Outcome() == repair::CandidateOutcome::unchanged,
+        "The existing Repair engine must accept the empty unchanged request");
+    const auto& repaired = *result.repair;
+    Require(repaired.FaceMap().empty() && repaired.CornerMap().empty() &&
+                repaired.SourceFaces().empty() &&
+                repaired.SourceCorners().empty(),
+            "Empty Repair maps must cover exactly zero faces and corners");
+    const ic::OffWriteOptions options{ic::OffTextPolicy::kCanonicalAscii,
+                                      ic::OffEdgeCountPolicy::kUnknownZero,
+                                      &*read.document};
+    auto written =
+        ic::WriteOff(repaired.Candidate(), options, WriteLimits(), kWork);
+    Require(written.status == ic::OffStatus::kSuccess && written.output &&
+                std::ranges::equal(written.output->Bytes(), Bytes(kEmptyWire)),
+            "Empty serialization must have the literal canonical wire");
+    const auto reloaded =
+        ic::ReadOff(written.output->Bytes(), ReadLimits(), kWork, context);
+    Require(reloaded.status == ic::OffStatus::kSuccess && reloaded.document &&
+                reloaded.document->Inspection().IsStorageValid(),
+            "Empty output must independently reload");
+    const auto view = reloaded.document->Mesh().View();
+    Require(view.positions.empty() && view.corner_vertices.empty() &&
+                view.attributes.empty(),
+            "Empty reload must contain no fabricated rows or channels");
+    Equal(view.face_offsets, kEmptyOffsets,
+          "Empty polygon offsets must be [0]");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "Empty codec and Repair owners must fully release");
+}
 int Run(std::span<const fs::path> args) {
   const bool unsupported =
       args.size() == 1 && args[0] == fs::path("--unsupported-profile");
@@ -181,6 +224,7 @@ int Run(std::span<const fs::path> args) {
     output = args[1];
   }
   geo::ExecutionContext context({2, 1, kContextBytes});
+  CheckEmpty(context);
   if (unsupported) {
     const auto result =
         ic::ReadOff(Bytes(kSource), ReadLimits(), kWork, context);
@@ -190,7 +234,8 @@ int Run(std::span<const fs::path> args) {
                 geo::MaterializationStatus::kUnsupportedAllocationProfile &&
             context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
         "The actual nonempty numerical profile refusal must remain explicit");
-    std::cout << "Actual OFF numerical-profile refusal verified\n";
+    std::cout << "Actual OFF nonempty numerical-profile refusal and empty "
+                 "read/Repair/write/reload verified\n";
     return 0;
   }
   Directory directory(output);

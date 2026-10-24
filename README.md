@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL and indexed ASCII OFF under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -22,6 +22,19 @@ facet three distinct vertices; it does not infer shared connectivity. The
 [installed consumer](examples/stl-consumer/main.cpp) demonstrates inspection and
 physical reload. Qualification is in progress; filesystem publication, Python
 and application entry points remain separate.
+
+## Native indexed OFF polygons
+
+The development [OFF interface](docs/off.md) reads and writes bounded base ASCII
+OFF through `meshvale::off`. It preserves shared vertex IDs, unused vertex rows,
+mixed polygon loops and exact admitted finite positions. Writing requires explicit
+canonical text and unknown-edge-count policies; richer variants and attributes
+are refused. The [installed codec consumer](examples/off-consumer/main.cpp)
+demonstrates physical write/reload. A separate [installed Repair example](examples/off-repair-consumer/README.md)
+removes a cyclic duplicate quad with the existing Repair engine, checks its full
+correspondence maps, and reloads the accepted candidate. Interchange has no Repair
+dependency. Qualification is in progress; verified file publication, Python and
+application commands remain separate.
 
 ## Native GLB containers
 
