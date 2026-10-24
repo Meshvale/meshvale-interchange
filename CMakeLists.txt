@@ -213,6 +213,7 @@ include(CMakePackageConfigHelpers)
 include(cmake/GltfTopologyWrite.cmake)
 include(cmake/GltfWorkflowSupport.cmake)
 include(cmake/GltfFiles.cmake)
+include(cmake/OffFiles.cmake)
 install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization meshvale_interchange_stl meshvale_interchange_off meshvale_interchange_ply
   EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h include/meshvale/interchange/stl.h include/meshvale/interchange/off.h include/meshvale/interchange/ply.h
@@ -416,6 +417,9 @@ if(BUILD_TESTING)
   endif()
   if(MESHVALE_INTERCHANGE_GLTF_FILES)
     meshvale_add_gltf_file_tests()
+  endif()
+  if(MESHVALE_INTERCHANGE_OFF_FILES)
+    meshvale_add_off_file_tests()
   endif()
 endif()
 

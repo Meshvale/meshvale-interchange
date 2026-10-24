@@ -14,6 +14,13 @@
 
 ### Added
 
+- Optional retained OFF file capture and verified new-directory publication
+  through `meshvale::off_files`. Publication reloads the staged entry, verifies
+  complete file bytes and an optional computed receipt, and commits without
+  replacing an existing destination. The installed example exercises source
+  removal, Unicode paths, receipt ownership and physical readback. Qualification
+  is in progress; this interface does not choose or verify a repair operation.
+
 - Development PLY 1.0 ASCII and little-/big-endian binary read/write through
   `meshvale::ply`, retaining indexed polygon loops, unused vertices, primitive
   wire widths and ordered raw vertex/face scalar/list properties. Explicit
