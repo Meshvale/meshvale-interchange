@@ -44,6 +44,9 @@ suffixes are unsupported payloads; never silently discard them or consume them
 as another record. Lines, points and faces with fewer than three corners are
 outside this polygon profile. Source, line, token and comment byte caps are
 inclusive and enforced while scanning.
+The comment cap applies to each comment's content, excluding `#`; the line cap
+applies to each physical line, excluding CR/LF. The source cap bounds aggregate
+input independently.
 
 The required edge count is syntactic provenance only. Retain its unsigned value;
 do not allocate or iterate from it, infer connectivity, or certify it. Large
