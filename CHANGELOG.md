@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- ASCII PLY, OFF and STL output preserves binary64 subnormal values when the
+  caller enables denormals-are-zero mode. Bounded integer formatting retains
+  exact reload bits without changing caller floating-point controls.
+
 - ASCII STL and OFF writers check cancellation while growing output buffers.
   Replacement storage remains charged alongside the original until transfer
   completes; cancellation and allocation failures return no partial output.

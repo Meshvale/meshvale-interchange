@@ -16,7 +16,7 @@
 #include <string>
 #include <string_view>
 
-#if defined(_MSC_VER) && defined(_M_X64)
+#if defined(_M_X64) || defined(__SSE2__)
 #include <xmmintrin.h>
 #endif
 
@@ -249,7 +249,7 @@ void WriterControls(bool unsupported) {
 }
 
 void NumericBits(bool flush = false, unsigned rounding = 0) {
-#if defined(_MSC_VER) && defined(_M_X64)
+#if defined(_M_X64) || defined(__SSE2__)
   struct Restore {
     unsigned original = _mm_getcsr();
     ~Restore() { _mm_setcsr(original); }
@@ -311,7 +311,7 @@ int main(int argc, char** argv) {
     WriterControls(unsupported);
     if (!unsupported) {
       NumericBits();
-#if defined(_MSC_VER) && defined(_M_X64)
+#if defined(_M_X64) || defined(__SSE2__)
       const unsigned original = _mm_getcsr();
       for (const unsigned rounding : {_MM_ROUND_NEAREST, _MM_ROUND_DOWN,
                                       _MM_ROUND_UP, _MM_ROUND_TOWARD_ZERO}) {

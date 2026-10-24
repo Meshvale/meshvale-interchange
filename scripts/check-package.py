@@ -60,6 +60,7 @@ def inspect(path):
                          "include/meshvale/interchange/obj.h",
                          "include/meshvale/interchange/ply.h", "docs/ply.md",
                          "src/ply.cpp", "src/ply_test_internal.h",
+                         "src/finite_double_format.h",
                          "tests/header_ply.cpp", "tests/ply.cpp", "tests/ply_requests.cpp",
                          "tests/ply_fixture.h", "examples/ply-consumer/CMakeLists.txt",
                          "examples/ply-consumer/main.cpp",

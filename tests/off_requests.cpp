@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -20,6 +21,7 @@
 #include <thread>
 #include <utility>
 
+#include "finite_double_format.h"
 #include "gltf_allocation.h"
 #include "off_fixture.h"
 #include "off_test_internal.h"
@@ -641,6 +643,79 @@ void RelocationControls() {
   source.document.reset();
   EmptyLedger(context);
 }
+struct NumericStop {
+  std::stop_source stop;
+  std::uint64_t previous = 0;
+  std::uint64_t completed = 0;
+  std::uint64_t total = 0;
+  bool observed = false;
+  bool valid_progress = true;
+  static void Checkpoint(ic::OffStage stage,
+                         ic::numeric_format_detail::Phase phase,
+                         std::uint64_t completed, std::uint64_t total,
+                         void* state) noexcept {
+    auto& self = *static_cast<NumericStop*>(state);
+    if (phase != ic::numeric_format_detail::Phase::kScaleCoefficient) return;
+    self.valid_progress = self.valid_progress &&
+                          stage == ic::OffStage::kEncode && completed > 0 &&
+                          completed <= total && completed > self.previous &&
+                          (self.total == 0 || self.total == total);
+    self.previous = completed;
+    self.total = total;
+    constexpr std::uint64_t kStopAfterActualScalingPasses = 64;
+    if (completed >= kStopAfterActualScalingPasses && completed < total) {
+      self.observed = true;
+      self.completed = completed;
+      self.stop.request_stop();
+    }
+  }
+};
+
+void NumericFormattingCancellation() {
+  geo::ExecutionContext context({4, 1, kContextBytes});
+  Backend backend;
+  {
+    constexpr std::string_view kSource =
+        "OFF\n1 0 0\n4.9406564584124654e-324 -4.9406564584124654e-324 -0\n";
+    const auto wire = f::Bytes(kSource);
+    auto source = detail::ReadOffForTest(wire, f::ReadLimits(), f::Work(),
+                                         context, {}, backend.Options());
+    Require(source.document.has_value(),
+            "real binary64 subnormal source owns canonical geometry");
+    Require(std::bit_cast<std::uint64_t>(
+                source.document->Mesh().View().positions[0]) == 1,
+            "numeric stop starts from independent minimum-subnormal bits");
+    const auto baseline = context.ActiveTrackedPayload();
+    const auto physical_baseline = backend.live;
+    NumericStop probe;
+    auto test = backend.Options();
+    test.state = &probe;
+    test.numeric_format_checkpoint = &NumericStop::Checkpoint;
+    auto work = f::Work();
+    work.cancellation_block_bytes = 1;
+    const auto result = detail::WriteOffForTest(
+        source.document->Mesh(), f::Options(), f::WriteLimits(), work,
+        probe.stop.get_token(), test);
+    Require(probe.observed && probe.valid_progress && probe.completed > 0 &&
+                probe.completed < probe.total,
+            "stop follows genuine interior numeric coefficient work");
+    Require(result.status == ic::OffStatus::kCanceled && !result.output &&
+                result.diagnostic.stage == ic::OffStage::kEncode,
+            "interior numeric cancellation exposes no partial output");
+    Require(result.execution.codec.launched_workers == 0 &&
+                result.execution.inspection.launched_workers ==
+                    result.execution.inspection.joined_workers &&
+                context.ActiveWorkers() == 0,
+            "numeric stop joins all actual delegated workers");
+    Require(backend.live == physical_baseline &&
+                context.ActiveTrackedPayload() == baseline,
+            "numeric cancellation releases every writer request");
+    Require(std::ranges::equal(source.document->OriginalBytes(), wire),
+            "canceled formatter leaves captured source bytes intact");
+  }
+  Require(backend.live == 0, "numeric source releases original backend blocks");
+  EmptyLedger(context);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -650,6 +725,7 @@ int main(int argc, char** argv) {
     EarlyLimitsAndLexicalBoundaries();
     if (!unsupported) {
       RelocationControls();
+      NumericFormattingCancellation();
       OwnershipAndAccounting();
       FaultsAndCancellation();
       SharedLedgerExactLimitsAndConcurrentCalls();

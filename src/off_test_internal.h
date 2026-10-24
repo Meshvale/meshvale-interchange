@@ -11,6 +11,7 @@
 #include <span>
 #include <stop_token>
 
+#include "finite_double_format.h"
 #include "gltf_allocation.h"
 
 namespace meshvale::interchange::off_detail {
@@ -26,6 +27,10 @@ struct TestOptions {
   // The same state is borrowed through return; stop is checked after callback.
   void (*relocation_checkpoint)(OffStage, std::uint64_t, std::uint64_t,
                                 void*) noexcept = nullptr;
+  // Actual bounded integer scaling passes/digits, immediately before stop.
+  void (*numeric_format_checkpoint)(OffStage, numeric_format_detail::Phase,
+                                    std::uint64_t, std::uint64_t,
+                                    void*) noexcept = nullptr;
 };
 [[nodiscard]] OffReadResult ReadOffForTest(
     std::span<const std::byte> bytes, const OffReadLimits& limits,
