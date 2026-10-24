@@ -10,6 +10,13 @@
 
 ### Added
 
+- Optional retained OFF file capture and verified new-directory publication
+  through `meshvale::off_files`. Publication reloads the staged entry, verifies
+  complete file bytes and an optional computed receipt, and commits without
+  replacing an existing destination. The installed example exercises source
+  removal, Unicode paths, receipt ownership and physical readback. Qualification
+  is in progress; this interface does not choose or verify a repair operation.
+
 - Development indexed base ASCII OFF read/write through `meshvale::off`, retaining
   shared vertex IDs, unused rows, polygon start/order/winding and finite binary64
   values. Explicit canonical text and unknown-edge-zero policies expose lexical

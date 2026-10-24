@@ -4,8 +4,8 @@
 |---|---|
 | ID | OFF-FILES-001 |
 | Version | 0.1.0 |
-| Status | Selected development contract; implementation and qualification pending |
-| Interface | Planned `meshvale/interchange/off_files.h` |
+| Status | Development implementation; qualification pending |
+| Interface | `meshvale/interchange/off_files.h` |
 | Target | Optional `meshvale::off_files` in `MeshvaleInterchange` |
 
 This interface captures one immutable OFF file and publishes one verified OFF
@@ -17,7 +17,7 @@ prove source-to-candidate edit equivalence.
 The selected build option is `MESHVALE_INTERCHANGE_OFF_FILES`, initially OFF.
 Enabling it requires `meshvale::off` and the same installed Geometry execution
 producer. It does not require the optional glTF modules, Repair, Python or an
-additional file-format SDK. Only an enabled implementation will install its
+additional file-format SDK. Only an enabled implementation installs its
 header and exported target. Configuration alone establishes no accepted platform
 or supported release.
 
@@ -179,4 +179,4 @@ request/ledger exhaustion, cancellation during transfer/relocation, allocation
 exceptions, partial launch/join, malformed staged bytes, inventory/provider/import
 failure, close/commit failure, cleanup precedence and late stop after commit.
 Installed consumers, source archives, sanitizer and actual hosted platform runs
-remain required. This selected contract alone claims no implementation success.
+remain required. This contract alone claims no qualification success.

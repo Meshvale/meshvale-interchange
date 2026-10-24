@@ -33,8 +33,15 @@ are refused. The [installed codec consumer](examples/off-consumer/main.cpp)
 demonstrates physical write/reload. A separate [installed Repair example](examples/off-repair-consumer/README.md)
 removes a cyclic duplicate quad with the existing Repair engine, checks its full
 correspondence maps, and reloads the accepted candidate. Interchange has no Repair
-dependency. Qualification is in progress; verified file publication, Python and
-application commands remain separate.
+dependency. Qualification is in progress; Python and application commands remain
+separate.
+
+The optional [OFF file interface](docs/off-files.md) captures a retained regular
+file and publishes a verified new directory with an optional computed receipt.
+It reloads the staged entry and checks complete bytes before a no-replace commit.
+The [installed example](examples/off-files-consumer/README.md) demonstrates source
+removal, Unicode paths, receipt ownership and physical readback. This development
+module is under qualification and requires no optional glTF module or Repair.
 
 ## Native GLB containers
 

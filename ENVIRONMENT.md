@@ -63,6 +63,24 @@ python scripts/check-cpp-format.py --formatter clang-format
 
 The checker selects tracked and nonignored untracked `.h`, `.hpp` and `.cpp` files from Git and requires formatter version `23.1.3`; pass a tool executable through `--formatter` when it is outside the shell path. Formatting verifies layout and include ordering, not API naming, ownership or algorithm correctness. Existing public snake-case names retain their contract; a separate verified migration must address naming.
 
+## Optional OFF files
+
+Set `MESHVALE_INTERCHANGE_OFF_FILES=ON` to build and install `meshvale::off_files`
+and its public header. The option defaults to OFF and requires no optional glTF
+module, Repair or Python. The [file contract](docs/off-files.md) owns capture,
+verified publication, limits and cancellation. The
+[standalone installed example](examples/off-files-consumer/README.md) exercises
+the public target with matching installed dependencies.
+
+Enabling this option adds three exact native entries (`off_files_semantics`,
+`off_files_requests`, `off_files_consumer`) and one installed entry
+(`installed_off_files_consumer`) in both qualified and unsupported profiles.
+`scripts/check-native-tests.py` reads the configured option or accepts explicit
+`--off-files ON|OFF` and rejects a mismatched inventory. Repository native rows
+enable it alongside the optional glTF cohort; the all-optional-OFF row keeps it
+disabled. Both Linux sanitizer lanes enable it and require these additional
+entries. Configured checks establish no completed platform qualification.
+
 ## Optional glTF and GLB files
 
 Set `MESHVALE_INTERCHANGE_GLTF_FILES=ON` to build and install `meshvale::gltf_files`
@@ -226,8 +244,8 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON/GLB files and require Interchange's qualified 37 suites,
-eighteen base installed test entries and the separate OFF Repair test. Geometry
+Both lanes enable JSON/GLB and OFF files and require Interchange's qualified 40 suites,
+nineteen base installed test entries and the separate OFF Repair test. Geometry
 requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an
