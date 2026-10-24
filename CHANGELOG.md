@@ -4,11 +4,23 @@
 
 ### Fixed
 
+- ASCII PLY, OFF and STL output preserves binary64 subnormal values when the
+  caller enables denormals-are-zero mode. Bounded integer formatting retains
+  exact reload bits without changing caller floating-point controls.
+
 - ASCII STL and OFF writers check cancellation while growing output buffers.
   Replacement storage remains charged alongside the original until transfer
   completes; cancellation and allocation failures return no partial output.
 
 ### Added
+
+- Development PLY 1.0 ASCII and little-/big-endian binary read/write through
+  `meshvale::ply`, retaining indexed polygon loops, unused vertices, primitive
+  wire widths and ordered raw vertex/face scalar/list properties. Explicit
+  canonical rewriting checks complete current-mesh/schema binding and exact
+  conversion. Separate installed examples demonstrate cross-encoding reload and
+  composition with the existing Repair engine. Qualification is in progress;
+  verified file publication, Python and application commands remain separate.
 
 - Development indexed base ASCII OFF read/write through `meshvale::off`, retaining
   shared vertex IDs, unused rows, polygon start/order/winding and finite binary64

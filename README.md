@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL and indexed ASCII OFF under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 ## OBJ native adapter
 
@@ -35,6 +35,23 @@ removes a cyclic duplicate quad with the existing Repair engine, checks its full
 correspondence maps, and reloads the accepted candidate. Interchange has no Repair
 dependency. Qualification is in progress; verified file publication, Python and
 application commands remain separate.
+
+## Native typed PLY polygons
+
+The development [PLY interface](docs/ply.md) reads and writes explicitly selected
+PLY 1.0 ASCII, little-endian binary and big-endian binary through `meshvale::ply`.
+It preserves indexed polygon loops, unused vertices and admitted typed vertex/face
+scalar and list properties. The retained original schema records wire widths and
+property order; writing checks the supplied current mesh against that schema.
+Unsupported variants, incompatible bindings and inexact conversions are refused.
+Custom properties remain raw values without inferred color or normal semantics.
+
+The [installed codec example](examples/ply-consumer/README.md) demonstrates
+cross-encoding physical write/reload. A separate [installed Repair example](examples/ply-repair-consumer/README.md)
+uses the existing Repair engine and checks its correspondence maps and retained
+properties before writing the accepted candidate. Writing requires an explicit
+canonical rewrite policy. Qualification is in progress; verified file publication,
+Python and application entry points remain separate.
 
 ## Native GLB containers
 

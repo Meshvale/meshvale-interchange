@@ -130,22 +130,23 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 37; installed 18 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 37; installed 18 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 37; installed 18 |
-| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 28; installed 14 |
-| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 28; installed 14 |
-| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 20; installed 10 |
+| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 39; installed 19 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 39; installed 19 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 39; installed 19 |
+| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 30; installed 15 |
+| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 30; installed 15 |
+| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 22; installed 11 |
 
-These inventories include STL and OFF codec/request tests and their installed
+These inventories include STL, OFF and PLY codec/request tests and their installed
 consumers. Each row additionally builds the separate
-[OFF Repair example](examples/off-repair-consumer/README.md) and requires its one
+[OFF Repair example](examples/off-repair-consumer/README.md) and
+[PLY Repair example](examples/ply-repair-consumer/README.md), each with one required
 CTest entry. CI pins public Repair
 `99c2fb742dd16a7d147d7994a8db80088289505d`, builds only its native base and charged
 duplicate targets with matching compiler/configuration/instrumentation, and
-disables its glTF workflows and Python. The example requires actual empty
+disables its glTF workflows and Python. Each example requires actual empty
 read/Repair/write/reload in every profile; unsupported rows additionally require
-the actual nonempty Geometry refusal. This dependency belongs to the example
+the actual nonempty Geometry refusal. This dependency belongs to example
 qualification, not the Interchange package.
 
 Qualified rows include the focused materialization and independent semantic
@@ -163,8 +164,8 @@ Native builds enable `MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` and
 owns its compiled Geometry sharing requirement and installed target. Configuration
 checks callable `MaterializedMesh::ShareExecutionContext()` and
 `SharesExecutionBudget()` symbols. Explicitly disabling both options keeps the
-base capped reader/extractor and STL/OFF available, with qualified 20/installed 10
-or unsupported 19/installed 10 tests. It installs neither optional target nor its
+base capped reader/extractor and STL/OFF/PLY available, with qualified 22/installed 11
+or unsupported 21/installed 11 tests. It installs neither optional target nor its
 header. Workflow support requires the topology writer when enabled.
 
 With the writer ON, qualified rows also require its focused request/worker/fault
@@ -210,8 +211,8 @@ and vcpkg revisions matching the ordinary native job, without changing the Pytho
 cohort. The pinned Repair revision is the example producer described above.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange, the standalone Repair producer, all eighteen base installed
-consumers and the separate OFF Repair example. Geometry's owning
+Geometry, Interchange, the standalone Repair producer, all nineteen base installed
+consumers and the separate OFF and PLY Repair examples. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
 fail the qualified suite rather than relabel it unsupported. The ordinary native
@@ -226,8 +227,8 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON/GLB files and require Interchange's qualified 37 suites,
-eighteen base installed test entries and the separate OFF Repair test. Geometry
+Both lanes enable JSON/GLB files and require Interchange's qualified 39 suites,
+nineteen base installed test entries and the separate OFF and PLY Repair tests. Geometry
 requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an

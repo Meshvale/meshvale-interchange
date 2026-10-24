@@ -11,6 +11,7 @@
 #include <span>
 #include <stop_token>
 
+#include "finite_double_format.h"
 #include "gltf_allocation.h"
 
 namespace meshvale::interchange::stl_detail {
@@ -24,6 +25,10 @@ struct TestOptions {
   // The same state is borrowed through return; stop is checked after callback.
   void (*relocation_checkpoint)(StlStage, std::uint64_t, std::uint64_t,
                                 void*) noexcept = nullptr;
+  // Actual bounded integer scaling passes/digits, immediately before stop.
+  void (*numeric_format_checkpoint)(StlStage, numeric_format_detail::Phase,
+                                    std::uint64_t, std::uint64_t,
+                                    void*) noexcept = nullptr;
 };
 [[nodiscard]] StlReadResult ReadStlForTest(
     std::span<const std::byte> bytes, StlEncoding encoding,
