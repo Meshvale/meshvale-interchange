@@ -24,6 +24,7 @@ VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 MATERIALIZATION_PROFILE = "qualified"
 BUILD_WORKERS = 2
 OFF_REPAIR_TEST = "installed_off_repair_consumer"
+PLY_REPAIR_TEST = "installed_ply_repair_consumer"
 DEPENDENCY_CONFIGURATIONS = {"Debug": "dbg", "Release": "rel"}
 PROFILES = {
     "asan-ubsan": {
@@ -261,6 +262,15 @@ def main():
     shutil.copyfile(off_repair / "CMakeCache.txt", evidence / "off-repair-build-CMakeCache.txt")
     runner.inventory(off_repair, {OFF_REPAIR_TEST}, "off-repair")
     runner.test(off_repair, "off-repair")
+    ply_repair = work / "ply-repair-build"
+    runner.run("cmake", "-S", "examples/ply-repair-consumer", "-B", ply_repair,
+               *common, *toolchain, "-DVCPKG_MANIFEST_MODE=OFF",
+               f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
+    runner.run("cmake", "--build", ply_repair, "--parallel", BUILD_WORKERS)
+    runner.instrumented(ply_repair / "compile_commands.json", profile["flags"], True)
+    shutil.copyfile(ply_repair / "CMakeCache.txt", evidence / "ply-repair-build-CMakeCache.txt")
+    runner.inventory(ply_repair, {PLY_REPAIR_TEST}, "ply-repair")
+    runner.test(ply_repair, "ply-repair")
     (evidence / "completed.json").write_text(json.dumps(identity, indent=2) + "\n",
                                              encoding="utf-8")
 

@@ -295,6 +295,34 @@ jobs:
           $unsupported = '${{ matrix.materialization_profile }}' -eq 'unsupported'
           if (($unsupported -and ($arguments.Count -ne 1 -or $arguments[0] -ne '--unsupported-profile')) -or
               (-not $unsupported -and $arguments.Count -ne 0)) { throw 'OFF Repair CTest command does not match the selected producer profile' }
+      - name: Configure separate installed PLY Repair composition
+        run: >-
+          cmake -S examples/ply-repair-consumer -B .local/ply-repair-consumer -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ${{ matrix.compiler_option }}
+          "-DCMAKE_CXX_FLAGS=${{ matrix.compile_flags }}"
+          "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.link_flags }}" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=${{ matrix.materialization_profile }}
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
+          "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
+          "-DVCPKG_INSTALLED_DIR=${{ github.workspace }}/.local/dependencies"
+          -DVCPKG_MANIFEST_MODE=OFF "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/.local/install"
+          2>&1 | Tee-Object -FilePath .local/ply-repair-consumer-configure.log
+      - name: Build separate installed PLY Repair composition
+        run: |
+          cmake --build .local/ply-repair-consumer --config ${{ matrix.build_type }} --parallel 2 --verbose 2>&1 | Tee-Object -FilePath .local/ply-repair-consumer-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify exact standalone PLY Repair profile and inventory
+        run: |
+          $inventory = ctest --test-dir .local/ply-repair-consumer -C ${{ matrix.build_type }} --show-only=json-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $inventory | Set-Content -LiteralPath .local/ply-repair-consumer-inventory.json
+          $tests = @(($inventory -join "`n" | ConvertFrom-Json).tests)
+          if ($tests.Count -ne 1 -or $tests[0].name -ne 'installed_ply_repair_consumer') { throw 'Unexpected PLY Repair CTest inventory' }
+          $arguments = @($tests[0].command | Select-Object -Skip 1)
+          $unsupported = '${{ matrix.materialization_profile }}' -eq 'unsupported'
+          if (($unsupported -and ($arguments.Count -ne 1 -or $arguments[0] -ne '--unsupported-profile')) -or
+              (-not $unsupported -and $arguments.Count -ne 0)) { throw 'PLY Repair CTest command does not match the selected producer profile' }
       - name: Verify exact installed profile and all consumer entries
         run: |
           $version = @()
@@ -310,6 +338,7 @@ jobs:
             @{ Path = '.local/consumer/compile_commands.json'; Meshvale = $true },
             @{ Path = '.local/repair-build/compile_commands.json'; Meshvale = $true },
             @{ Path = '.local/off-repair-consumer/compile_commands.json'; Meshvale = $true },
+            @{ Path = '.local/ply-repair-consumer/compile_commands.json'; Meshvale = $true },
             @{ Path = '.local/vcpkg-runtime/buildtrees/tinyobjloader/x64-windows-static-md-asan-rel/compile_commands.json'; Meshvale = $false }
           )
           $observations = @()
@@ -339,6 +368,10 @@ jobs:
         run: |
           ctest --test-dir .local/off-repair-consumer -C ${{ matrix.build_type }} --verbose --output-on-failure 2>&1 | Tee-Object -FilePath .local/off-repair-consumer-actual.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test actual standalone PLY Repair and reload
+        run: |
+          ctest --test-dir .local/ply-repair-consumer -C ${{ matrix.build_type }} --verbose --output-on-failure 2>&1 | Tee-Object -FilePath .local/ply-repair-consumer-actual.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain actual profile configuration, compilation and test evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -354,6 +387,11 @@ jobs:
             .local/off-repair-consumer/CMakeCache.txt
             .local/off-repair-consumer/compile_commands.json
             .local/off-repair-consumer/Testing
+            .local/ply-repair-*.json
+            .local/ply-repair-*.log
+            .local/ply-repair-consumer/CMakeCache.txt
+            .local/ply-repair-consumer/compile_commands.json
+            .local/ply-repair-consumer/Testing
             .local/vcpkg-runtime/buildtrees/tinyobjloader/x64-windows-static-md-asan-rel/compile_commands.json
             .local/geometry-build/CMakeCache.txt
             .local/geometry-build/compile_commands.json
