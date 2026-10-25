@@ -2,7 +2,16 @@
 
 ## Unreleased
 
+### Documentation
+
+- Document the implemented [source-version profile](docs/versioning.md) and its
+  compiler-free metadata checks. Release/runtime qualification remains separate.
+
 ### Fixed
+
+- Resolve the CMake project and installed CMake package version from one
+  checked source identity, including tagged archives and source packages.
+  Cross-check a matching Python build's full version against that identity.
 
 - ASCII PLY, OFF and STL output preserves binary64 subnormal values when the
   caller enables denormals-are-zero mode. Bounded integer formatting retains

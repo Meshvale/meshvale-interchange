@@ -26,6 +26,18 @@ jobs:
         run: python scripts/check-portability.py
       - name: Check documentation and environment template
         run: python scripts/check-docs.py
+      - name: Check source version identity without native compilation
+        run: python scripts/check-source-version.py --output .local/source-version
+      - name: Retain source version identity receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: interchange-source-version-${{ github.sha }}
+          path: |
+            .local/source-version/receipt.json
+            .local/source-version/command-*.stderr
+          include-hidden-files: true
+          if-no-files-found: error
 
   native:
     name: Native ${{ matrix.profile_id }}
