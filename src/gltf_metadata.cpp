@@ -192,12 +192,14 @@ std::uint32_t ReadFloatBits(const JsonSnapshot& document, std::size_t node) {
   float value = 0;
   const auto converted = std::from_chars(text.data(), text.data() + text.size(),
                                          value, std::chars_format::general);
+  constexpr std::uint32_t kBinary32MagnitudeBits = 0x7fffffffU;
+  const auto value_bits = std::bit_cast<std::uint32_t>(value);
   if (converted.ec != std::errc{} ||
       converted.ptr != text.data() + text.size() || !std::isfinite(value) ||
-      value == 0)
+      (value_bits & kBinary32MagnitudeBits) == 0)
     Fail(GltfStatus::kUnsupportedProfile,
          GltfDiagnosticCode::kUnsupportedNumberRepresentation);
-  return std::bit_cast<std::uint32_t>(value);
+  return value_bits;
 }
 void CheckMetadataRelationships(AssetState& state) {
   constexpr std::string_view kAccessorsKey = "accessors";
