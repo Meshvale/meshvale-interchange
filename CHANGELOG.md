@@ -14,6 +14,10 @@
 
 ### Fixed
 
+- Retain finite binary32 subnormal glTF metadata when the caller enables
+  denormals-are-zero mode. Zero classification uses the represented bits without
+  changing caller floating-point controls; numeric range refusals remain intact.
+
 - Resolve the CMake project and installed CMake package version from one
   checked source identity, including tagged archives and source packages.
   Cross-check a matching Python build's full version against that identity.
