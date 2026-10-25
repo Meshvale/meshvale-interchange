@@ -4,8 +4,9 @@ Asset import and export for polygon mesh workflows.
 
 **Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
-The selected [source-version profile](docs/versioning.md) defines build identity
-for tagged and Git-free sources. Its extended archive implementation is pending.
+The [source-version profile](docs/versioning.md) preserves one native identity
+for tagged checkouts, tagged archives and source packages named for this product.
+Python's full build version must agree with the matching source identity.
 
 ## OBJ native adapter
 

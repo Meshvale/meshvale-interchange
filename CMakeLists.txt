@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
-project(MeshvaleInterchange LANGUAGES CXX)
+include(cmake/SourceVersion.cmake)
+meshvale_interchange_resolve_source_version(MESHVALE_INTERCHANGE_VERSION
+  MESHVALE_INTERCHANGE_VERSION_PROVENANCE "${CMAKE_CURRENT_SOURCE_DIR}")
+project(MeshvaleInterchange VERSION "${MESHVALE_INTERCHANGE_VERSION}" LANGUAGES CXX)
 set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(MeshvaleGeometry 0.0.0 EXACT CONFIG REQUIRED)
 
@@ -126,16 +129,6 @@ find_package(tinyobjloader 2.0.0 CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 if(NOT TARGET tinyobjloader::tinyobjloader_double)
   message(FATAL_ERROR "tinyobjloader must be built with double precision")
-endif()
-find_package(Git QUIET)
-set(MESHVALE_INTERCHANGE_VERSION "0.0.0")
-if(Git_FOUND)
-  execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tags --exact-match --dirty
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    OUTPUT_VARIABLE meshvale_tag OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  if(meshvale_tag MATCHES "^v([0-9]+\\.[0-9]+\\.[0-9]+)$")
-    set(MESHVALE_INTERCHANGE_VERSION "${CMAKE_MATCH_1}")
-  endif()
 endif()
 add_library(meshvale_interchange STATIC src/obj_read.cpp src/obj_write.cpp src/obj_file_read.cpp src/obj_file_publish.cpp src/obj_file_detail.cpp src/file_publication_native.cpp
   src/gltf_write.cpp src/gltf_accessor.cpp src/gltf_extract.cpp src/gltf_admission.cpp src/gltf_read.cpp src/gltf_resources.cpp src/gltf_operation_workers.cpp src/gltf_graph.cpp src/gltf_graph_declarations.cpp src/gltf_asset.cpp src/gltf_metadata.cpp src/gltf_allocation.cpp src/gltf_parser.cpp src/gltf_json_snapshot.cpp src/cgltf_reader.cpp src/glb.cpp)
