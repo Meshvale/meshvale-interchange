@@ -15,6 +15,11 @@ and [topology writer](gltf_topology_write.md) contracts own their existing
 operations. These declarations do not establish an implemented workflow,
 filesystem publication, GLB conversion, Python API or stable release.
 
+The [selected direct translation contract](gltf-translation.md) specifies future
+profile propagation, independent reload comparison and typed validation facts.
+Implementation and qualification are pending. Current static inspection and
+request-counter scopes remain unchanged; no new profile is available here yet.
+
 ## GWS-READ-001: Additive complete read cap
 
 `ReadGltfAssetCapped` and `GltfReadOperationLimits` are declared in the base

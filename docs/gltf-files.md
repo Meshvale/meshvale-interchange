@@ -39,6 +39,11 @@ These operations preserve the admitted GLB processing subset; they do not add
 format conversion or broader glTF semantics. Complete independent semantic,
 request, sanitizer, package and platform qualification remains required.
 
+The [selected direct translation contract](gltf-translation.md) requires future
+publication to propagate real extraction admission and validate actual staged
+animation/resources before commit. Implementation and qualification are pending.
+Current static publication, file-only accounting and defaults remain unchanged.
+
 ## GFILE-CAPTURE-001: Strong file source
 
 `ReadGltfFileAsset` takes an input path, read options, explicit limits/work policy,

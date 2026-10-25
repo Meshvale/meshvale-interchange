@@ -4,6 +4,11 @@
 
 ### Documentation
 
+- Select the [direct translation contract](docs/gltf-translation.md) for a future
+  explicit translation-only glTF/GLB processing profile, including owned proof,
+  checked preservation, limits and typed facts. Implementation and qualification
+  remain pending; current static behavior and defaults are unchanged.
+
 - Document the implemented [source-version profile](docs/versioning.md) and its
   compiler-free metadata checks. Release/runtime qualification remains separate.
 

@@ -17,6 +17,12 @@ capture follows the linked Geometry compiled allocation profile; unsupported
 producers retain explicit delegated failure. This is a development interface,
 without a stable release guarantee.
 
+The [selected direct translation contract](gltf-translation.md) requires future
+materialization to retain the strong extraction owner and its admission proof;
+borrowed views or caller flags cannot recreate it. Implementation and
+qualification are pending. Current static raw transfer and numerical-profile
+behavior remain unchanged; animation is not converted into Geometry attributes.
+
 ## GTM-INPUT-001: Operation and required policy
 
 `MaterializeGltfPrimitive` synchronously consumes a successful
