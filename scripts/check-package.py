@@ -189,6 +189,8 @@ def inspect(path):
                          "src/gltf_graph.cpp", "src/gltf_graph_declarations.cpp",
                          "src/gltf_resources.h", "src/gltf_resources.cpp",
                          "src/gltf_accessor.h", "src/gltf_accessor.cpp", "src/gltf_extract.cpp",
+                         "src/gltf_direct_translation.h", "src/gltf_direct_translation.cpp",
+                         "tests/gltf_direct_translation.cpp", "examples/consumer/gltf_translation.cpp",
                          "tests/gltf_read.cpp", "tests/gltf_resources.cpp", "tests/gltf_metadata.cpp",
                          "tests/gltf_accessor.cpp", "tests/gltf_extract.cpp", "tests/gltf_accessor_oracle.py",
                          "scripts/check-cpp-format.py","scripts/portable-preview.py","vcpkg.json",

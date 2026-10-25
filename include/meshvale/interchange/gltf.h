@@ -39,16 +39,36 @@ struct GltfReadLimits {
   std::uint64_t max_accessor_elements = 0;
   std::uint64_t max_projection_bytes = 0;
 };
+struct GltfDirectTranslationLimits {
+  std::uint64_t max_node_rows = 0;
+  std::uint64_t max_mesh_users = 0;
+  std::uint64_t max_channel_references = 0;
+  std::uint64_t max_distinct_samplers = 0;
+  std::uint64_t max_keys_per_sampler = 0;
+  std::uint64_t max_total_keys = 0;
+  std::uint64_t max_relationship_steps = 0;
+  std::uint64_t max_metadata_bytes = 0;
+  std::uint64_t max_decoded_bytes = 0;
+  std::uint64_t max_new_requested_bytes = 0;
+};
+struct GltfDirectTranslationWorkPolicy {
+  std::uint64_t parallel_min_keys = 0;
+  std::uint64_t partition_keys = 0;
+  std::uint64_t cancellation_block_keys = 0;
+  std::uint64_t max_jobs = 0;
+};
 struct GltfExtractionLimits {
   std::uint64_t max_components = 0;
   std::uint64_t max_triangle_corners = 0;
   std::uint64_t max_output_requested_bytes = 0;
+  GltfDirectTranslationLimits direct_translation = {};
 };
 struct GltfWorkPolicy {
   std::uint64_t parallel_min_resource_bytes = 0;
   std::uint64_t resource_partition_bytes = 0;
   std::uint64_t parallel_min_channel_components = 0;
   std::uint64_t channel_partition_elements = 0;
+  GltfDirectTranslationWorkPolicy direct_translation = {};
 };
 
 enum class GltfResourceKind { kInvalid, kBuffer, kImage };
@@ -133,6 +153,30 @@ struct GltfDiagnostic {
   std::optional<GltfSourceSpan> resource_span;
   std::uint32_t rule_id;
 };
+struct GltfDirectTranslationExecutionObservation {
+  std::uint64_t planned_jobs = 0;
+  std::uint64_t launched_workers = 0;
+  std::uint64_t joined_workers = 0;
+  std::uint64_t caller_jobs = 0;
+};
+struct GltfDirectTranslationObservation {
+  GltfStatus status = GltfStatus::kAccepted;
+  GltfDiagnostic diagnostic = {
+      GltfStatus::kAccepted, GltfDiagnosticCode::kNone, {}, {}, {}, {}, 0};
+  bool complete = false;
+  std::uint64_t node_rows = 0;
+  std::uint64_t mesh_users = 0;
+  std::uint64_t scanned_channels = 0;
+  std::uint64_t affected_channels = 0;
+  std::uint64_t distinct_samplers = 0;
+  std::uint64_t keys_checked = 0;
+  std::uint64_t decoded_bytes_checked = 0;
+  std::uint64_t relationship_steps = 0;
+  std::uint64_t new_requested_bytes = 0;
+  std::uint64_t effective_request_cap = 0;
+  GltfDirectTranslationWorkPolicy work;
+  GltfDirectTranslationExecutionObservation execution;
+};
 enum class GltfAdmissionProfile { kRetainedCoreMetadataV1 };
 enum class GltfJsonNumberKind { kIntegerSpelling, kDecimalSpelling };
 struct GltfRawNumberView {
@@ -211,7 +255,28 @@ class GltfInstanceHandle {
   std::shared_ptr<const gltf_detail::AssetState> owner_;
   std::uint64_t ordinal_;
 };
-enum class GltfProcessingProfile { kStaticLocalTrianglesV1 };
+enum class GltfProcessingProfile {
+  kStaticLocalTrianglesV1 = 0,
+  kDirectTranslationTrianglesV1 = 1
+};
+enum class GltfDirectTranslationInterpolation { kLinear = 0, kStep = 1 };
+struct GltfDirectTranslationTrackView {
+  std::uint64_t animation_index;
+  std::uint64_t channel_index;
+  std::uint64_t sampler_index;
+  std::uint64_t node_index;
+  std::uint64_t input_accessor;
+  std::uint64_t output_accessor;
+  std::uint64_t key_count;
+  GltfDirectTranslationInterpolation interpolation;
+};
+struct GltfDirectTranslationProofView {
+  static constexpr std::uint8_t kMeshUser = 1;
+  static constexpr std::uint8_t kStrictAncestor = 2;
+  std::span<const std::uint64_t> mesh_users;
+  std::span<const std::uint8_t> node_membership;
+  std::span<const GltfDirectTranslationTrackView> tracks;
+};
 enum class GltfCapabilityReason {
   kReady,
   kBinaryAdmissionPending,
@@ -243,6 +308,8 @@ class GltfAsset {
   [[nodiscard]] bool SharesExecutionBudget(
       const geometry::ExecutionContext& context) const noexcept;
   [[nodiscard]] GltfAdmissionProfile AdmissionProfile() const noexcept;
+  [[nodiscard]] const GltfDirectTranslationWorkPolicy& DirectTranslationWork()
+      const noexcept;
   [[nodiscard]] std::span<const std::byte> OriginalJson() const noexcept;
   [[nodiscard]] std::span<const GltfRawNumberView> RawNumbers() const noexcept;
   [[nodiscard]] std::span<const GltfResourceView> Resources() const noexcept;
@@ -352,6 +419,8 @@ enum class GltfValueRequest { kInvalid, kRaw, kRawAndNormalized };
 struct GltfExtractionRequest {
   GltfTriangleRequest triangles = GltfTriangleRequest::kInvalid;
   GltfValueRequest values = GltfValueRequest::kInvalid;
+  GltfProcessingProfile processing_profile =
+      GltfProcessingProfile::kStaticLocalTrianglesV1;
 };
 class GltfPrimitiveExtraction {
  public:
@@ -359,6 +428,11 @@ class GltfPrimitiveExtraction {
   GltfPrimitiveExtraction& operator=(const GltfPrimitiveExtraction&);
   ~GltfPrimitiveExtraction();
   [[nodiscard]] std::uint64_t SourceMode() const noexcept;
+  [[nodiscard]] GltfProcessingProfile ProcessingProfile() const noexcept;
+  [[nodiscard]] std::optional<GltfDirectTranslationProofView>
+  DirectTranslation() const noexcept;
+  [[nodiscard]] const GltfDirectTranslationObservation* DirectTranslationFacts()
+      const noexcept;
   // Draft workflow-support accessor under qualification. Current live fresh
   // extraction requests under the existing mandatory extraction cap.
   [[nodiscard]] std::uint64_t NewRequestedBytes() const noexcept;
@@ -378,6 +452,7 @@ class GltfPrimitiveExtraction {
 struct GltfExtractionResult {
   std::optional<GltfPrimitiveExtraction> extraction;
   GltfDiagnostic diagnostic;
+  std::optional<GltfDirectTranslationObservation> direct_translation = {};
 };
 [[nodiscard]] GltfExtractionResult ExtractGltfPrimitive(
     const GltfAsset& asset, const GltfPrimitiveHandle& primitive,

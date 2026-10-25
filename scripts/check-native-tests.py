@@ -31,7 +31,7 @@ COMMON_TESTS = frozenset({
     "off_interchange", "off_requests",
     "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
     "gltf_read", "gltf_execution_budget", "gltf_resources", "gltf_write", "gltf_metadata",
-    "gltf_accessor", "gltf_extract", "gltf_json_snapshot",
+    "gltf_accessor", "gltf_extract", "gltf_direct_translation", "gltf_json_snapshot",
     "gltf_workflow_read", "gltf_workflow_read_large_index",
 })
 PROFILE_TESTS = {
@@ -44,6 +44,7 @@ COMMON_INSTALLED_TESTS = frozenset({
     "installed_off_consumer",
     "installed_interchange_consumer", "installed_obj_bundle_consumer",
     "installed_execution_dependency_consumer", "installed_gltf_consumer",
+    "installed_gltf_direct_translation_consumer",
     "installed_glb_consumer", "installed_gltf_write_consumer",
     "installed_gltf_workflow_read_consumer",
 })

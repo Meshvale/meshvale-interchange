@@ -9,11 +9,16 @@ corner maps. The broader [asset proposal](gltf.md) includes future Geometry
 transfer, editing and publication. The [retained memory writer](gltf_write.md)
 preserves an unchanged admitted asset. Python remains OBJ-only.
 
-The [selected direct translation contract](gltf-translation.md) specifies a
-future explicit processing profile with source-bound animation admission.
-Its implementation and qualification are pending. The static default and
-unsupported-capability behavior documented here remain unchanged; retaining
-animation records does not provide that future admission proof.
+The opt-in [direct translation extraction profile](gltf-translation.md) adds
+source-bound admission for dense LINEAR/STEP node-translation tracks. Its
+[installed example](../examples/consumer/gltf_translation.cpp) demonstrates the
+public limits, observation and retained proof. `GltfExtractionRequest` defaults
+to `kStaticLocalTrianglesV1`; selecting `kDirectTranslationTrianglesV1` requires
+explicit positive translation limits and the work policy retained by the asset.
+An accepted extraction owns its source and proof; borrowed proof spans and facts
+require that extraction owner to remain alive. Translation-aware checked writing,
+output inspection and publication are pending. The static behavior below remains
+unchanged; retained animation records alone are not admission proof.
 
 ## Read and ownership
 
@@ -101,8 +106,8 @@ does not transform or merge scene instances.
 Supported POSITION, NORMAL, TANGENT, TEXCOORD, COLOR and authored custom scalar/
 vector channels retain component type, shape, normalization declaration, exact
 typed raw values/bounds and dense/sparse provenance. JOINTS/WEIGHTS, morph and
-animation effects, custom vertex matrices and non-triangle modes report their
-unsupported processing capability. Sparse selectors are validated and applied to
+animation effects under the default static profile, custom vertex matrices and
+non-triangle modes report their unsupported processing capability. Sparse selectors are validated and applied to
 base or implicit-zero rows. Cross-document accessor/view roles are checked before
 selected decoding; extraction preserves source index encodings alongside converted
 triangle indices.
