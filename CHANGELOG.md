@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Documentation
+
+- Select the [source-version profile](docs/versioning.md) for tagged and
+  Git-free builds; its extended implementation and qualification are pending.
+
 ### Fixed
 
 - ASCII PLY, OFF and STL output preserves binary64 subnormal values when the
