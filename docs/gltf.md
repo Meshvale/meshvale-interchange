@@ -19,6 +19,11 @@ Complete core semantic admission remains outside the finite reader: successful p
 layout checks or a valid fixture do not establish every graph, accessor-role,
 skin, morph or animation constraint.
 
+The separate [direct translation contract](gltf-translation.md) selects an
+explicit translation-only processing profile for checked local mesh selection.
+Implementation and qualification are pending; it does not broaden this proposal
+into skinning, morph processing or complete animation support.
+
 ## GLTF-DOCUMENT-001: Owned asset snapshots
 
 The proposed asset is an immutable, format-owned snapshot of the complete

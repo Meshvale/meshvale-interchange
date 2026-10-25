@@ -9,6 +9,12 @@ corner maps. The broader [asset proposal](gltf.md) includes future Geometry
 transfer, editing and publication. The [retained memory writer](gltf_write.md)
 preserves an unchanged admitted asset. Python remains OBJ-only.
 
+The [selected direct translation contract](gltf-translation.md) specifies a
+future explicit processing profile with source-bound animation admission.
+Its implementation and qualification are pending. The static default and
+unsupported-capability behavior documented here remain unchanged; retaining
+animation records does not provide that future admission proof.
+
 ## Read and ownership
 
 `ReadGltfAsset` requires explicit `GltfReadLimits`, `GltfWorkPolicy`, a shared
