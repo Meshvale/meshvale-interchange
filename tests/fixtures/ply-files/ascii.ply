@@ -1,0 +1,31 @@
+ply
+format ascii 1.0
+comment original typed polygons
+element vertex 8
+property char sample_i8
+property float y
+property uchar sample_u8
+property short sample_i16
+property float z
+property ushort sample_u16
+property int sample_i32
+property float x
+property uint sample_u32
+property double sample_f64
+property list uchar short samples
+element face 3
+property float weight
+property list ushort uint bins
+property list uchar int vertex_indices
+end_header
+-128 0 0 -32768 0 0 -2147483648 -0 0 .1 0
+-1 0 1 -1 0 1 -1 1 1 -0 1 -32768
+0 1 2 0 0 2 0 1 2 4.9406564584124654e-324 2 -1 0
+1 1 3 1 0 3 1 0 3 1.7976931348623157e308 3 1 2 3
+2 0 4 2 0 4 2 2 4 1 0
+3 0 5 3 0 5 3 3 5 2 1 4
+126 1 6 32766 0 65534 2147483646 2 4294967294 3 2 5 6
+127 -0 255 32767 5 65535 2147483647 99 4294967295 4 1 32767
+.5 2 7 4294967295 4 0 1 2 3
+.5 2 7 4294967295 4 2 3 0 1
+-0 0 3 4 5 6

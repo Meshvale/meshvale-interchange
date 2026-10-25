@@ -1,1 +1,4 @@
 .git_archival.txt export-subst
+
+# Original wire fixtures retain exact mixed text/binary bytes.
+tests/fixtures/ply-files/ascii.ply -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

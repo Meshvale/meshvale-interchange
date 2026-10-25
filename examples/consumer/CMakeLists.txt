@@ -68,6 +68,20 @@ if(MESHVALE_INTERCHANGE_OFF_FILES)
   add_subdirectory(../off-files-consumer
     "${CMAKE_CURRENT_BINARY_DIR}/off-files-consumer")
 endif()
+set(meshvale_ply_files_default OFF)
+if(TARGET meshvale::ply_files)
+  set(meshvale_ply_files_default ON)
+endif()
+option(MESHVALE_INTERCHANGE_PLY_FILES
+  "Check installed retained PLY files and verified publication"
+  "${meshvale_ply_files_default}")
+if(MESHVALE_INTERCHANGE_PLY_FILES)
+  if(NOT TARGET meshvale::ply_files)
+    message(FATAL_ERROR "Requested installed PLY files target is unavailable")
+  endif()
+  add_subdirectory(../ply-files-consumer
+    "${CMAKE_CURRENT_BINARY_DIR}/ply-files-consumer")
+endif()
 add_subdirectory(../ply-consumer "${CMAKE_CURRENT_BINARY_DIR}/ply-consumer")
 if(MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT AND MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE STREQUAL "${_MESHVALE_INTERCHANGE_PROFILE_QUALIFIED}")
   add_executable(meshvale_gltf_workflow_support_consumer gltf_workflow_support.cpp)

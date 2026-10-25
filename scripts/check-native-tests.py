@@ -15,6 +15,7 @@ TOPOLOGY_WRITE_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE"
 WORKFLOW_SUPPORT_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT"
 GLTF_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_FILES"
 OFF_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_OFF_FILES"
+PLY_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_PLY_FILES"
 TOPOLOGY_WRITE_ON = "ON"
 TOPOLOGY_WRITE_OFF = "OFF"
 TOPOLOGY_WRITE_STATES = (TOPOLOGY_WRITE_ON, TOPOLOGY_WRITE_OFF)
@@ -77,6 +78,8 @@ GLTF_FILE_UNSUPPORTED_TESTS = frozenset({
 })
 OFF_FILE_TESTS = frozenset({"off_files_consumer", "off_files_semantics", "off_files_requests"})
 OFF_FILE_INSTALLED_TESTS = frozenset({"installed_off_files_consumer"})
+PLY_FILE_TESTS = frozenset({"ply_files_consumer", "ply_files_semantics", "ply_files_requests"})
+PLY_FILE_INSTALLED_TESTS = frozenset({"installed_ply_files_consumer"})
 GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({
     "installed_gltf_file_publish_consumer", "installed_gltf_file_publish_glb_consumer",
 })
@@ -103,7 +106,7 @@ def cache_value(cache, name, expected_type):
 
 
 def validate_cache(cache, profile, configuration, topology_write=True,
-                   workflow_support=None, gltf_files=None, off_files=None):
+                   workflow_support=None, gltf_files=None, off_files=None, ply_files=None):
     if cache_value(cache, PROFILE_CACHE_KEY, STRING_CACHE_TYPE) != profile:
         raise ValueError("materialization CLI profile differs from configured CMake profile")
     if cache_value(cache, TESTING_CACHE_KEY, BOOL_CACHE_TYPE).upper() not in TRUE_CACHE_VALUES:
@@ -123,6 +126,10 @@ def validate_cache(cache, profile, configuration, topology_write=True,
         actual_off_files = cache_value(cache, OFF_FILES_CACHE_KEY, BOOL_CACHE_TYPE)
         if (actual_off_files.upper() in TRUE_CACHE_VALUES) != off_files:
             raise ValueError("OFF files selection differs from configured CMake option")
+    if ply_files is not None:
+        actual_ply_files = cache_value(cache, PLY_FILES_CACHE_KEY, BOOL_CACHE_TYPE)
+        if (actual_ply_files.upper() in TRUE_CACHE_VALUES) != ply_files:
+            raise ValueError("PLY files selection differs from configured CMake option")
     if CONFIGURATIONS_CACHE_KEY in cache:
         configurations = cache_value(cache, CONFIGURATIONS_CACHE_KEY, STRING_CACHE_TYPE).split(";")
         if configuration not in configurations:
@@ -145,7 +152,7 @@ def validate_compiler(build_dir, expected_id, expected_version):
 
 
 def expected_inventory(profile, installed=False, topology_write=True,
-                       workflow_support=False, gltf_files=False, off_files=False):
+                       workflow_support=False, gltf_files=False, off_files=False, ply_files=False):
     common = COMMON_INSTALLED_TESTS if installed else COMMON_TESTS
     specific = PROFILE_INSTALLED_TESTS if installed else PROFILE_TESTS
     expected = common | specific[profile]
@@ -168,6 +175,8 @@ def expected_inventory(profile, installed=False, topology_write=True,
             expected |= GLTF_FILE_UNSUPPORTED_TESTS
     if off_files:
         expected |= OFF_FILE_INSTALLED_TESTS if installed else OFF_FILE_TESTS
+    if ply_files:
+        expected |= PLY_FILE_INSTALLED_TESTS if installed else PLY_FILE_TESTS
     return expected
 
 
@@ -198,6 +207,8 @@ def main():
                         help="Defaults to the native configured files option")
     parser.add_argument("--off-files", choices=TOPOLOGY_WRITE_STATES,
                         help="Defaults to the native configured OFF files option")
+    parser.add_argument("--ply-files", choices=TOPOLOGY_WRITE_STATES,
+                        help="Defaults to the native configured PLY files option")
     args = parser.parse_args()
     try:
         checked = []
@@ -211,6 +222,9 @@ def main():
         off_selection = (cache_value(native_cache, OFF_FILES_CACHE_KEY, BOOL_CACHE_TYPE)
                          if args.off_files is None else args.off_files)
         off_files = off_selection.upper() in TRUE_CACHE_VALUES
+        ply_selection = (cache_value(native_cache, PLY_FILES_CACHE_KEY, BOOL_CACHE_TYPE)
+                         if args.ply_files is None else args.ply_files)
+        ply_files = ply_selection.upper() in TRUE_CACHE_VALUES
         for build_dir, installed in ((args.build_dir, False),
                                      (args.installed_build_dir, True)):
             if build_dir is None:
@@ -218,7 +232,7 @@ def main():
             validate_cache(cache_entries(build_dir / "CMakeCache.txt"),
                            args.materialization_profile, args.configuration,
                            args.topology_write == TOPOLOGY_WRITE_ON, workflow_support,
-                           gltf_files, off_files)
+                           gltf_files, off_files, ply_files)
             validate_compiler(build_dir, args.compiler_id, args.compiler_version)
             checked.append(("installed" if installed else "native",
                             validate_inventory(build_dir, args.configuration,
@@ -227,14 +241,15 @@ def main():
                                                                   args.topology_write == TOPOLOGY_WRITE_ON,
                                                                   workflow_support,
                                                                   gltf_files,
-                                                                  off_files))))
+                                                                  off_files,
+                                                                  ply_files))))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     for label, names in checked:
         print(f"{label}: verified {len(names)} test entries; materialization "
               f"{args.materialization_profile}; topology writer {args.topology_write}; "
               f"workflow support {support}; glTF files {files}; OFF files {off_selection}; "
-              f"{args.configuration}; {names}")
+              f"PLY files {ply_selection}; {args.configuration}; {names}")
 
 
 if __name__ == "__main__":

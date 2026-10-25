@@ -61,7 +61,16 @@ The [installed codec example](examples/ply-consumer/README.md) demonstrates
 cross-encoding physical write/reload. A separate [installed Repair example](examples/ply-repair-consumer/README.md)
 uses the existing Repair engine and checks its correspondence maps and retained
 properties before writing the accepted candidate. Writing requires an explicit
-canonical rewrite policy. Qualification is in progress; verified file publication,
+canonical rewrite policy.
+
+The optional [PLY file interface](docs/ply-files.md), `meshvale::ply_files`,
+captures retained regular files and publishes a verified new directory with an
+optional computed receipt. Publication checks complete typed values and wire
+schema before a native commit without replacement. The self-contained
+[installed file example](examples/ply-files-consumer/README.md) demonstrates
+unchanged and selected-face publication across all encodings, retained source
+ownership and independent physical readback. Enable
+`MESHVALE_INTERCHANGE_PLY_FILES=ON` to build it. Qualification is in progress;
 Python and application entry points remain separate.
 
 ## Native GLB containers
