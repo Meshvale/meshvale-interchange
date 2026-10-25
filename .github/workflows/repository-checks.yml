@@ -226,6 +226,7 @@ jobs:
           -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_GLTF_FILES=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_OFF_FILES=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_PLY_FILES=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -274,6 +275,7 @@ jobs:
           -DMESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_GLTF_FILES=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_OFF_FILES=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_PLY_FILES=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"

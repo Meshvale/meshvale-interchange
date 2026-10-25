@@ -23,6 +23,13 @@
 
 ### Added
 
+- Optional retained typed PLY capture and verified new-directory publication
+  through `meshvale::ply_files`. Publication verifies complete scalar/list values,
+  wire schema and explicit destination encoding before a computed receipt and
+  commit without replacement. A standalone installed example exercises source
+  removal, unchanged/selected face rows, all encodings and physical readback.
+  Qualification is in progress; Python entry points remain separate.
+
 - Optional retained OFF file capture and verified new-directory publication
   through `meshvale::off_files`. Publication reloads the staged entry, verifies
   complete file bytes and an optional computed receipt, and commits without

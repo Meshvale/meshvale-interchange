@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--output", type=Path, help="New directory for receipt.json")
     args = parser.parse_args()
     results = []
+    attribute_results = []
     commands = []
     if args.output:
         assert not args.output.exists(), args.output
@@ -34,18 +35,25 @@ def main():
 
     def save_partial(pending=None):
         if args.output:
-            (args.output / "receipt.json").write_text(json.dumps({"completed": False, "pending_case": pending, "case_count": len(results), "cases": results, "commands": commands}, indent=2) + "\n", encoding="utf-8")
+            (args.output / "receipt.json").write_text(json.dumps({"completed": False, "pending_case": pending, "case_count": len(results), "cases": results, "attribute_cases": attribute_results, "commands": commands}, indent=2) + "\n", encoding="utf-8")
 
     save_partial("tool-discovery")
     cmake, git = shutil.which(args.cmake), shutil.which(args.git)
     if not cmake or not git:
         parser.error("CMake 3.24+ and Git are required for the identity probe")
     assert (ROOT / ".git_archival.txt").read_text(encoding="utf-8") == MARKER
-    assert (ROOT / ".gitattributes").read_text(encoding="utf-8") == ATTRIBUTES
+    root_attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
     environment = os.environ.copy()
     for key in list(environment):
-        if key in {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"}:
+        if key.upper().startswith("GIT_"):
             del environment[key]
+    # Fixture Git must not inherit caller configuration or attribute rules.
+    environment["GIT_CONFIG_NOSYSTEM"] = "1"
+    environment["GIT_CONFIG_GLOBAL"] = os.devnull
+    environment["GIT_ATTR_NOSYSTEM"] = "1"
+    environment["GIT_CONFIG_COUNT"] = "1"
+    environment["GIT_CONFIG_KEY_0"] = "core.attributesFile"
+    environment["GIT_CONFIG_VALUE_0"] = os.devnull
 
     def record_command(command, process):
         ordinal = len(commands)
@@ -94,6 +102,33 @@ def main():
             run([git, "-C", str(path), "add", "--all"])
             run([git, "-C", str(path), "commit", "-qm", "Original identity fixture"])
             return path
+
+        def attribute_archive(name, attributes, expanded):
+            literal = "node: $Format:%H$\n"
+            path = source("attribute-rule-" + name, marker=literal)
+            (path / ".gitattributes").write_text(attributes, encoding="utf-8", newline="\n")
+            repository(path)
+            node = run([git, "-C", str(path), "rev-parse", "HEAD"]).decode("ascii").strip()
+            archive_path = temporary / ("attribute-rule-" + name + ".tar")
+            run([git, "-c", "core.attributesFile=" + os.devnull, "-C", str(path),
+                 "archive", "--format=tar", "--output", str(archive_path), "HEAD"])
+            with tarfile.open(archive_path, "r:") as archive:
+                observed = archive.extractfile(".git_archival.txt").read()
+            expected = ("node: " + node + "\n" if expanded else literal).encode("ascii")
+            assert observed == expected, (name, observed, expected)
+            attribute_results.append({"case": name, "expanded": expanded,
+                                      "actual_node": node,
+                                      "archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+                                      "observed_marker_sha256": hashlib.sha256(observed).hexdigest()})
+            save_partial("attribute-control-complete")
+
+        # Git's text `check-attr` output cannot distinguish boolean true from a
+        # value assignment of `set`. Actual archive substitution is the witness.
+        attribute_archive("repository", root_attributes, True)
+        attribute_archive("unrelated-rule", root_attributes + "unrelated.txt -text\n", True)
+        attribute_archive("missing-rule", "unrelated.txt -text\n", False)
+        attribute_archive("overridden-rule", ATTRIBUTES + ".git_archival.txt -export-subst\n", False)
+        attribute_archive("value-assigned-set", ".git_archival.txt export-subst=set\n", False)
 
         def tag(path, value, annotated=False):
             command = [git, "-C", str(path), "tag"]
@@ -283,6 +318,8 @@ def main():
 
     result = {"completed": True, "scope": "CMake-only source identity/config-version and original Git/archive fixtures; no native compilation, backend build or release/runtime-floor evidence.",
               "case_count": len(results), "cases": results, "commands": commands,
+              "attribute_case_count": len(attribute_results), "attribute_cases": attribute_results,
+              "attributes_sha256": hashlib.sha256((ROOT / ".gitattributes").read_bytes()).hexdigest(),
               "module_sha256": hashlib.sha256((ROOT / "cmake/SourceVersion.cmake").read_bytes()).hexdigest(),
               "pinned_python_route_limits": ["No-tag archive may fail pinned SCM before CMake", "Interfering numeric tag may preempt SCM", "Untracked source plus stable FULL intentionally conflicts"]}
     if args.output:

@@ -63,6 +63,23 @@ python scripts/check-cpp-format.py --formatter clang-format
 
 The checker selects tracked and nonignored untracked `.h`, `.hpp` and `.cpp` files from Git and requires formatter version `23.1.3`; pass a tool executable through `--formatter` when it is outside the shell path. Formatting verifies layout and include ordering, not API naming, ownership or algorithm correctness. Existing public snake-case names retain their contract; a separate verified migration must address naming.
 
+## Optional PLY files
+
+Enable `MESHVALE_INTERCHANGE_PLY_FILES=ON` to build and install
+`meshvale::ply_files`. The [file contract](docs/ply-files.md) owns retained capture,
+current typed/schema bounds, verified receipt publication and native commit
+semantics. The [standalone example](examples/ply-files-consumer/README.md) links
+only installed public targets, exercises all three encodings and preserves typed
+properties after explicit Geometry face selection. Use the same compiler, runtime
+and materialization profile for producer and consumer.
+
+The native inventory checker accepts `--ply-files ON|OFF`, defaults to the native
+cache selection and requires the same value in an installed consumer cache.
+Enabled profiles require three actual native suites and one installed suite;
+unsupported profiles execute genuine empty publication and nonempty/point refusal.
+Native and sanitizer routes enable this target alongside the other optional file
+modules. Binary fixture source bytes are published as exact hexadecimal text.
+
 ## Optional OFF files
 
 Set `MESHVALE_INTERCHANGE_OFF_FILES=ON` to build and install `meshvale::off_files`
@@ -148,11 +165,11 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 39; installed 19 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 39; installed 19 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 39; installed 19 |
-| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 30; installed 15 |
-| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 30; installed 15 |
+| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 45; installed 21 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 45; installed 21 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 45; installed 21 |
+| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 36; installed 17 |
+| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 36; installed 17 |
 | Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 22; installed 11 |
 
 These inventories include STL, OFF and PLY codec/request tests and their installed
@@ -245,8 +262,8 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON/GLB and OFF files and require Interchange's qualified 42 suites,
-twenty base installed test entries and the separate OFF and PLY Repair tests. Geometry
+Both lanes enable JSON/GLB, OFF and PLY files and require Interchange's qualified 45 suites,
+twenty-one base installed test entries and the separate OFF and PLY Repair tests. Geometry
 requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an
