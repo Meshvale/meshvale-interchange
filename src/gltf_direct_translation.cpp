@@ -348,17 +348,18 @@ void Membership(DirectTranslationState& proof,
   for (std::size_t node = 0; node < asset.nodes.size(); ++node) {
     allocation.Checkpoint();
     ++proof.facts.node_rows;
+    const auto row = node_row.value();
     if (asset.nodes[node].mesh == proof.primitive.mesh_index) {
       ++proof.facts.mesh_users;
       Limit(proof.facts.mesh_users > limits.max_mesh_users);
-      if (asset.nodes[node].skin || FindMember(doc, *node_row, kWeights))
+      if (asset.nodes[node].skin || FindMember(doc, row, kWeights))
         Unsupported();
       proof.membership[node] |= GltfDirectTranslationProofView::kMeshUser;
       MetadataLimit(proof, limits, 1);
       proof.users.push_back(node);
       MetadataLimit(proof, limits);
     }
-    node_row = doc.NextSibling(*node_row);
+    node_row = doc.NextSibling(row);
   }
   for (const auto user : proof.users)
     for (auto parent = asset.nodes[Host(user)].parent; parent;
