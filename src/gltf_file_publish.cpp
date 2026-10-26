@@ -25,6 +25,7 @@
 #include "glb_detail.h"
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_direct_translation.h"
 #include "gltf_file_publish_internal.h"
 #include "gltf_files_internal.h"
 #include "gltf_files_test_internal.h"
@@ -97,6 +98,17 @@ Status InspectionStatus(GltfTopologyOutputInspectionStatus status) noexcept {
       return Status::kCanceled;
     default:
       return Status::kPreservationMismatch;
+  }
+}
+void TranslationConfiguration(const GltfDirectTranslationLimits& limits,
+                              const GltfDirectTranslationWorkPolicy& work) {
+  try {
+    allocation::ValidateDirectTranslationConfiguration(limits, work);
+  } catch (const allocation::GltfFailure& failure) {
+    detail::Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
+                 failure.Diagnostic().code == GltfDiagnosticCode::kZeroLimit
+                     ? Code::kRequiredFieldZero
+                     : Code::kConfigurationExtent);
   }
 }
 struct PathRecord {
@@ -245,6 +257,8 @@ class Publication {
                    Code::kSourceIdentity);
     GltfExtractionRequest extraction_request;
     const auto& source_extraction = original.SourceExtraction();
+    extraction_request.processing_profile =
+        source_extraction.ProcessingProfile();
     const auto mode = source_extraction.SourceMode();
     extraction_request.triangles =
         !request_.inspected_output.Output().ChangedBinding() &&
@@ -258,6 +272,7 @@ class Publication {
     auto extracted = ExtractGltfPrimitiveCapped(*initial.asset, *primitive,
                                                 extraction_request,
                                                 limits_.extraction, stop_);
+    result_.translation_extraction = extracted.direct_translation;
     if (!extracted.extraction) {
       GltfFileDiagnostic diagnostic;
       diagnostic.status = DelegatedStatus(extracted.diagnostic.status);
@@ -274,6 +289,7 @@ class Publication {
         *extracted.extraction};
     auto inspection = InspectGltfTopologyOutput(
         inspection_request, limits_.inspection, work_.inspection, stop_);
+    result_.translation_inspection = inspection.direct_translation;
     if (!inspection.inspection) {
       GltfFileDiagnostic diagnostic;
       diagnostic.status = InspectionStatus(inspection.status);
@@ -761,6 +777,15 @@ GltfFilePublicationResult detail::TestPublishGltfTopologyBundle(
   GltfFilePublicationResult result;
   try {
     ValidatePublicationConfiguration(limits, work);
+    if (request.inspected_output.Source()
+            .SourceExtraction()
+            .ProcessingProfile() ==
+        GltfProcessingProfile::kDirectTranslationTrianglesV1) {
+      TranslationConfiguration(limits.extraction.direct_translation,
+                               work.reload.direct_translation);
+      TranslationConfiguration(limits.inspection.direct_translation,
+                               work.inspection.direct_translation);
+    }
     Count(
         options.supplemental_files.size(),
         static_cast<std::uint64_t>(std::numeric_limits<std::ptrdiff_t>::max()) /

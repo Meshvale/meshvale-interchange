@@ -29,6 +29,7 @@
 #include "../src/gltf_files_test_internal.h"
 #include "../src/gltf_operation_workers.h"
 #include "gltf_file_publish_glb_fixture.h"
+#include "gltf_file_publish_translation_fixture.h"
 
 namespace {
 namespace ic = meshvale::interchange;
@@ -880,6 +881,7 @@ int main(int argc, char** argv) {
     if (unsupported)
       UnsupportedDependency();
     else {
+      ic::test_translation_publication::Positive(true);
       IdentityAndChangedPadding();
       BothProducers();
       ConfigurationPriority();

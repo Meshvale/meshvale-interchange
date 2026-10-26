@@ -4,11 +4,9 @@
 
 ### Documentation
 
-- Select the [direct translation contract](docs/gltf-translation.md) for a future
-  explicit translation-only glTF/GLB processing profile, including owned proof,
-  checked preservation, limits and typed facts. Native extraction admission and
-  owned proof are implemented; translation-aware writing, inspection, publication
-  and full workflow qualification remain pending. Static defaults are unchanged.
+- Document the opt-in [direct translation profile](docs/gltf-translation.md)
+  through native extraction, checked topology output, independent inspection and
+  JSON/GLB publication. Full workflow and release qualification remain separate.
 
 - Document the implemented [source-version profile](docs/versioning.md) and its
   compiler-free metadata checks. Release/runtime qualification remains separate.
@@ -36,8 +34,12 @@
 - Opt-in direct node-translation extraction with dense FLOAT LINEAR/STEP sample
   validation, all-user/ancestor inventory, owned proof, actual work observations
   and explicit shared-budget limits. An installed native example demonstrates
-  source/proof lifetimes. Translation-aware output and file workflows remain
-  pending.
+  source/proof lifetimes. Checked topology output and independent inspection
+  revalidate the actual source/reload under explicit per-operation limits/work.
+  JSON/GLB publication retains real staged extraction/inspection observations,
+  validates new-profile configuration before staging and preserves original
+  animation/resource bytes through commit. Installed examples exercise memory
+  and physical changed/identity LINEAR/STEP flows. Static defaults are unchanged.
 
 - Optional retained typed PLY capture and verified new-directory publication
   through `meshvale::ply_files`. Publication verifies complete scalar/list values,

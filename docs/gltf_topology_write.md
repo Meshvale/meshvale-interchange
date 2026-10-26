@@ -17,9 +17,11 @@ removing a face. The separate native target provides the supplied-memory
 operation. It is a development interface with the qualification boundary below;
 no stable release is established.
 
-The [selected direct translation contract](gltf-translation.md) specifies future
-strong admission proof and independent revalidation for an explicit translation
-profile. Implementation and qualification are pending. The current static writer
+The opt-in [direct translation profile](gltf-translation.md) requires a genuine
+retained source proof and revalidates it under explicit writer limits/work before
+checked output. Results and successful output owners retain actual validation
+facts; the [installed memory example](../examples/consumer/gltf_translation_output.cpp)
+demonstrates the native path under qualification. The current static writer
 guard and defaults remain unchanged; suppressing a capability refusal is not
 animation-preserving output.
 

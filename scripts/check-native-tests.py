@@ -85,6 +85,7 @@ PLY_FILE_TESTS = frozenset({"ply_files_consumer", "ply_files_semantics", "ply_fi
 PLY_FILE_INSTALLED_TESTS = frozenset({"installed_ply_files_consumer"})
 GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({
     "installed_gltf_file_publish_consumer", "installed_gltf_file_publish_glb_consumer",
+    "installed_gltf_translation_publish_consumer",
 })
 
 
