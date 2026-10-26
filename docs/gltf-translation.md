@@ -4,16 +4,22 @@
 |---|---|
 | ID | GLTF-DIRECT-TRANSLATION-001 |
 | Version | 0.1.0 |
-| Status | Development extraction foundation implemented; remaining interfaces and full qualification pending |
-| Interfaces | Native extraction in [gltf.h](../include/meshvale/interchange/gltf.h); planned [checked writing](gltf_topology_write.md), [output inspection](gltf-workflow-support.md) and [file publication](gltf-files.md) additions |
+| Status | Native extraction, checked output/inspection and JSON/GLB publication implemented under qualification |
+| Interfaces | Native [extraction](../include/meshvale/interchange/gltf.h), [checked writing](gltf_topology_write.md), [output inspection](gltf-workflow-support.md) and [file publication](gltf-files.md) |
 
-The extraction foundation is available in [gltf.h](../include/meshvale/interchange/gltf.h):
-explicit profile selection, translation limits/work policy, actual extraction
-observations and an owned admission proof. The [installed extraction example](../examples/consumer/gltf_translation.cpp)
-demonstrates that native subset. Additions below for translation-aware checked
-writing, output inspection and file publication remain planned. Current static
-defaults, writer guards and output behavior remain unchanged. Full workflow
-qualification, supported platforms and a stable release remain pending.
+The native interfaces implement explicit profile selection, translation limits
+and per-operation work policies, owned admission proof, checked topology output
+and independent reload inspection. JSON/GLB publication propagates the actual
+profile, validates delegated configuration before staging and retains actual
+staged extraction/inspection observations, including normal failures.
+
+Installed examples cover [extraction](../examples/consumer/gltf_translation.cpp),
+[memory output/inspection](../examples/consumer/gltf_translation_output.cpp) and
+[physical JSON/GLB publication](../examples/consumer/gltf_translation_publish.cpp).
+The profile-specific examples provide bounded native qualification evidence;
+the complete qualification boundary below remains open. Static remains the
+default. Application/Repair integration, supported platforms and a stable release
+remain separate.
 
 The selected profile permits checked whole-triangle selection on a mesh with
 direct node-translation tracks, retaining the authored animation and resources.

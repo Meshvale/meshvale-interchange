@@ -28,6 +28,7 @@
 #include "gltf_allocation.h"
 #include "gltf_topology_write_internal.h"
 #include "gltf_topology_write_workers.h"
+#include "gltf_translation_output_fixture.h"
 
 namespace {
 namespace mv = meshvale::interchange;
@@ -604,9 +605,254 @@ void SharedLedgerSaturation() {
   fixture.CheckSource(input_baseline);
 }
 
+struct TranslationStopBackend {
+  struct Slot {
+    detail::NativeWorkerRecord original;
+    std::stop_source* stop = nullptr;
+  };
+  std::array<Slot, gltf_translation_output_fixture::kJobs> slots;
+  std::stop_source stop;
+  detail::NativeWorkerBackend real = detail::DefaultNativeWorkerBackend();
+  std::size_t launched = 0;
+  std::size_t joined = 0;
+  static void Invoke(detail::NativeWorkerRecord& record) noexcept {
+    auto& slot = *static_cast<Slot*>(record.state);
+    slot.original.entry(slot.original);
+    // An actual native callback has run; cancellation is requested inside the
+    // validator, before proof comparison/ordinary output construction.
+    slot.stop->request_stop();
+  }
+  static std::uintptr_t Launch(detail::NativeWorkerRecord* record,
+                               void* opaque) {
+    auto& self = *static_cast<TranslationStopBackend*>(opaque);
+    if (record->ordinal >= self.slots.size())
+      throw std::runtime_error("translation fixture worker slot extent");
+    auto& slot = self.slots[record->ordinal];
+    slot.original = *record;
+    slot.stop = &self.stop;
+    record->entry = Invoke;
+    record->state = &slot;
+    const auto handle = self.real.launch(record, self.real.state);
+    ++self.launched;
+    return handle;
+  }
+  static void Join(std::uintptr_t handle, void* opaque) noexcept {
+    auto& self = *static_cast<TranslationStopBackend*>(opaque);
+    self.real.join(handle, self.real.state);
+    ++self.joined;
+  }
+};
+void DirectTranslationWriting() {
+  namespace moving = gltf_translation_output_fixture;
+  geo::ExecutionContext context({4, 1, 2 * moving::kMiB});
+  for (bool step : {false, true})
+    for (bool identity : {false, true})
+      for (bool serial : {false, true}) {
+        const auto source = moving::Source(context, step);
+        const auto candidate = moving::Candidate(source, identity);
+        const auto result = mv::WriteGltfTopologySelection(
+            {source, candidate, moving::Faces(identity),
+             moving::Corners(identity)},
+            moving::WriteLimits(), moving::WriteWork(serial));
+        Require(result.status == mv::GltfTopologyWriteStatus::kSuccess &&
+                    result.bundle && result.direct_translation &&
+                    result.direct_translation->complete,
+                "real moving writer revalidation and returned owner");
+        moving::CheckLiteral(*result.bundle, identity, step);
+        Require(
+            result.bundle->DirectTranslationFacts() &&
+                result.bundle->DirectTranslationFacts()->keys_checked == 2 &&
+                result.direct_translation->work.parallel_min_keys ==
+                    moving::TranslationWork(serial).parallel_min_keys &&
+                result.direct_translation->execution.launched_workers ==
+                    result.direct_translation->execution.joined_workers,
+            "actual unique sampler keys, explicit W work and joined workers");
+        if (serial)
+          Require(result.direct_translation->execution.launched_workers == 0,
+                  "explicit serial W selection");
+      }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "moving writer owns and releases every source/output request");
+  {
+    const auto source = moving::Source(context);
+    const auto candidate = moving::Candidate(source);
+    const mv::GltfTopologyWriteRequest request{
+        source, candidate, moving::kChangedFaces, moving::kChangedCorners};
+    auto invalid_work = moving::WriteWork();
+    invalid_work.direct_translation.max_jobs = 0;
+    const auto invalid = mv::WriteGltfTopologySelection(
+        request, moving::WriteLimits(), invalid_work);
+    Require(!invalid.bundle &&
+                invalid.status ==
+                    mv::GltfTopologyWriteStatus::kInvalidConfiguration &&
+                invalid.diagnostic.stage ==
+                    mv::GltfTopologyWriteStage::kAdmission &&
+                !invalid.direct_translation,
+            "new W work is admitted before helper entry");
+    geo::ExecutionContext other_context({4, 1, 2 * moving::kMiB});
+    const auto other_source = moving::Source(other_context);
+    const auto other_candidate = moving::Candidate(other_source);
+    const auto foreign_candidate = mv::WriteGltfTopologySelection(
+        {source, other_candidate, moving::kChangedFaces,
+         moving::kChangedCorners},
+        moving::WriteLimits(), moving::WriteWork());
+    Require(!foreign_candidate.bundle &&
+                foreign_candidate.status ==
+                    mv::GltfTopologyWriteStatus::kForeignBudget &&
+                !foreign_candidate.direct_translation,
+            "foreign real candidate ledger refuses before W validation");
+    constexpr std::uint64_t kSmallOwnerBytes = 4 * moving::kMiB;
+    auto contained_limits = moving::WriteLimits();
+    contained_limits.output.max_output_requested_bytes = kSmallOwnerBytes;
+    auto contained = mv::WriteGltfTopologySelection(request, contained_limits,
+                                                    moving::WriteWork());
+    Require(contained.bundle && contained.direct_translation &&
+                contained.direct_translation->complete &&
+                contained.direct_translation->effective_request_cap > 0 &&
+                contained.direct_translation->effective_request_cap <
+                    kSmallOwnerBytes &&
+                contained_limits.direct_translation.max_new_requested_bytes ==
+                    8 * moving::kMiB &&
+                contained.bundle->NewRequestedBytes() <= kSmallOwnerBytes,
+            "positive small W owner cap contains transient E below unchanged "
+            "validator subcap");
+    contained.bundle.reset();
+    auto limits = moving::WriteLimits();
+    limits.direct_translation.max_total_keys = 1;
+    auto result =
+        mv::WriteGltfTopologySelection(request, limits, moving::WriteWork());
+    Require(!result.bundle &&
+                result.status == mv::GltfTopologyWriteStatus::kLimitExceeded &&
+                result.diagnostic.code ==
+                    mv::GltfTopologyWriteDiagnosticCode::kCountLimit &&
+                result.diagnostic.stage ==
+                    mv::GltfTopologyWriteStage::kVerification &&
+                result.direct_translation &&
+                !result.direct_translation->complete,
+            "W one-under logical keys maps to count rather than unsupported "
+            "profile");
+    limits = moving::WriteLimits();
+    limits.direct_translation.max_new_requested_bytes = 1;
+    result =
+        mv::WriteGltfTopologySelection(request, limits, moving::WriteWork());
+    Require(!result.bundle &&
+                result.status == mv::GltfTopologyWriteStatus::kLimitExceeded &&
+                result.diagnostic.code ==
+                    mv::GltfTopologyWriteDiagnosticCode::kWriterRequestLimit,
+            "W actual transient request seed refuses under its own cap");
+    limits = moving::WriteLimits();
+    limits.output.max_output_requested_bytes = 1;
+    result =
+        mv::WriteGltfTopologySelection(request, limits, moving::WriteWork());
+    Require(!result.bundle &&
+                result.status == mv::GltfTopologyWriteStatus::kLimitExceeded &&
+                !result.direct_translation,
+            "tiny whole-operation cap refuses before validator spending");
+    limits = moving::WriteLimits();
+    limits.output.max_json_bytes = 1;
+    result =
+        mv::WriteGltfTopologySelection(request, limits, moving::WriteWork());
+    Require(!result.bundle &&
+                result.status == mv::GltfTopologyWriteStatus::kLimitExceeded &&
+                result.diagnostic.stage ==
+                    mv::GltfTopologyWriteStage::kLexicalPlanning &&
+                result.direct_translation &&
+                result.direct_translation->complete,
+            "completed W facts retained through genuine later output-count "
+            "failure");
+    TranslationStopBackend stop_backend;
+    auto stop_work = moving::WriteWork();
+    // Existing geometric verification fits one byte partition, so this backend
+    // reaches native launches only for the explicit two-key validator schedule.
+    stop_work.partition_bytes = moving::kMiB;
+    const auto stopped = detail::WriteWithBackend(
+        request, moving::WriteLimits(), stop_work,
+        stop_backend.stop.get_token(), allocation::DefaultAllocationBackend(),
+        {TranslationStopBackend::Launch, TranslationStopBackend::Join,
+         &stop_backend});
+    Require(
+        !stopped.bundle &&
+            stopped.status == mv::GltfTopologyWriteStatus::kCanceled &&
+            stopped.diagnostic.stage ==
+                mv::GltfTopologyWriteStage::kVerification &&
+            stopped.direct_translation &&
+            !stopped.direct_translation->complete &&
+            stop_backend.launched > 0 &&
+            stop_backend.launched == stop_backend.joined &&
+            stopped.direct_translation->execution.launched_workers ==
+                stop_backend.launched &&
+            stopped.direct_translation->execution.joined_workers ==
+                stop_backend.joined &&
+            context.ActiveWorkers() == 0,
+        "real validator callback stop preserves actual joined/partial facts");
+    using Owner = std::vector<std::byte, allocation::Allocator<std::byte>>;
+    constexpr std::byte kPayload{0x5a};
+    constexpr std::size_t kRemaining = 1;
+    const auto occupy = [&](const geo::ExecutionContext& ledger) {
+      const auto available =
+          ledger.TrackedPayloadBudget() - ledger.ActiveTrackedPayload();
+      const auto prefix =
+          allocation::AllocationRequestBytes(1, alignof(std::byte)) - 1;
+      Require(available > prefix + kRemaining,
+              "owned pressure construction headroom");
+      const auto count = available - prefix - kRemaining;
+      const auto charge =
+          allocation::AllocationRequestBytes(count, alignof(std::byte));
+      const auto before = ledger.ActiveTrackedPayload();
+      const allocation::AllocationContext allocator(ledger, {});
+      Owner owner(count, kPayload, allocation::Allocator<std::byte>(allocator));
+      Require(
+          owner.size() == count && owner.capacity() == count &&
+              owner.front() == kPayload && owner.back() == kPayload &&
+              ledger.ActiveTrackedPayload() - before == charge &&
+              ledger.TrackedPayloadBudget() - ledger.ActiveTrackedPayload() ==
+                  kRemaining &&
+              owner.get_allocator().Context().SharesExecutionBudget(allocator),
+          "genuine owned payload/ledger/charge validated before workflow "
+          "expectation");
+      return owner;
+    };
+    const auto baseline = context.ActiveTrackedPayload();
+    geo::ExecutionContext foreign({4, 1, 2 * moving::kMiB});
+    {
+      const auto unrelated = occupy(foreign);
+      result = mv::WriteGltfTopologySelection(request, moving::WriteLimits(),
+                                              moving::WriteWork());
+      Require(result.bundle.has_value(),
+              "occupied foreign ledger does not charge W");
+      result.bundle.reset();
+      {
+        const auto pressure = occupy(context);
+        result = mv::WriteGltfTopologySelection(request, moving::WriteLimits(),
+                                                moving::WriteWork());
+        Require(
+            !result.bundle &&
+                result.status == mv::GltfTopologyWriteStatus::kBudgetExceeded &&
+                result.diagnostic.code ==
+                    mv::GltfTopologyWriteDiagnosticCode::kRequestBudget,
+            "real occupied same ledger refuses independently from roomy "
+            "operation caps");
+      }
+      Require(context.ActiveTrackedPayload() == baseline,
+              "actual pressure freed");
+      result = mv::WriteGltfTopologySelection(request, moving::WriteLimits(),
+                                              moving::WriteWork());
+      Require(result.bundle && result.direct_translation->complete,
+              "same unchanged caps succeed after owned pressure release");
+    }
+    result.bundle.reset();
+    Require(foreign.ActiveTrackedPayload() == 0 &&
+                context.ActiveTrackedPayload() == baseline,
+            "foreign backend/retained source lifetimes release correctly");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "all moving request control owners/workers released");
+}
+
 }  // namespace
 int main() {
   try {
+    DirectTranslationWriting();
     UnsupportedSourceHasNoBridge();
     ParallelAndLifetime();
     OriginalRequestsAndFaults();

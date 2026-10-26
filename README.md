@@ -95,12 +95,17 @@ the query does not allocate or change accounting. The [retained memory writer](d
 emits exact unchanged JSON and shares full immutable resource ownership; its
 [installed example](examples/consumer/gltf_write.cpp) reloads the output.
 
-The development [direct translation extraction profile](docs/gltf-translation.md)
-validates dense LINEAR/STEP node-translation tracks and retains a source-bound
-proof with the extracted local triangles. The [installed extraction example](examples/consumer/gltf_translation.cpp)
-demonstrates explicit limits, facts and owner lifetimes. Translation-aware checked
-writing, output inspection and publication remain pending; static defaults are
-unchanged, and full workflow and release qualification remain separate.
+The opt-in native [direct translation profile](docs/gltf-translation.md) validates
+dense LINEAR/STEP node-translation tracks and retains a source-bound proof with
+local triangles. Checked topology selection and independent output inspection
+preserve the admitted animation, UVs, material bindings and resource bytes.
+JSON/GLB publication verifies the staged reload before committing the new
+directory. Its result includes actual extraction and inspection observations. The installed
+[memory example](examples/consumer/gltf_translation_output.cpp) and
+[publication example](examples/consumer/gltf_translation_publish.cpp) demonstrate
+explicit limits/work policies, changed/identity selections and owner lifetimes.
+Static remains the default. Broader workflow, platform and release qualification
+remain in progress.
 
 The [static raw transfer](docs/gltf-materialization.md) copies an
 extracted primitive into inspected canonical Geometry storage through the

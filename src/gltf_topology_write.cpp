@@ -30,6 +30,7 @@
 
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_direct_translation.h"
 #include "gltf_json_snapshot.h"
 #include "gltf_topology_write_internal.h"
 #include "gltf_topology_write_workers.h"
@@ -110,6 +111,29 @@ void Configuration(const GltfTopologyWriteLimits& limits,
     if (field > std::numeric_limits<std::size_t>::max())
       Reject(Status::kInvalidConfiguration, Stage::kAdmission,
              Code::kConfigurationExtent);
+  }
+}
+void TranslationFailure(const gltf_detail::DirectTranslationResult& result,
+                        Stage stage) {
+  const auto& diagnostic = result.diagnostic;
+  switch (diagnostic.status) {
+    case GltfStatus::kUnsupportedProfile:
+      if (diagnostic.code == GltfDiagnosticCode::kLimitExceeded ||
+          diagnostic.code == GltfDiagnosticCode::kSizeOverflow)
+        Reject(Status::kLimitExceeded, stage,
+               result.request_limit ? Code::kWriterRequestLimit
+                                    : Code::kCountLimit);
+      Reject(Status::kUnsupportedProfile, stage, Code::kSourceCapability);
+    case GltfStatus::kBudgetExceeded:
+      Reject(Status::kBudgetExceeded, stage, Code::kRequestBudget);
+    case GltfStatus::kCanceled:
+      Reject(Status::kCanceled, stage, Code::kStopRequested);
+    case GltfStatus::kResourceBindingMismatch:
+      Reject(Status::kSourceContractFailure, stage, Code::kSourceProvenance, {},
+             {}, diagnostic.json_span);
+    default:
+      Reject(Status::kSourceContractFailure, stage, Code::kSourceDescriptor, {},
+             {}, diagnostic.json_span);
   }
 }
 void Bound(std::size_t count, std::uint64_t limit, Stage stage) {
@@ -473,6 +497,7 @@ struct BundleState {
   ByteBlock uri;
   ByteBlock json;
   std::optional<GltfTopologyBindingChange> change;
+  std::optional<GltfDirectTranslationObservation> direct_translation;
 #if defined(MESHVALE_INTERCHANGE_TESTING)
   std::optional<GltfTopologyWriteBundle> test_parent;
   Vector<ByteBlock> test_resource_storage;
@@ -858,6 +883,20 @@ GltfTopologyWriteResult WriteWithBackend(
   auto stage = Stage::kAdmission;
   try {
     Configuration(limits, work);
+    const bool translated =
+        request.source.SourceExtraction().ProcessingProfile() ==
+        GltfProcessingProfile::kDirectTranslationTrianglesV1;
+    if (translated) {
+      try {
+        gltf_detail::ValidateDirectTranslationConfiguration(
+            limits.direct_translation, work.direct_translation);
+      } catch (const gltf_detail::GltfFailure& failure) {
+        Reject(Status::kInvalidConfiguration, Stage::kAdmission,
+               failure.Diagnostic().code == GltfDiagnosticCode::kZeroLimit
+                   ? Code::kRequiredFieldZero
+                   : Code::kConfigurationExtent);
+      }
+    }
     const auto context = request.source.Mesh().ShareExecutionContext();
     AllocationContext root(context, stop, allocation_backend);
     const auto& asset =
@@ -879,9 +918,21 @@ GltfTopologyWriteResult WriteWithBackend(
     const auto capability = request.source.SourceAsset()
                                 .Capability(request.source.SourcePrimitive())
                                 .reason;
-    if (capability != GltfCapabilityReason::kReady &&
+    if (!translated && capability != GltfCapabilityReason::kReady &&
         capability != GltfCapabilityReason::kBinaryAdmissionPending)
       Reject(Status::kUnsupportedProfile, stage, Code::kSourceCapability);
+    const auto* proof = gltf_detail::Access::ExtractionTranslation(
+        request.source.SourceExtraction());
+    const auto* primitive = gltf_detail::Access::PrimitiveRecordFor(
+        request.source.SourceAsset(), request.source.SourcePrimitive());
+    if (translated &&
+        (!proof || !proof->facts.complete ||
+         proof->facts.status != GltfStatus::kAccepted ||
+         proof->asset !=
+             gltf_detail::Access::Owner(request.source.SourceAsset()) ||
+         !primitive || proof->primitive.mesh_index != primitive->mesh_index ||
+         proof->primitive.primitive_index != primitive->primitive_index))
+      Reject(Status::kSourceContractFailure, stage, Code::kSourceProvenance);
     const auto source = request.source.Mesh().View();
     const auto candidate = request.candidate.Source().View();
     const auto candidate_faces = candidate.face_offsets.size() - 1;
@@ -913,6 +964,22 @@ GltfTopologyWriteResult WriteWithBackend(
     if (changed && candidate_faces == 0)
       Reject(Status::kUnsupportedSelection, stage,
              Code::kEmptyChangedSelection);
+    if (translated) {
+      const auto cap =
+          static_cast<std::size_t>(limits.output.max_output_requested_bytes);
+      const auto live = allocation.OperationActiveBytes();
+      if (live >= cap)
+        Reject(Status::kLimitExceeded, stage, Code::kWriterRequestLimit);
+      const gltf_detail::NativeExecutionOptions validation_execution{
+          worker_backend, nullptr};
+      // No ordinary growth occurs until this independent transient scope dies.
+      auto validation = gltf_detail::ValidateDirectTranslation(
+          gltf_detail::Access::Owner(request.source.SourceAsset()), *primitive,
+          limits.direct_translation, work.direct_translation, root, cap - live,
+          &validation_execution, proof);
+      result.direct_translation = validation.observation;
+      if (!validation.proof) TranslationFailure(validation, stage);
+    }
     stage = Stage::kLexicalPlanning;
     const auto index_bytes =
         changed ? Multiply(candidate.corner_vertices.size(), kIndexBytes, stage)
@@ -928,6 +995,7 @@ GltfTopologyWriteResult WriteWithBackend(
         BuildLexicalIndex(asset.document, allocation, limits, work);
     auto output = std::allocate_shared<BundleState>(
         Allocator<BundleState>(allocation), request.source, allocation);
+    output->direct_translation = result.direct_translation;
     output->resources.assign(asset.resources.begin(), asset.resources.end());
     Plan plan(allocation);
     if (changed) {
@@ -1022,6 +1090,10 @@ std::span<const GltfSourceCorner> GltfTopologyWriteBundle::OriginalCorners()
 std::optional<GltfTopologyBindingChange>
 GltfTopologyWriteBundle::ChangedBinding() const noexcept {
   return owner_->change;
+}
+const GltfDirectTranslationObservation*
+GltfTopologyWriteBundle::DirectTranslationFacts() const noexcept {
+  return owner_->direct_translation ? &*owner_->direct_translation : nullptr;
 }
 std::uint64_t GltfTopologyWriteBundle::NewRequestedBytes() const noexcept {
   return owner_->allocation.OperationActiveBytes();

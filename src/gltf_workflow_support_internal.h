@@ -3,6 +3,7 @@
 #define MESHVALE_INTERCHANGE_SRC_GLTF_WORKFLOW_SUPPORT_INTERNAL_H_
 
 #include <meshvale/geometry/execution.h>
+#include <meshvale/interchange/gltf.h>
 #include <meshvale/interchange/gltf_workflow_support.h>
 
 #include <cstddef>
@@ -70,6 +71,7 @@ struct InspectionState {
   Vector<geometry::index_t> corners;
   Vector<GltfSourceCorner> original_corners;
   GltfTopologyOutputCoverage coverage;
+  std::optional<GltfDirectTranslationObservation> direct_translation;
 };
 struct Access {
   static GltfTopologyOutputInspection Make(

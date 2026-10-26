@@ -15,10 +15,12 @@ and [topology writer](gltf_topology_write.md) contracts own their existing
 operations. These declarations do not establish an implemented workflow,
 filesystem publication, GLB conversion, Python API or stable release.
 
-The [selected direct translation contract](gltf-translation.md) specifies future
-profile propagation, independent reload comparison and typed validation facts.
-Implementation and qualification are pending. Current static inspection and
-request-counter scopes remain unchanged; no new profile is available here yet.
+The opt-in [direct translation profile](gltf-translation.md) supports retained
+source proof and independent comparison of the actual reloaded animation under
+explicit inspection limits/work. Results and successful inspection owners expose
+actual validation facts. The [installed memory example](../examples/consumer/gltf_translation_output.cpp)
+demonstrates changed and identity selections. Static remains the default;
+request-counter scopes and the broader qualification boundary remain unchanged.
 
 ## GWS-READ-001: Additive complete read cap
 

@@ -165,12 +165,12 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 45; installed 21 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 45; installed 21 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 45; installed 21 |
-| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 36; installed 17 |
-| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 36; installed 17 |
-| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 22; installed 11 |
+| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 46; installed 24 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 46; installed 24 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 46; installed 24 |
+| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 37; installed 18 |
+| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 37; installed 18 |
+| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 23; installed 12 |
 
 These inventories include STL, OFF and PLY codec/request tests and their installed
 consumers. Each row additionally builds the separate
@@ -262,8 +262,8 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON/GLB, OFF and PLY files and require Interchange's qualified 45 suites,
-twenty-one base installed test entries and the separate OFF and PLY Repair tests. Geometry
+Both lanes enable JSON/GLB, OFF and PLY files and require Interchange's qualified 46 suites,
+twenty-four base installed test entries and the separate OFF and PLY Repair tests. Geometry
 requires 16 suites with allocation probes enabled under
 ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an

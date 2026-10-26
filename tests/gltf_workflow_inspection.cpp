@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <initializer_list>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -23,7 +24,11 @@
 #include <variant>
 #include <vector>
 
+#include "gltf_allocation.h"
+#include "gltf_asset_state.h"
+#include "gltf_direct_translation.h"
 #include "gltf_topology_bundle_test_internal.h"
+#include "gltf_translation_output_fixture.h"
 #include "gltf_workflow_inspection_support.h"
 #include "gltf_workflow_support_test_internal.h"
 
@@ -942,6 +947,255 @@ void LargeSourceIndex(std::uint64_t budget_mib) {
   Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
           "large inspection and all retained input operations release");
 }
+
+void PairedTranslationProofLoads() {
+  namespace moving = gltf_translation_output_fixture;
+  namespace translation = mv::gltf_detail;
+  constexpr std::uint64_t kNoBoundaryPartition = 16;
+  constexpr std::uint64_t kUnpairedBytes = 32;
+  constexpr std::uint64_t kPairedBytes = 64;
+  // First-key X mismatch stops its remaining Y/Z loads; the second key still
+  // executes. This is one serial no-boundary job, not a parallel-prefix claim.
+  constexpr std::uint64_t kMismatchedBytes = 48;
+  constexpr std::uint32_t kNegativeZero = 0x80000000U;
+  geo::ExecutionContext context({4, 1, 16 * moving::kMiB});
+  {
+    const auto source = moving::Source(context);
+    const auto& asset = source.SourceAsset();
+    const auto* primitive = translation::Access::PrimitiveRecordFor(
+        asset, source.SourcePrimitive());
+    const auto* expected =
+        translation::Access::ExtractionTranslation(source.SourceExtraction());
+    Require(
+        primitive && expected && expected->facts.complete,
+        "private comparison control starts from actual public complete owner");
+    const translation::AllocationContext root(context, {});
+    auto work = moving::TranslationWork(true);
+    work.partition_keys = kNoBoundaryPartition;
+    const auto limits = moving::TranslationLimits();
+    translation::ValidateDirectTranslationConfiguration(limits, work);
+    const auto unpaired = translation::ValidateDirectTranslation(
+        translation::Access::Owner(asset), *primitive, limits, work, root,
+        40 * moving::kMiB, nullptr);
+    Require(
+        unpaired.proof && unpaired.observation &&
+            unpaired.observation->complete &&
+            unpaired.observation->keys_checked == 2 &&
+            unpaired.observation->decoded_bytes_checked == kUnpairedBytes,
+        "E without expected proof preserves literal full scalar load count");
+    const auto paired = translation::ValidateDirectTranslation(
+        translation::Access::Owner(asset), *primitive, limits, work, root,
+        40 * moving::kMiB, nullptr, expected);
+    Require(
+        paired.proof && paired.observation && paired.observation->complete &&
+            paired.observation->keys_checked == 2 &&
+            paired.observation->decoded_bytes_checked == kPairedBytes &&
+            paired.observation->execution.planned_jobs == 1 &&
+            paired.observation->execution.caller_jobs == 1 &&
+            paired.observation->execution.launched_workers == 0 &&
+            paired.observation->execution.joined_workers == 0,
+        "paired actual/expected uint32 loads use one unchanged key schedule");
+    for (const auto replacement : {moving::kOne, kNegativeZero}) {
+      auto bytes = moving::Bytes();
+      for (std::size_t byte = 0; byte < moving::kFloatBytes; ++byte)
+        bytes[moving::kTranslationOffset + byte] = std::byte(
+            (replacement >> (byte * moving::kByteBits)) & moving::kByteMask);
+      const std::array<mv::SuppliedGltfResource, 1> resources{
+          {{mv::GltfResourceKind::kBuffer, 0, bytes}}};
+      const auto other_asset =
+          moving::Capture(moving::Json(), resources, context);
+      const auto other_extraction = moving::Extract(other_asset);
+      const auto other_primitive =
+          translation::Access::ExtractionPrimitive(other_extraction);
+      const auto* other_record =
+          translation::Access::PrimitiveRecordFor(other_asset, other_primitive);
+      Require(other_record &&
+                  translation::Access::Owner(other_asset) !=
+                      translation::Access::Owner(asset) &&
+                  other_extraction.DirectTranslationFacts()->complete,
+              "different finite/negative-zero word owns genuine independently "
+              "validated proof");
+      const auto mismatch = translation::ValidateDirectTranslation(
+          translation::Access::Owner(other_asset), *other_record, limits, work,
+          root, 40 * moving::kMiB, nullptr, expected);
+      Require(
+          !mismatch.proof && mismatch.observation &&
+              !mismatch.observation->complete &&
+              mismatch.diagnostic.status ==
+                  mv::GltfStatus::kResourceBindingMismatch &&
+              mismatch.diagnostic.code ==
+                  mv::GltfDiagnosticCode::kBinaryValue &&
+              mismatch.diagnostic.resource_span &&
+              mismatch.diagnostic.resource_span->offset ==
+                  moving::kTranslationOffset &&
+              mismatch.diagnostic.resource_span->length ==
+                  moving::kFloatBytes &&
+              mismatch.observation->keys_checked == 2 &&
+              mismatch.observation->decoded_bytes_checked == kMismatchedBytes,
+          "private helper-only real proof mismatch counts full loads and "
+          "excludes unexamined scalars");
+    }
+    const auto step = moving::Source(context, true);
+    const auto* step_record = translation::Access::PrimitiveRecordFor(
+        step.SourceAsset(), step.SourcePrimitive());
+    Require(step_record != nullptr, "genuine alternate STEP source record");
+    const auto structure = translation::ValidateDirectTranslation(
+        translation::Access::Owner(step.SourceAsset()), *step_record, limits,
+        work, root, 40 * moving::kMiB, nullptr, expected);
+    Require(!structure.proof && structure.observation &&
+                structure.diagnostic.status ==
+                    mv::GltfStatus::kResourceBindingMismatch &&
+                structure.observation->keys_checked == 0 &&
+                structure.observation->decoded_bytes_checked == 0 &&
+                structure.observation->execution.planned_jobs == 0,
+            "structural authority differs before any expected sampler "
+            "index/sample load");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "paired helper controls release genuine owners and joined scopes");
+}
+void DirectTranslationOutputInspection() {
+  namespace moving = gltf_translation_output_fixture;
+  geo::ExecutionContext context({4, 1, 16 * moving::kMiB});
+  for (bool step : {false, true})
+    for (bool identity : {false, true}) {
+      const auto source = moving::Source(context, step);
+      const auto candidate = moving::Candidate(source, identity);
+      const auto write = mv::WriteGltfTopologySelection(
+          {source, candidate, moving::Faces(identity),
+           moving::Corners(identity)},
+          moving::WriteLimits(), moving::WriteWork());
+      Require(write.bundle.has_value(),
+              "real moving writer before independent output capture");
+      const auto reload = moving::Reload(*write.bundle, context);
+      const auto extraction = moving::Extract(reload);
+      const mv::GltfTopologyOutputInspectionRequest request{
+          source,
+          candidate,
+          moving::Faces(identity),
+          moving::Corners(identity),
+          *write.bundle,
+          reload,
+          extraction};
+      const auto result = mv::InspectGltfTopologyOutput(
+          request, moving::InspectionLimits(), moving::InspectionWork(true));
+      Require(
+          result.inspection && result.status == Status::kSuccess &&
+              result.direct_translation &&
+              result.direct_translation->complete &&
+              result.inspection->DirectTranslationFacts() &&
+              result.direct_translation->work.parallel_min_keys ==
+                  moving::TranslationWork(true).parallel_min_keys &&
+              result.direct_translation->execution.launched_workers == 0 &&
+              result.direct_translation->execution.launched_workers ==
+                  result.direct_translation->execution.joined_workers,
+          "independent reload/real V proof, explicit V work and owner facts");
+      moving::CheckLiteral(result.inspection->Output(), identity, step);
+      Require(
+          result.inspection->Coverage().reloaded_primitive ==
+                  mv::GltfTopologyOutputCheckCoverage::kComplete &&
+              extraction.MaterialIndex() == 0 &&
+              extraction.Channels().size() == 2 &&
+              std::ranges::equal(
+                  extraction.TriangleIndices(),
+                  identity ? std::span<const std::uint32_t>(
+                                 std::array<std::uint32_t, 6>{0, 1, 2, 3, 4, 5})
+                           : std::span<const std::uint32_t>(
+                                 std::array<std::uint32_t, 3>{3, 4, 5})),
+          "literal reloaded topology/material/channel inventory");
+      constexpr std::uint64_t kSmallOwnerBytes = 4 * moving::kMiB;
+      auto contained_limits = moving::InspectionLimits();
+      contained_limits.max_new_requested_bytes = kSmallOwnerBytes;
+      const auto contained = mv::InspectGltfTopologyOutput(
+          request, contained_limits, moving::InspectionWork());
+      Require(contained.inspection && contained.direct_translation &&
+                  contained.direct_translation->complete &&
+                  contained.direct_translation->effective_request_cap > 0 &&
+                  contained.direct_translation->effective_request_cap <
+                      kSmallOwnerBytes &&
+                  contained_limits.direct_translation.max_new_requested_bytes ==
+                      8 * moving::kMiB &&
+                  contained.inspection->NewRequestedBytes() <= kSmallOwnerBytes,
+              "positive small V owner cap intersects before seed without "
+              "mutating subcap");
+      auto zero_limits = moving::InspectionLimits();
+      zero_limits.direct_translation.max_node_rows = 0;
+      const auto invalid = mv::InspectGltfTopologyOutput(
+          request, zero_limits, moving::InspectionWork());
+      Require(!invalid.inspection &&
+                  invalid.status == Status::kInvalidConfiguration &&
+                  invalid.diagnostic.stage == Stage::kAdmission &&
+                  !invalid.direct_translation,
+              "new V limits admitted before helper entry");
+      geo::ExecutionContext foreign_context({4, 1, 16 * moving::kMiB});
+      const auto foreign_reload =
+          moving::Reload(*write.bundle, foreign_context);
+      const auto foreign_extraction = moving::Extract(foreign_reload);
+      const auto foreign = mv::InspectGltfTopologyOutput(
+          {source, candidate, moving::Faces(identity),
+           moving::Corners(identity), *write.bundle, foreign_reload,
+           foreign_extraction},
+          moving::InspectionLimits(), moving::InspectionWork());
+      Require(!foreign.inspection && foreign.status == Status::kForeignBudget &&
+                  foreign.diagnostic.stage == Stage::kAdmission &&
+                  !foreign.direct_translation,
+              "actual foreign reload ledger refuses before V helper");
+      auto limits = moving::InspectionLimits();
+      limits.direct_translation.max_total_keys = 1;
+      auto refused = mv::InspectGltfTopologyOutput(request, limits,
+                                                   moving::InspectionWork());
+      Require(!refused.inspection && refused.status == Status::kLimitExceeded &&
+                  refused.diagnostic.stage == Stage::kReloadedPrimitive &&
+                  refused.diagnostic.code == Code::kCountLimit &&
+                  refused.direct_translation &&
+                  !refused.direct_translation->complete &&
+                  refused.coverage.resources ==
+                      mv::GltfTopologyOutputCheckCoverage::kComplete &&
+                  refused.coverage.reloaded_primitive ==
+                      mv::GltfTopologyOutputCheckCoverage::kNotPerformed,
+              "real V one-under logical cap after earlier completed phases");
+      limits = moving::InspectionLimits();
+      limits.direct_translation.max_new_requested_bytes = 1;
+      refused = mv::InspectGltfTopologyOutput(request, limits,
+                                              moving::InspectionWork());
+      Require(!refused.inspection && refused.status == Status::kLimitExceeded &&
+                  refused.diagnostic.stage == Stage::kReloadedPrimitive &&
+                  refused.diagnostic.code == Code::kInspectionRequestLimit,
+              "actual V transient seed cap is distinct from logical key cap");
+      auto corrupt = moving::Bytes();
+      for (std::size_t byte = 0; byte < moving::kFloatBytes; ++byte)
+        corrupt[moving::kTranslationSecondY + byte] = std::byte(
+            (moving::kOne >> (byte * moving::kByteBits)) & moving::kByteMask);
+      const auto changed_reload =
+          moving::Reload(*write.bundle, context, corrupt);
+      const auto changed_extraction = moving::Extract(changed_reload);
+      const auto mismatch = mv::InspectGltfTopologyOutput(
+          {source, candidate, moving::Faces(identity),
+           moving::Corners(identity), *write.bundle, changed_reload,
+           changed_extraction},
+          moving::InspectionLimits(), moving::InspectionWork());
+      Require(!mismatch.inspection &&
+                  mismatch.status == Status::kOutputMismatch &&
+                  mismatch.diagnostic.stage == Stage::kResources &&
+                  !mismatch.direct_translation,
+              "same-count finite legal reload mismatch retains real earlier "
+              "resource precedence/null V");
+      const auto other = moving::Reload(*write.bundle, context);
+      const auto wrong_owner = mv::InspectGltfTopologyOutput(
+          {source, candidate, moving::Faces(identity),
+           moving::Corners(identity), *write.bundle, other, extraction},
+          moving::InspectionLimits(), moving::InspectionWork());
+      Require(!wrong_owner.inspection &&
+                  wrong_owner.status == Status::kSourceContractFailure &&
+                  wrong_owner.diagnostic.stage == Stage::kAdmission &&
+                  wrong_owner.diagnostic.code == Code::kReloadIdentity &&
+                  !wrong_owner.direct_translation,
+              "equal bytes do not substitute reload proof owner");
+    }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "moving inspection copies/real resources/worker leases release");
+}
+
 }  // namespace
 }  // namespace gltf_workflow_inspection
 
@@ -964,6 +1218,8 @@ int main(int argc, char** argv) {
       std::cout << "large physical UINT32 inspection fixture passed\n";
       return 0;
     }
+    gltf_workflow_inspection::PairedTranslationProofLoads();
+    gltf_workflow_inspection::DirectTranslationOutputInspection();
     gltf_workflow_inspection::AcceptedSelectionsAndLifetimes();
     gltf_workflow_inspection::AllEncodingsAndNormalization();
     gltf_workflow_inspection::RejectionsAndFirstFailure();

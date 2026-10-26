@@ -652,6 +652,10 @@ GltfPrimitiveExtraction Access::MakeExtraction(
     std::shared_ptr<const ExtractionState> state) {
   return GltfPrimitiveExtraction(std::move(state));
 }
+const DirectTranslationState* Access::ExtractionTranslation(
+    const GltfPrimitiveExtraction& extraction) noexcept {
+  return extraction.owner_->translation.get();
+}
 const geometry::ExecutionContext& Access::ExtractionContext(
     const GltfPrimitiveExtraction& extraction) noexcept {
   return extraction.owner_->asset->context;
@@ -774,8 +778,9 @@ GltfExtractionResult ExtractPrimitive(
     auto ordinary_allowance = Host(limits.max_output_requested_bytes);
     if (translated) {
       auto validation = ValidateDirectTranslation(
-          Access::Owner(asset), *record, limits.direct_translation, allocation,
-          ordinary_allowance, execution);
+          Access::Owner(asset), *record, limits.direct_translation,
+          state.work_policy.direct_translation, allocation, ordinary_allowance,
+          execution);
       translation_observation = validation.observation;
       if (!validation.proof)
         return {{}, validation.diagnostic, translation_observation};

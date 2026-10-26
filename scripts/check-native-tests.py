@@ -62,7 +62,9 @@ TOPOLOGY_WRITE_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_topology_w
 WORKFLOW_SUPPORT_TESTS = frozenset({"gltf_workflow_support_link"})
 WORKFLOW_SUPPORT_QUALIFIED_TESTS = frozenset({"gltf_workflow_inspection", "gltf_workflow_inspection_large_index"})
 WORKFLOW_SUPPORT_INSTALLED_TESTS = frozenset({"installed_gltf_workflow_support_link"})
-WORKFLOW_SUPPORT_QUALIFIED_INSTALLED_TESTS = frozenset({"installed_gltf_workflow_support_consumer"})
+WORKFLOW_SUPPORT_QUALIFIED_INSTALLED_TESTS = frozenset({
+    "installed_gltf_workflow_support_consumer", "installed_gltf_translation_output_consumer",
+})
 GLTF_FILE_TESTS = frozenset({
     "gltf_files_link", "gltf_files", "gltf_files_glb", "gltf_files_glb_requests",
 })
@@ -83,6 +85,7 @@ PLY_FILE_TESTS = frozenset({"ply_files_consumer", "ply_files_semantics", "ply_fi
 PLY_FILE_INSTALLED_TESTS = frozenset({"installed_ply_files_consumer"})
 GLTF_FILE_QUALIFIED_INSTALLED_TESTS = frozenset({
     "installed_gltf_file_publish_consumer", "installed_gltf_file_publish_glb_consumer",
+    "installed_gltf_translation_publish_consumer",
 })
 
 

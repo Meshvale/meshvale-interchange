@@ -585,15 +585,20 @@ std::uint32_t Load(const DirectTranslationAccessor& source, std::size_t key,
   return bits;
 }
 void RecordFailure(Segment& segment, std::size_t key, std::size_t component,
-                   const DirectTranslationAccessor& source) {
+                   const DirectTranslationAccessor& source,
+                   GltfStatus status = GltfStatus::kMalformed) {
   if (segment.diagnostic) return;
   segment.failed_key = key;
   segment.failed_component = component;
   segment.diagnostic =
       SampleDiagnostic(source, key, component ? component - 1 : 0);
+  segment.diagnostic->status = status;
 }
-void ExamineSegment(DirectTranslationState& proof, Segment& segment) {
+void ExamineSegment(DirectTranslationState& proof, Segment& segment,
+                    const DirectTranslationState* expected) {
   const auto& sampler = proof.samplers[segment.sampler];
+  const auto* expected_sampler =
+      expected ? &expected->samplers[segment.sampler] : nullptr;
   const auto cadence = Host(proof.facts.work.cancellation_block_keys);
   std::uint32_t previous = 0;
   bool previous_valid = false;
@@ -614,6 +619,12 @@ void ExamineSegment(DirectTranslationState& proof, Segment& segment) {
       RecordFailure(segment, key, 0, sampler.input);
       continue;
     }
+    if (expected_sampler &&
+        time != Load(expected_sampler->input, key, 0, segment)) {
+      RecordFailure(segment, key, 0, sampler.input,
+                    GltfStatus::kResourceBindingMismatch);
+      continue;
+    }
     if (key == segment.first) segment.first_time = time;
     segment.last_time = time;
     std::array<std::uint32_t, kTranslationComponents> values = {};
@@ -623,6 +634,14 @@ void ExamineSegment(DirectTranslationState& proof, Segment& segment) {
       values[component] = Load(sampler.output, key, component, segment);
       if (!Finite(values[component])) {
         RecordFailure(segment, key, component + 1, sampler.output);
+        valid = false;
+        break;
+      }
+      if (expected_sampler &&
+          values[component] !=
+              Load(expected_sampler->output, key, component, segment)) {
+        RecordFailure(segment, key, component + 1, sampler.output,
+                      GltfStatus::kResourceBindingMismatch);
         valid = false;
         break;
       }
@@ -642,7 +661,8 @@ void ExamineSegment(DirectTranslationState& proof, Segment& segment) {
 }
 
 void CheckSamples(DirectTranslationState& proof, std::size_t total_keys,
-                  const NativeExecutionOptions* supplied_execution) {
+                  const NativeExecutionOptions* supplied_execution,
+                  const DirectTranslationState* expected) {
   if (!total_keys) return;
   const auto& scope = proof.allocation;
   const auto partition_keys = Host(proof.facts.work.partition_keys);
@@ -677,14 +697,15 @@ void CheckSamples(DirectTranslationState& proof, std::size_t total_keys,
     DirectTranslationState& proof;
     OwnedVector<Segment>& segments;
     const OwnedVector<std::size_t>& heads;
-  } work{proof, segments, heads};
+    const DirectTranslationState* expected;
+  } work{proof, segments, heads, expected};
   auto invoke = [](void* opaque, std::size_t ordinal) noexcept {
     auto& job = *static_cast<Job*>(opaque);
     for (auto index = job.heads[ordinal]; index != kMissing;
          index = job.segments[index].next) {
       auto& segment = job.segments[index];
       try {
-        ExamineSegment(job.proof, segment);
+        ExamineSegment(job.proof, segment, job.expected);
       } catch (const AdmissionFailure& failure) {
         if (failure.Code() == AdmissionCode::kInvalidObject) {
           segment.exception = std::current_exception();
@@ -744,7 +765,8 @@ void CheckSamples(DirectTranslationState& proof, std::size_t total_keys,
   // certificate. Every planned callback has joined before any selection.
   for (const auto& segment : segments)
     if (segment.diagnostic &&
-        segment.diagnostic->status != GltfStatus::kMalformed)
+        segment.diagnostic->status != GltfStatus::kMalformed &&
+        segment.diagnostic->status != GltfStatus::kResourceBindingMismatch)
       throw GltfFailure(*segment.diagnostic);
   for (const auto& segment : segments)
     if (segment.diagnostic) throw GltfFailure(*segment.diagnostic);
@@ -797,6 +819,72 @@ void CheckSamples(DirectTranslationState& proof, std::size_t total_keys,
     sampler.maximum = maxima[index];
   }
 }
+void CompareProofStructure(const DirectTranslationState& expected,
+                           DirectTranslationState& actual) {
+  const auto mismatch = [] {
+    Fail(GltfStatus::kResourceBindingMismatch, GltfDiagnosticCode::kBinaryValue,
+         {}, kSampleRule);
+  };
+  const auto require = [&](bool equal) {
+    actual.allocation.Checkpoint();
+    if (!equal) mismatch();
+  };
+  require(expected.facts.complete &&
+          expected.facts.status == GltfStatus::kAccepted &&
+          expected.primitive.mesh_index == actual.primitive.mesh_index &&
+          expected.primitive.primitive_index ==
+              actual.primitive.primitive_index);
+  require(expected.users.size() == actual.users.size() &&
+          expected.membership.size() == actual.membership.size() &&
+          expected.tracks.size() == actual.tracks.size() &&
+          expected.samplers.size() == actual.samplers.size());
+  for (std::size_t i = 0; i < actual.users.size(); ++i)
+    require(expected.users[i] == actual.users[i]);
+  for (std::size_t i = 0; i < actual.membership.size(); ++i)
+    require(expected.membership[i] == actual.membership[i]);
+  for (std::size_t i = 0; i < actual.tracks.size(); ++i) {
+    const auto& a = expected.tracks[i];
+    const auto& b = actual.tracks[i];
+    require(a.animation_index == b.animation_index &&
+            a.channel_index == b.channel_index &&
+            a.sampler_index == b.sampler_index &&
+            a.node_index == b.node_index &&
+            a.input_accessor == b.input_accessor &&
+            a.output_accessor == b.output_accessor &&
+            a.key_count == b.key_count && a.interpolation == b.interpolation);
+  }
+  const auto accessor = [&](const DirectTranslationAccessor& a,
+                            const DirectTranslationAccessor& b) {
+    require(a.accessor_index == b.accessor_index &&
+            a.view_index == b.view_index && a.buffer_index == b.buffer_index &&
+            a.resource_offset == b.resource_offset && a.count == b.count &&
+            a.components == b.components && a.bytes.size() == b.bytes.size());
+    // Extent/binding admission precedes every expected-sampler indexed load.
+    // Actual key words are loaded and compared inside the existing sample jobs.
+  };
+  for (std::size_t i = 0; i < actual.samplers.size(); ++i) {
+    const auto& a = expected.samplers[i];
+    const auto& b = actual.samplers[i];
+    require(a.animation_index == b.animation_index &&
+            a.sampler_index == b.sampler_index &&
+            a.first_channel == b.first_channel &&
+            a.has_minimum == b.has_minimum && a.has_maximum == b.has_maximum &&
+            a.declared_first_time == b.declared_first_time &&
+            a.declared_last_time == b.declared_last_time);
+    // Expected extrema are already validated sample facts; the fresh values
+    // still contain authored bounds until CheckSamples completes. JSON IDs and
+    // absolute shifted source spans are never cross-owner identities.
+    for (std::size_t component = 0; component < kTranslationComponents;
+         ++component) {
+      if (a.has_minimum)
+        require(EqualBits(a.minimum[component], b.minimum[component]));
+      if (a.has_maximum)
+        require(EqualBits(a.maximum[component], b.maximum[component]));
+    }
+    accessor(a.input, b.input);
+    accessor(a.output, b.output);
+  }
+}
 }  // namespace
 
 DirectTranslationState::DirectTranslationState(
@@ -829,8 +917,10 @@ void ValidateDirectTranslationConfiguration(
 }
 DirectTranslationResult ValidateDirectTranslation(
     std::shared_ptr<const AssetState> asset, const PrimitiveRecord& primitive,
-    const GltfDirectTranslationLimits& limits, const AllocationContext& root,
-    std::size_t owner_allowance, const NativeExecutionOptions* execution) {
+    const GltfDirectTranslationLimits& limits,
+    const GltfDirectTranslationWorkPolicy& work, const AllocationContext& root,
+    std::size_t owner_allowance, const NativeExecutionOptions* execution,
+    const DirectTranslationState* expected) {
   DirectTranslationResult result{{}, {}, AcceptedDiagnostic()};
   std::optional<AllocationContext> scope;
   std::shared_ptr<DirectTranslationState> proof;
@@ -840,7 +930,7 @@ DirectTranslationResult ValidateDirectTranslation(
     scope.emplace(root.WithRequestLimit(effective));
     result.observation.emplace();
     result.observation->effective_request_cap = effective;
-    result.observation->work = asset->work_policy.direct_translation;
+    result.observation->work = work;
     proof = std::allocate_shared<DirectTranslationState>(
         Allocator<DirectTranslationState>(*scope), std::move(asset), primitive,
         *scope);
@@ -849,7 +939,8 @@ DirectTranslationResult ValidateDirectTranslation(
     Tables tables(*proof->asset, *scope);
     tables.InventoryRoles();
     const auto keys = Inventory(*proof, tables, limits);
-    CheckSamples(*proof, keys, execution);
+    if (expected) CompareProofStructure(*expected, *proof);
+    CheckSamples(*proof, keys, execution, expected);
     scope->Checkpoint();
     proof->facts.complete = true;
     proof->facts.new_requested_bytes = scope->OperationActiveBytes();
@@ -862,6 +953,7 @@ DirectTranslationResult ValidateDirectTranslation(
     if (failure.Code() == AdmissionCode::kInvalidObject) throw;
     const bool canceled = failure.Code() == AdmissionCode::kCanceled;
     const bool budget = failure.Code() == AdmissionCode::kBudgetExceeded;
+    result.request_limit = failure.Code() == AdmissionCode::kSizeLimit;
     result.diagnostic = {canceled ? GltfStatus::kCanceled
                          : budget ? GltfStatus::kBudgetExceeded
                                   : GltfStatus::kUnsupportedProfile,

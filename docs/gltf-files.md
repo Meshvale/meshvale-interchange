@@ -39,10 +39,15 @@ These operations preserve the admitted GLB processing subset; they do not add
 format conversion or broader glTF semantics. Complete independent semantic,
 request, sanitizer, package and platform qualification remains required.
 
-The [selected direct translation contract](gltf-translation.md) requires future
-publication to propagate real extraction admission and validate actual staged
-animation/resources before commit. Implementation and qualification are pending.
-Current static publication, file-only accounting and defaults remain unchanged.
+The opt-in [direct translation profile](gltf-translation.md) propagates through
+actual staged extraction and inspection before commit. The result carries
+`translation_extraction` and `translation_inspection` observations from delegates
+that were reached, including normal failures; unreached/static observations stay
+empty. New-profile delegated limits/work are checked before staging. The
+[installed publication example](../examples/consumer/gltf_translation_publish.cpp)
+executes changed/identity LINEAR/STEP selections for JSON and GLB with physical
+readback and retained owners. Static defaults and file-only accounting remain
+unchanged; broader qualification remains in progress.
 
 ## GFILE-CAPTURE-001: Strong file source
 

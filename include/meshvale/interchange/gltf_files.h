@@ -27,10 +27,9 @@ struct PublishedBundleState;
 struct Access;
 }  // namespace gltf_files_detail
 
-// Development JSON/GLB capture and JSON publication under qualification. GLB
-// publication returns a typed unavailable outcome. The meshvale::gltf_files
-// target requires gltf_workflow_support. See docs/gltf-files.md for current
-// scope.
+// Development JSON/GLB capture and publication under qualification. The
+// meshvale::gltf_files target requires gltf_workflow_support. See
+// docs/gltf-files.md for current scope.
 enum class GltfFileFormat { kGltfJson, kGlb };
 enum class GltfExtensionFilePolicy {
   kRejectOpaqueExtensions,
@@ -306,6 +305,10 @@ struct GltfFilePublicationResult {
   GltfFileCleanupOutcome cleanup = GltfFileCleanupOutcome::kNotRequired;
   std::optional<std::error_code> cleanup_error;
   GltfFileExecution execution;
+  // Actual staged helper facts, including normal failures. Unreached and static
+  // selections keep these empty; successful proof owners remain with bundle.
+  std::optional<GltfDirectTranslationObservation> translation_extraction = {};
+  std::optional<GltfDirectTranslationObservation> translation_inspection = {};
 };
 
 // Magic/content detection; suffixes do not choose the format. Inputs/context

@@ -16,6 +16,7 @@
 
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_direct_translation.h"
 #include "gltf_workflow_support_internal.h"
 #include "gltf_workflow_support_test_internal.h"
 
@@ -135,6 +136,29 @@ void Configuration(const GltfTopologyOutputInspectionLimits& limits,
         static_cast<std::uint64_t>(std::numeric_limits<std::ptrdiff_t>::max()))
       Fail(Status::kInvalidConfiguration, Stage::kAdmission,
            Code::kConfigurationExtent);
+  }
+}
+void TranslationFailure(const gltf_detail::DirectTranslationResult& result,
+                        Stage stage) {
+  const auto& diagnostic = result.diagnostic;
+  switch (diagnostic.status) {
+    case GltfStatus::kUnsupportedProfile:
+      if (diagnostic.code == GltfDiagnosticCode::kLimitExceeded ||
+          diagnostic.code == GltfDiagnosticCode::kSizeOverflow)
+        Fail(Status::kLimitExceeded, stage,
+             result.request_limit ? Code::kInspectionRequestLimit
+                                  : Code::kCountLimit);
+      Fail(Status::kUnsupportedSelection, stage, Code::kSourceIdentity);
+    case GltfStatus::kBudgetExceeded:
+      Fail(Status::kBudgetExceeded, stage, Code::kRequestBudget);
+    case GltfStatus::kCanceled:
+      Fail(Status::kCanceled, stage, Code::kStopRequested);
+    case GltfStatus::kResourceBindingMismatch:
+      Fail(Status::kOutputMismatch, stage, Code::kSourceProvenance, {}, {}, {},
+           diagnostic.json_span);
+    default:
+      Fail(Status::kSourceContractFailure, stage, Code::kSourceProvenance, {},
+           {}, {}, diagnostic.json_span);
   }
 }
 bool SamePrimitive(const GltfAsset& asset, const GltfPrimitiveHandle& first,
@@ -370,12 +394,26 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
   Stage stage = Stage::kAdmission;
   try {
     Configuration(limits, work);
+    const bool translated =
+        request.source.SourceExtraction().ProcessingProfile() ==
+        GltfProcessingProfile::kDirectTranslationTrianglesV1;
+    if (translated) {
+      try {
+        gltf_detail::ValidateDirectTranslationConfiguration(
+            limits.direct_translation, work.direct_translation);
+      } catch (const gltf_detail::GltfFailure& failure) {
+        Fail(Status::kInvalidConfiguration, Stage::kAdmission,
+             failure.Diagnostic().code == GltfDiagnosticCode::kZeroLimit
+                 ? Code::kRequiredFieldZero
+                 : Code::kConfigurationExtent);
+      }
+    }
     AdmitInputs(request, limits, work, stop);
     auto context = request.source.Mesh().ShareExecutionContext();
     Identity(request, context);
-    gltf_detail::AllocationContext allocation(context, stop,
+    const gltf_detail::AllocationContext root(context, stop,
                                               options.allocation_backend);
-    allocation = allocation.WithRequestLimit(limits.max_new_requested_bytes);
+    auto allocation = root.WithRequestLimit(limits.max_new_requested_bytes);
     Operation operation{request,
                         limits,
                         work,
@@ -383,6 +421,25 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
                         allocation,
                         stop,
                         {options.worker_backend, options.observer}};
+    const auto* proof = gltf_detail::Access::ExtractionTranslation(
+        request.source.SourceExtraction());
+    const auto* reload_proof =
+        gltf_detail::Access::ExtractionTranslation(request.reloaded_extraction);
+    if (translated &&
+        (!proof || !reload_proof || !proof->facts.complete ||
+         !reload_proof->facts.complete ||
+         proof->asset !=
+             gltf_detail::Access::Owner(request.source.SourceAsset()) ||
+         reload_proof->asset !=
+             gltf_detail::Access::Owner(request.reloaded_asset) ||
+         request.output.Source().SourceExtraction().ProcessingProfile() !=
+             GltfProcessingProfile::kDirectTranslationTrianglesV1))
+      Fail(Status::kSourceContractFailure, Stage::kAdmission,
+           Code::kSourceIdentity);
+    if (!translated && request.reloaded_extraction.ProcessingProfile() !=
+                           GltfProcessingProfile::kStaticLocalTrianglesV1)
+      Fail(Status::kSourceContractFailure, Stage::kAdmission,
+           Code::kReloadIdentity);
     auto state = std::allocate_shared<InspectionState>(
         gltf_detail::Allocator<InspectionState>(allocation), allocation,
         request);
@@ -401,6 +458,19 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     result.coverage.resources = GltfTopologyOutputCheckCoverage::kComplete;
     stage = Stage::kReloadedPrimitive;
     VerifyReload(operation, result.execution.reloaded_primitive);
+    if (translated) {
+      const auto cap = static_cast<std::size_t>(limits.max_new_requested_bytes);
+      const auto live = allocation.OperationActiveBytes();
+      if (live >= cap)
+        Fail(Status::kLimitExceeded, stage, Code::kInspectionRequestLimit);
+      auto validation = gltf_detail::ValidateDirectTranslation(
+          gltf_detail::Access::Owner(request.reloaded_asset),
+          reload_proof->primitive, limits.direct_translation,
+          work.direct_translation, root, cap - live, &operation.execution,
+          proof);
+      result.direct_translation = validation.observation;
+      if (!validation.proof) TranslationFailure(validation, stage);
+    }
     result.coverage.reloaded_primitive =
         GltfTopologyOutputCheckCoverage::kComplete;
     stage = Stage::kProvenance;
@@ -409,6 +479,7 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     stage = Stage::kPublication;
     allocation.Checkpoint();
     state->coverage = result.coverage;
+    state->direct_translation = result.direct_translation;
     result.inspection = Access::Make(std::move(state));
     result.status = Status::kSuccess;
     result.diagnostic = Location(stage, Code::kNone);
@@ -484,6 +555,10 @@ GltfTopologyOutputInspection::OriginalCorners() const noexcept {
 const GltfTopologyOutputCoverage& GltfTopologyOutputInspection::Coverage()
     const noexcept {
   return owner_->coverage;
+}
+const GltfDirectTranslationObservation*
+GltfTopologyOutputInspection::DirectTranslationFacts() const noexcept {
+  return owner_->direct_translation ? &*owner_->direct_translation : nullptr;
 }
 std::uint64_t GltfTopologyOutputInspection::NewRequestedBytes() const noexcept {
   return owner_->allocation.OperationActiveBytes();

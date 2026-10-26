@@ -20,6 +20,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -36,8 +37,143 @@
 #include <variant>
 #include <vector>
 
+#include "gltf_file_publish_translation_fixture.h"
 #include "gltf_files_internal.h"
 #include "gltf_files_test_internal.h"
+
+namespace meshvale::interchange::test_translation_publication {
+namespace {
+namespace detail = gltf_files_detail;
+struct Stage {
+  fs::path path;
+  static void Ready(detail::TestNativeView value, void* opaque) {
+    static_cast<Stage*>(opaque)->path = fs::path(value);
+  }
+  detail::GltfFilePublicationTestOptions Options() {
+    detail::GltfFilePublicationTestOptions result{};
+    result.hooks.stage_ready = Ready;
+    result.hooks.state = this;
+    return result;
+  }
+};
+void DelegatedFailures(bool glb) {
+  geo::ExecutionContext context({4, 1, kRequestBytes});
+  {
+    Fixture source(context, glb, false, false);
+    const auto before = context.ActiveTrackedPayload();
+    for (bool inspection : {false, true}) {
+      auto limits = Limits();
+      if (inspection)
+        limits.inspection.direct_translation.max_total_keys = 1;
+      else
+        limits.extraction.direct_translation.max_total_keys = 1;
+      Stage stage;
+      const auto result = detail::TestPublishGltfTopologyBundle(
+          source.Request(), source.Destination(), {}, limits, Work(), {},
+          stage.Options());
+      Require(
+          !result.bundle &&
+              result.phase == ic::GltfFilePublicationPhase::kVerification &&
+              result.diagnostic.status ==
+                  (inspection ? ic::GltfFileStatus::kLimitExceeded
+                              : ic::GltfFileStatus::kUnsupportedProfile) &&
+              result.diagnostic.stage ==
+                  (inspection ? ic::GltfFileStage::kInspection
+                              : ic::GltfFileStage::kExtraction) &&
+              result.diagnostic.code ==
+                  (inspection
+                       ? ic::GltfFileDiagnosticCode::kDelegatedInspection
+                       : ic::GltfFileDiagnosticCode::kDelegatedExtraction) &&
+              result.translation_extraction &&
+              result.translation_extraction->complete == inspection &&
+              (inspection ? result.translation_inspection.has_value()
+                          : !result.translation_inspection) &&
+              (!result.translation_inspection ||
+               !result.translation_inspection->complete),
+          "real delegated phase maps and preserves actual partial facts");
+      if (inspection)
+        Require(
+            result.diagnostic.inspection_status ==
+                    ic::GltfTopologyOutputInspectionStatus::kLimitExceeded &&
+                result.diagnostic.inspection_diagnostic &&
+                result.diagnostic.inspection_diagnostic->stage ==
+                    ic::GltfTopologyOutputInspectionStage::kReloadedPrimitive &&
+                result.diagnostic.inspection_diagnostic->code ==
+                    ic::GltfTopologyOutputInspectionDiagnosticCode::kCountLimit,
+            "actual staged V logical-limit cause remains nested");
+      else
+        Require(result.diagnostic.gltf_diagnostic &&
+                    result.diagnostic.gltf_diagnostic->status ==
+                        ic::GltfStatus::kUnsupportedProfile &&
+                    result.diagnostic.gltf_diagnostic->code ==
+                        ic::GltfDiagnosticCode::kLimitExceeded,
+                "actual staged E logical-limit cause remains nested");
+      Require(!stage.path.empty() && !fs::exists(stage.path) &&
+                  !fs::exists(source.Destination()) &&
+                  result.cleanup == ic::GltfFileCleanupOutcome::kRemoved &&
+                  context.ActiveTrackedPayload() == before &&
+                  context.ActiveWorkers() == 0,
+              "actual failed staged E/V cleanup releases requests after joins");
+    }
+  }
+  Require(context.ActiveTrackedPayload() == 0,
+          "delegated failure source owners release");
+}
+void ConfigurationFirst(bool glb) {
+  geo::ExecutionContext context({4, 1, kRequestBytes});
+  {
+    Fixture source(context, glb, false, false);
+    const auto before = context.ActiveTrackedPayload();
+    std::stop_source stop;
+    stop.request_stop();
+    constexpr unsigned kConfigurations = 4;
+    for (unsigned item = 0; item < kConfigurations; ++item) {
+      auto limits = Limits();
+      auto work = Work();
+      if (item == 0) limits.extraction.direct_translation.max_node_rows = 0;
+      if (item == 1) work.reload.direct_translation.max_jobs = 0;
+      if (item == 2) limits.inspection.direct_translation.max_node_rows = 0;
+      if (item == 3) work.inspection.direct_translation.partition_keys = 0;
+      Stage stage;
+      std::size_t callbacks = 0;
+      ic::GltfFilePublicationOptions options;
+      options.on_phase = [&](auto) { ++callbacks; };
+      options.on_verified = [&](const auto&) {
+        ++callbacks;
+        return std::vector<ic::GltfFileSupplement>{};
+      };
+      const auto result = detail::TestPublishGltfTopologyBundle(
+          source.Request(), source.Destination(), options, limits, work,
+          stop.get_token(), stage.Options());
+      Require(
+          !result.bundle &&
+              result.outcome == ic::GltfFilePublicationOutcome::kFailed &&
+              result.phase == ic::GltfFilePublicationPhase::kPreflight &&
+              result.diagnostic.status ==
+                  ic::GltfFileStatus::kInvalidConfiguration &&
+              result.diagnostic.stage == ic::GltfFileStage::kConfiguration &&
+              result.diagnostic.code ==
+                  ic::GltfFileDiagnosticCode::kRequiredFieldZero &&
+              !result.translation_extraction &&
+              !result.translation_inspection &&
+              result.cleanup == ic::GltfFileCleanupOutcome::kNotRequired &&
+              callbacks == 0 && stage.path.empty() &&
+              !fs::exists(source.Destination()) &&
+              context.ActiveTrackedPayload() == before,
+          "E/V cap/work configuration precedes stop, callbacks and staging");
+    }
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "invalid configuration creates no leaked requests or workers");
+}
+}  // namespace
+void NativeFailures() {
+  for (bool glb : {false, true}) {
+    DelegatedFailures(glb);
+    ConfigurationFirst(glb);
+  }
+}
+}  // namespace meshvale::interchange::test_translation_publication
 
 namespace {
 namespace ic = meshvale::interchange;
@@ -585,7 +721,8 @@ void Success(const ic::GltfFilePublicationResult& result) {
           result.diagnostic.status == ic::GltfFileStatus::kSuccess &&
           result.diagnostic.stage == ic::GltfFileStage::kComplete &&
           result.diagnostic.code == ic::GltfFileDiagnosticCode::kNone &&
-          result.cleanup == ic::GltfFileCleanupOutcome::kNotRequired,
+          result.cleanup == ic::GltfFileCleanupOutcome::kNotRequired &&
+          !result.translation_extraction && !result.translation_inspection,
       "actual no-replace published result status=" +
           std::to_string(static_cast<int>(result.diagnostic.status)) +
           " code=" + std::to_string(static_cast<int>(result.diagnostic.code)));
@@ -1237,6 +1374,8 @@ int main(int argc, char** argv) {
       return 0;
     }
     Require(argc == 1, "known publication fixture invocation");
+    ic::test_translation_publication::Positive(false);
+    ic::test_translation_publication::NativeFailures();
     NativeHandleLifetimeAndRegularResources();
     ChangedAndNoop();
     UnchangedStripAndFan();

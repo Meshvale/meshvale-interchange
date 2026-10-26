@@ -84,7 +84,10 @@ class GltfFailure : public std::exception {
 [[nodiscard]] std::uint32_t ReadFloatBits(const JsonSnapshot& document,
                                           std::size_t node);
 
+struct DirectTranslationState;
 struct Access {
+  [[nodiscard]] static const DirectTranslationState* ExtractionTranslation(
+      const GltfPrimitiveExtraction& extraction) noexcept;
   [[nodiscard]] static const std::shared_ptr<const AssetState>& Owner(
       const GltfAsset& asset) noexcept;
   [[nodiscard]] static const std::shared_ptr<const AssetState>& Owner(

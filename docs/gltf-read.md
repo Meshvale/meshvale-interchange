@@ -16,9 +16,12 @@ public limits, observation and retained proof. `GltfExtractionRequest` defaults
 to `kStaticLocalTrianglesV1`; selecting `kDirectTranslationTrianglesV1` requires
 explicit positive translation limits and the work policy retained by the asset.
 An accepted extraction owns its source and proof; borrowed proof spans and facts
-require that extraction owner to remain alive. Translation-aware checked writing,
-output inspection and publication are pending. The static behavior below remains
-unchanged; retained animation records alone are not admission proof.
+require that extraction owner to remain alive. The optional checked writer,
+independent output inspector and JSON/GLB publisher carry this admitted profile
+through selected local triangles; see the [memory](../examples/consumer/gltf_translation_output.cpp)
+and [publication](../examples/consumer/gltf_translation_publish.cpp) examples.
+The static behavior below remains the default; retained animation records alone
+are not admission proof. Full workflow and release qualification remain separate.
 
 ## Read and ownership
 
