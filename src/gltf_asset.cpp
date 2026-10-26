@@ -140,6 +140,10 @@ bool GltfAsset::SharesExecutionBudget(
 GltfAdmissionProfile GltfAsset::AdmissionProfile() const noexcept {
   return GltfAdmissionProfile::kRetainedCoreMetadataV1;
 }
+const GltfDirectTranslationWorkPolicy& GltfAsset::DirectTranslationWork()
+    const noexcept {
+  return owner_->work_policy.direct_translation;
+}
 std::span<const std::byte> GltfAsset::OriginalJson() const noexcept {
   const auto original = owner_->document.Original();
   return std::as_bytes(std::span(original.data(), original.size()));

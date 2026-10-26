@@ -4,13 +4,16 @@
 |---|---|
 | ID | GLTF-DIRECT-TRANSLATION-001 |
 | Version | 0.1.0 |
-| Status | Selected contract; implementation and qualification pending |
-| Interfaces | Planned additions to [gltf.h](../include/meshvale/interchange/gltf.h), [checked writing](gltf_topology_write.md), [output inspection](gltf-workflow-support.md) and [file publication](gltf-files.md) |
+| Status | Development extraction foundation implemented; remaining interfaces and full qualification pending |
+| Interfaces | Native extraction in [gltf.h](../include/meshvale/interchange/gltf.h); planned [checked writing](gltf_topology_write.md), [output inspection](gltf-workflow-support.md) and [file publication](gltf-files.md) additions |
 
-The new profile and interface additions selected below are not available in the
-current headers. Current [static primitive extraction](gltf-read.md) and its defaults,
-writer guards and output behavior remain authoritative. This document does not
-establish a working animation-processing interface, supported platform or release.
+The extraction foundation is available in [gltf.h](../include/meshvale/interchange/gltf.h):
+explicit profile selection, translation limits/work policy, actual extraction
+observations and an owned admission proof. The [installed extraction example](../examples/consumer/gltf_translation.cpp)
+demonstrates that native subset. Additions below for translation-aware checked
+writing, output inspection and file publication remain planned. Current static
+defaults, writer guards and output behavior remain unchanged. Full workflow
+qualification, supported platforms and a stable release remain pending.
 
 The selected profile permits checked whole-triangle selection on a mesh with
 direct node-translation tracks, retaining the authored animation and resources.

@@ -19,6 +19,7 @@
 
 #include "gltf_accessor.h"
 #include "gltf_asset_state.h"
+#include "gltf_direct_translation.h"
 #include "gltf_metadata.h"
 #include "gltf_operation_workers.h"
 #include "gltf_workflow_test_internal.h"
@@ -638,6 +639,7 @@ struct ExtractionState {
   std::shared_ptr<const AssetState> asset;
   PrimitiveRecord primitive;
   AllocationContext allocation;
+  std::shared_ptr<const DirectTranslationState> translation;
   std::uint64_t mode = 0;
   std::optional<std::uint64_t> material;
   ChargedValues<ChannelStorage> channel_storage;
@@ -673,7 +675,27 @@ GltfPrimitiveExtraction& GltfPrimitiveExtraction::operator=(
     const GltfPrimitiveExtraction&) = default;
 GltfPrimitiveExtraction::~GltfPrimitiveExtraction() = default;
 std::uint64_t GltfPrimitiveExtraction::NewRequestedBytes() const noexcept {
-  return owner_->allocation.OperationActiveBytes();
+  return owner_->allocation.OperationActiveBytes() +
+         (owner_->translation
+              ? owner_->translation->allocation.OperationActiveBytes()
+              : 0);
+}
+GltfProcessingProfile GltfPrimitiveExtraction::ProcessingProfile()
+    const noexcept {
+  return owner_->translation
+             ? GltfProcessingProfile::kDirectTranslationTrianglesV1
+             : GltfProcessingProfile::kStaticLocalTrianglesV1;
+}
+std::optional<GltfDirectTranslationProofView>
+GltfPrimitiveExtraction::DirectTranslation() const noexcept {
+  if (!owner_->translation) return {};
+  const auto& proof = *owner_->translation;
+  return GltfDirectTranslationProofView{proof.users, proof.membership,
+                                        proof.tracks};
+}
+const GltfDirectTranslationObservation*
+GltfPrimitiveExtraction::DirectTranslationFacts() const noexcept {
+  return owner_->translation ? &owner_->translation->facts : nullptr;
 }
 std::uint64_t GltfPrimitiveExtraction::SourceMode() const noexcept {
   return owner_->mode;
@@ -708,11 +730,18 @@ GltfExtractionResult ExtractPrimitive(
     std::stop_token stop, gltf_detail::AllocationBackend backend,
     const gltf_detail::NativeExecutionOptions* execution) {
   using namespace gltf_detail;
+  std::optional<GltfDirectTranslationObservation> translation_observation;
   try {
     if ((request.triangles != GltfTriangleRequest::kRequireTriangles &&
          request.triangles != GltfTriangleRequest::kConvertStripOrFan) ||
         (request.values != GltfValueRequest::kRaw &&
          request.values != GltfValueRequest::kRawAndNormalized))
+      Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest, {},
+           kSelectionRule);
+    if (request.processing_profile !=
+            GltfProcessingProfile::kStaticLocalTrianglesV1 &&
+        request.processing_profile !=
+            GltfProcessingProfile::kDirectTranslationTrianglesV1)
       Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest, {},
            kSelectionRule);
     for (const auto limit : {limits.max_components, limits.max_triangle_corners,
@@ -727,20 +756,43 @@ GltfExtractionResult ExtractPrimitive(
     if (!record)
       Fail(GltfStatus::kInvalidSelection,
            GltfDiagnosticCode::kInvalidSelection);
-    if (record->capability != GltfCapabilityReason::kBinaryAdmissionPending &&
+    const bool translated =
+        request.processing_profile ==
+        GltfProcessingProfile::kDirectTranslationTrianglesV1;
+    if (!translated &&
+        record->capability != GltfCapabilityReason::kBinaryAdmissionPending &&
         record->capability != GltfCapabilityReason::kReady)
       Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kIndexRole, {},
            kSelectionRule);
     const auto& state = Access::State(asset);
+    if (translated)
+      ValidateDirectTranslationConfiguration(
+          limits.direct_translation, state.work_policy.direct_translation);
     AllocationContext allocation(state.context, stop, backend);
     allocation.Checkpoint();
+    std::shared_ptr<const DirectTranslationState> translation;
+    auto ordinary_allowance = Host(limits.max_output_requested_bytes);
+    if (translated) {
+      auto validation = ValidateDirectTranslation(
+          Access::Owner(asset), *record, limits.direct_translation, allocation,
+          ordinary_allowance, execution);
+      translation_observation = validation.observation;
+      if (!validation.proof)
+        return {{}, validation.diagnostic, translation_observation};
+      translation = std::move(validation.proof);
+      const auto retained = translation->allocation.OperationActiveBytes();
+      if (retained >= ordinary_allowance)
+        Fail(GltfStatus::kUnsupportedProfile,
+             GltfDiagnosticCode::kLimitExceeded, {}, kLimitRule);
+      ordinary_allowance -= retained;
+    }
     // Full actual request admission is supplied by the operation allocator,
     // including rebound shared control storage and replacement overlap.
-    allocation =
-        allocation.WithRequestLimit(Host(limits.max_output_requested_bytes));
+    allocation = allocation.WithRequestLimit(ordinary_allowance);
     auto output = std::allocate_shared<ExtractionState>(
         Allocator<ExtractionState>(allocation), Access::Owner(asset), *record,
         allocation);
+    output->translation = std::move(translation);
     const auto& doc = state.document;
     const auto primitive_node = record->json_node;
     output->mode = OptionalUnsigned(doc, primitive_node, kMode, kTriangles);
@@ -861,9 +913,10 @@ GltfExtractionResult ExtractPrimitive(
       output->corners[corner] = {source_corner, row};
     }
     allocation.Checkpoint();
-    return {Access::MakeExtraction(std::move(output)), AcceptedDiagnostic()};
+    return {Access::MakeExtraction(std::move(output)), AcceptedDiagnostic(),
+            translation_observation};
   } catch (const GltfFailure& failure) {
-    return {{}, failure.Diagnostic()};
+    return {{}, failure.Diagnostic(), translation_observation};
   } catch (const AdmissionFailure& failure) {
     GltfStatus status = GltfStatus::kUnsupportedProfile;
     GltfDiagnosticCode code = GltfDiagnosticCode::kLimitExceeded;
@@ -883,7 +936,9 @@ GltfExtractionResult ExtractPrimitive(
       case AdmissionCode::kInvalidObject:
         throw;
     }
-    return {{}, {status, code, {}, {}, {}, {}, kLimitRule}};
+    return {{},
+            {status, code, {}, {}, {}, {}, kLimitRule},
+            translation_observation};
   }
 }
 }  // namespace

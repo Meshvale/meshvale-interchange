@@ -95,10 +95,12 @@ the query does not allocate or change accounting. The [retained memory writer](d
 emits exact unchanged JSON and shares full immutable resource ownership; its
 [installed example](examples/consumer/gltf_write.cpp) reloads the output.
 
-A [selected direct translation contract](docs/gltf-translation.md) specifies a
-future opt-in profile for preserving direct node-translation tracks during
-checked local mesh selection. Implementation and qualification are pending;
-current static defaults and available interfaces remain unchanged.
+The development [direct translation extraction profile](docs/gltf-translation.md)
+validates dense LINEAR/STEP node-translation tracks and retains a source-bound
+proof with the extracted local triangles. The [installed extraction example](examples/consumer/gltf_translation.cpp)
+demonstrates explicit limits, facts and owner lifetimes. Translation-aware checked
+writing, output inspection and publication remain pending; static defaults are
+unchanged, and full workflow and release qualification remain separate.
 
 The [static raw transfer](docs/gltf-materialization.md) copies an
 extracted primitive into inspected canonical Geometry storage through the
