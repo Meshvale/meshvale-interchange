@@ -56,12 +56,14 @@ struct GltfTopologyOutputInspectionLimits {
   std::uint64_t max_candidate_corners = 0;
   std::uint64_t max_index_bytes = 0;
   std::uint64_t max_new_requested_bytes = 0;
+  GltfDirectTranslationLimits direct_translation = {};
 };
 struct GltfTopologyOutputInspectionWorkPolicy {
   std::uint64_t parallel_min_bytes = 0;
   std::uint64_t partition_bytes = 0;
   std::uint64_t cancellation_block_bytes = 0;
   std::uint64_t max_jobs = 0;
+  GltfDirectTranslationWorkPolicy direct_translation = {};
 };
 struct GltfTopologyOutputInspectionExecutionStats {
   std::uint64_t planned_jobs = 0;
@@ -189,6 +191,10 @@ class GltfTopologyOutputInspection {
   // Current live fresh inspection requests, excluding all retained input
   // operations. Includes seed/control/header/padding and replacement overlap.
   [[nodiscard]] std::uint64_t NewRequestedBytes() const noexcept;
+  // Actual called validation facts; null for the static selection. Borrowing
+  // follows this immutable owner's lifetime, with no allocation/checkpoint.
+  [[nodiscard]] const GltfDirectTranslationObservation* DirectTranslationFacts()
+      const noexcept;
 
  private:
   friend struct gltf_workflow_support_detail::Access;
@@ -204,6 +210,7 @@ struct GltfTopologyOutputInspectionResult {
   GltfTopologyOutputInspectionDiagnostic diagnostic;
   GltfTopologyOutputCoverage coverage;
   GltfTopologyOutputInspectionExecution execution;
+  std::optional<GltfDirectTranslationObservation> direct_translation = {};
 };
 // Fresh token, source ledger, one complete inspection request cap. No read,
 // extraction, Geometry inspection or filesystem publication occurs here.

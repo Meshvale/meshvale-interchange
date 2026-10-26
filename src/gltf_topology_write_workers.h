@@ -11,20 +11,12 @@
 #include <stop_token>
 
 #include "gltf_allocation.h"
+#include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_topology_write_detail {
-struct NativeWorkerRecord {
-  void (*entry)(NativeWorkerRecord&) noexcept = nullptr;
-  void* state = nullptr;
-  std::size_t ordinal = 0;
-};
-// Per-call private fault seam. State and callbacks outlive all launched/joined
-// workers. No process-global hook, ownership transfer or default heap callable.
-struct NativeWorkerBackend {
-  std::uintptr_t (*launch)(NativeWorkerRecord*, void* state);
-  void (*join)(std::uintptr_t, void* state) noexcept;
-  void* state;
-};
+// The writer and its translation validator use the identical per-call backend.
+using NativeWorkerRecord = gltf_detail::NativeWorkerRecord;
+using NativeWorkerBackend = gltf_detail::NativeWorkerBackend;
 [[nodiscard]] NativeWorkerBackend DefaultNativeWorkerBackend() noexcept;
 using RangeOperation = void (*)(void*, std::size_t begin, std::size_t end);
 // Positive width/work and valid callbacks are already admitted by

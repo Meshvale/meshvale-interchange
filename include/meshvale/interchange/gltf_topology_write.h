@@ -47,12 +47,14 @@ struct GltfTopologyWriteLimits {
   std::uint64_t max_index_bytes = 0;
   // max_output_requested_bytes covers this entire fresh writer operation.
   GltfWriteLimits output;
+  GltfDirectTranslationLimits direct_translation = {};
 };
 struct GltfTopologyWriteWorkPolicy {
   std::uint64_t parallel_min_bytes = 0;
   std::uint64_t partition_bytes = 0;
   std::uint64_t cancellation_block_bytes = 0;
   std::uint64_t max_jobs = 0;
+  GltfDirectTranslationWorkPolicy direct_translation = {};
 };
 struct GltfTopologyWriteExecutionStats {
   std::uint64_t planned_jobs = 0;
@@ -163,6 +165,10 @@ class GltfTopologyWriteBundle {
   // Current live fresh requests, including control/header/padding. Neither
   // cumulative allocation traffic, peak observation, nor shared input charges.
   [[nodiscard]] std::uint64_t NewRequestedBytes() const noexcept;
+  // Actual called validation facts; null for the static selection. Borrowing
+  // follows this immutable owner's lifetime, with no allocation/checkpoint.
+  [[nodiscard]] const GltfDirectTranslationObservation* DirectTranslationFacts()
+      const noexcept;
 
  private:
   friend struct gltf_topology_write_detail::Access;
@@ -176,6 +182,7 @@ struct GltfTopologyWriteResult {
   std::optional<GltfTopologyWriteBundle> bundle;
   GltfTopologyWriteDiagnostic diagnostic;
   GltfTopologyWriteExecution execution;
+  std::optional<GltfDirectTranslationObservation> direct_translation = {};
 };
 
 // Checked ordered triangle subset, exact unchanged canonical vertices/channels.

@@ -66,6 +66,8 @@ struct DirectTranslationResult {
   std::shared_ptr<const DirectTranslationState> proof;
   std::optional<GltfDirectTranslationObservation> observation;
   GltfDiagnostic diagnostic;
+  // Distinguishes actual request admission from a canonical logical count cap.
+  bool request_limit = false;
 };
 
 // Validates mandatory new-profile configuration without allocating/entering
@@ -78,8 +80,10 @@ void ValidateDirectTranslationConfiguration(
 // by the independent validation scope, before accounting seed allocation.
 [[nodiscard]] DirectTranslationResult ValidateDirectTranslation(
     std::shared_ptr<const AssetState> asset, const PrimitiveRecord& primitive,
-    const GltfDirectTranslationLimits& limits, const AllocationContext& root,
-    std::size_t owner_allowance, const NativeExecutionOptions* execution);
+    const GltfDirectTranslationLimits& limits,
+    const GltfDirectTranslationWorkPolicy& work, const AllocationContext& root,
+    std::size_t owner_allowance, const NativeExecutionOptions* execution,
+    const DirectTranslationState* expected = nullptr);
 
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_DIRECT_TRANSLATION_H_

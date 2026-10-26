@@ -15,9 +15,9 @@
 
 #include "gltf_allocation.h"
 #include "gltf_json_snapshot.h"
+#include "gltf_topology_write_workers.h"
 
 namespace meshvale::interchange::gltf_topology_write_detail {
-struct NativeWorkerBackend;
 template <class T>
 using Vector = std::vector<T, gltf_detail::Allocator<T>>;
 class Failure : public std::exception {
