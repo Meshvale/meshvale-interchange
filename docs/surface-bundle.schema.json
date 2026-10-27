@@ -1,0 +1,1173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:meshvale:surface-bundle:1",
+  "title": "Meshvale surface bundle version 1",
+  "description": "JSON shape only. Exact uint64, binary, range, mapping, native-format, numeric and member-hash validation in surface-output.md is also mandatory.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "meshvale.surface-bundle/1"
+    },
+    "encoding": {
+      "enum": [
+        "gltf-json",
+        "glb",
+        "stl-ascii",
+        "stl-binary"
+      ]
+    },
+    "representation": {
+      "const": "annotated-bundle-v1"
+    },
+    "coordinates": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "declared-meters-rh-y-up",
+            "stl-untransformed"
+          ]
+        },
+        "declared_unit_hex": {
+          "$ref": "#/$defs/hex"
+        }
+      },
+      "required": [
+        "kind",
+        "declared_unit_hex"
+      ],
+      "additionalProperties": false
+    },
+    "acknowledgments": {
+      "type": "object",
+      "properties": {
+        "triangle_conversion": {
+          "const": true
+        },
+        "corner_expansion": {
+          "const": true
+        },
+        "unused_vertices": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "triangle_conversion",
+        "corner_expansion",
+        "unused_vertices"
+      ],
+      "additionalProperties": false
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/member"
+      },
+      "minItems": 2
+    },
+    "original": {
+      "$ref": "#/$defs/mesh"
+    },
+    "triangulated": {
+      "$ref": "#/$defs/mesh"
+    },
+    "triangulation": {
+      "type": "object",
+      "properties": {
+        "face_sources": {
+          "$ref": "#/$defs/u64_slice"
+        },
+        "corner_sources": {
+          "$ref": "#/$defs/u64_slice"
+        },
+        "face_output_offsets": {
+          "$ref": "#/$defs/u64_slice"
+        }
+      },
+      "required": [
+        "face_sources",
+        "corner_sources",
+        "face_output_offsets"
+      ],
+      "additionalProperties": false
+    },
+    "wire": {
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/wire_counts"
+        },
+        "primitives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/primitive"
+          }
+        },
+        "maps": {
+          "type": "object",
+          "properties": {
+            "triangle_sources": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "triangle_faces": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "corner_sources": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "corner_corners": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "vertex_sources": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "source_vertex_offsets": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "source_vertex_members": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "source_face_offsets": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "source_face_members": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "source_corner_offsets": {
+              "$ref": "#/$defs/u64_slice"
+            },
+            "source_corner_members": {
+              "$ref": "#/$defs/u64_slice"
+            }
+          },
+          "required": [
+            "triangle_sources",
+            "triangle_faces",
+            "corner_sources",
+            "corner_corners",
+            "vertex_sources",
+            "source_vertex_offsets",
+            "source_vertex_members",
+            "source_face_offsets",
+            "source_face_members",
+            "source_corner_offsets",
+            "source_corner_members"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "counts",
+        "primitives",
+        "maps"
+      ],
+      "additionalProperties": false
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/channel"
+      }
+    },
+    "uv_mapping": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/uv"
+      }
+    },
+    "inverse_uv_mapping": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/inverse_uv"
+      }
+    },
+    "catalog": {
+      "$ref": "#/$defs/catalog"
+    },
+    "numeric": {
+      "type": "object",
+      "properties": {
+        "positions": {
+          "$ref": "#/$defs/field_numeric"
+        },
+        "uv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source_attribute": {
+                "$ref": "#/$defs/u64"
+              },
+              "source_set": {
+                "$ref": "#/$defs/u32"
+              },
+              "wire_set": {
+                "$ref": "#/$defs/u32"
+              },
+              "field": {
+                "$ref": "#/$defs/field_numeric"
+              }
+            },
+            "required": [
+              "source_attribute",
+              "source_set",
+              "wire_set",
+              "field"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "positions",
+        "uv"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "encoding",
+    "representation",
+    "coordinates",
+    "acknowledgments",
+    "members",
+    "original",
+    "triangulated",
+    "triangulation",
+    "wire",
+    "channels",
+    "uv_mapping",
+    "inverse_uv_mapping",
+    "catalog",
+    "numeric"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "u64": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "description": "Semantic check additionally requires <= 2^64-1."
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "hex": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{2})*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "slice": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/u64"
+        },
+        "count": {
+          "$ref": "#/$defs/u64"
+        },
+        "bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "scalar": {
+          "enum": [
+            "f32",
+            "f64",
+            "i32",
+            "u8",
+            "u16",
+            "u32",
+            "u64"
+          ]
+        }
+      },
+      "required": [
+        "offset",
+        "count",
+        "bytes",
+        "scalar"
+      ],
+      "additionalProperties": false
+    },
+    "u64_slice": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/u64"
+        },
+        "count": {
+          "$ref": "#/$defs/u64"
+        },
+        "bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "scalar": {
+          "enum": [
+            "u64"
+          ]
+        }
+      },
+      "required": [
+        "offset",
+        "count",
+        "bytes",
+        "scalar"
+      ],
+      "additionalProperties": false
+    },
+    "u8_slice": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/u64"
+        },
+        "count": {
+          "$ref": "#/$defs/u64"
+        },
+        "bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "scalar": {
+          "enum": [
+            "u8"
+          ]
+        }
+      },
+      "required": [
+        "offset",
+        "count",
+        "bytes",
+        "scalar"
+      ],
+      "additionalProperties": false
+    },
+    "f64_slice": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "$ref": "#/$defs/u64"
+        },
+        "count": {
+          "$ref": "#/$defs/u64"
+        },
+        "bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "scalar": {
+          "enum": [
+            "f64"
+          ]
+        }
+      },
+      "required": [
+        "offset",
+        "count",
+        "bytes",
+        "scalar"
+      ],
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "$ref": "#/$defs/hex"
+        },
+        "value_hex": {
+          "$ref": "#/$defs/hex"
+        }
+      },
+      "required": [
+        "key_hex",
+        "value_hex"
+      ],
+      "additionalProperties": false
+    },
+    "mesh_counts": {
+      "type": "object",
+      "properties": {
+        "vertices": {
+          "$ref": "#/$defs/u64"
+        },
+        "faces": {
+          "$ref": "#/$defs/u64"
+        },
+        "corners": {
+          "$ref": "#/$defs/u64"
+        },
+        "face_offsets": {
+          "$ref": "#/$defs/u64"
+        },
+        "attributes": {
+          "$ref": "#/$defs/u64"
+        },
+        "attribute_scalars": {
+          "$ref": "#/$defs/u64"
+        },
+        "attribute_bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "attribute_offsets": {
+          "$ref": "#/$defs/u64"
+        },
+        "presence_bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "metadata_entries": {
+          "$ref": "#/$defs/u64"
+        },
+        "descriptor_bytes": {
+          "$ref": "#/$defs/u64"
+        }
+      },
+      "required": [
+        "vertices",
+        "faces",
+        "corners",
+        "face_offsets",
+        "attributes",
+        "attribute_scalars",
+        "attribute_bytes",
+        "attribute_offsets",
+        "presence_bytes",
+        "metadata_entries",
+        "descriptor_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "wire_counts": {
+      "type": "object",
+      "properties": {
+        "primitives": {
+          "$ref": "#/$defs/u64"
+        },
+        "vertices": {
+          "$ref": "#/$defs/u64"
+        },
+        "triangles": {
+          "$ref": "#/$defs/u64"
+        },
+        "corners": {
+          "$ref": "#/$defs/u64"
+        },
+        "map_entries": {
+          "$ref": "#/$defs/u64"
+        },
+        "materials": {
+          "$ref": "#/$defs/u64"
+        },
+        "textures": {
+          "$ref": "#/$defs/u64"
+        },
+        "images": {
+          "$ref": "#/$defs/u64"
+        },
+        "samplers": {
+          "$ref": "#/$defs/u64"
+        },
+        "listed_members": {
+          "$ref": "#/$defs/u64"
+        },
+        "listed_member_bytes": {
+          "$ref": "#/$defs/u64"
+        }
+      },
+      "required": [
+        "primitives",
+        "vertices",
+        "triangles",
+        "corners",
+        "map_entries",
+        "materials",
+        "textures",
+        "images",
+        "samplers",
+        "listed_members",
+        "listed_member_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "attribute": {
+      "type": "object",
+      "properties": {
+        "ordinal": {
+          "$ref": "#/$defs/u64"
+        },
+        "name_hex": {
+          "$ref": "#/$defs/hex"
+        },
+        "semantic_hex": {
+          "$ref": "#/$defs/hex"
+        },
+        "domain": {
+          "enum": [
+            "vertex",
+            "face",
+            "corner"
+          ]
+        },
+        "scalar": {
+          "enum": [
+            "f32",
+            "f64",
+            "i32",
+            "u8",
+            "u16",
+            "u32",
+            "u64"
+          ]
+        },
+        "components": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "set_index": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u32"
+            }
+          ]
+        },
+        "values": {
+          "$ref": "#/$defs/slice"
+        },
+        "offsets": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64_slice"
+            }
+          ]
+        },
+        "present": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u8_slice"
+            }
+          ]
+        },
+        "metadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metadata"
+          }
+        }
+      },
+      "required": [
+        "ordinal",
+        "name_hex",
+        "semantic_hex",
+        "domain",
+        "scalar",
+        "components",
+        "set_index",
+        "values",
+        "offsets",
+        "present",
+        "metadata"
+      ],
+      "additionalProperties": false
+    },
+    "mesh": {
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/mesh_counts"
+        },
+        "positions": {
+          "$ref": "#/$defs/f64_slice"
+        },
+        "face_offsets": {
+          "$ref": "#/$defs/u64_slice"
+        },
+        "corner_vertices": {
+          "$ref": "#/$defs/u64_slice"
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attribute"
+          }
+        }
+      },
+      "required": [
+        "counts",
+        "positions",
+        "face_offsets",
+        "corner_vertices",
+        "attributes"
+      ],
+      "additionalProperties": false
+    },
+    "member": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(surface\\.(gltf|glb|stl|bin)|geometry\\.bin|images/image-(0|[1-9][0-9]*)\\.(png|jpg))$"
+        },
+        "role": {
+          "enum": [
+            "gltf",
+            "glb",
+            "stl",
+            "geometry-buffer",
+            "image",
+            "capsule-binary"
+          ]
+        },
+        "bytes": {
+          "$ref": "#/$defs/u64"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "path",
+        "role",
+        "bytes",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "dyadic": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "maxLength": 656
+        },
+        "exponent2": {
+          "type": "integer",
+          "minimum": -1074,
+          "maximum": 1025
+        }
+      },
+      "required": [
+        "numerator",
+        "exponent2"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "decoded-wire"
+        },
+        "complete": {
+          "const": true
+        },
+        "examined_values": {
+          "$ref": "#/$defs/u64"
+        },
+        "changed_values": {
+          "$ref": "#/$defs/u64"
+        },
+        "max_absolute_error": {
+          "$ref": "#/$defs/dyadic"
+        },
+        "source_attribute": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "source_row": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "component": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u32"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "complete",
+        "examined_values",
+        "changed_values",
+        "max_absolute_error",
+        "source_attribute",
+        "source_row",
+        "component"
+      ],
+      "additionalProperties": false
+    },
+    "primitive": {
+      "type": "object",
+      "properties": {
+        "ordinal": {
+          "$ref": "#/$defs/u64"
+        },
+        "first_wire_vertex": {
+          "$ref": "#/$defs/u64"
+        },
+        "wire_vertices": {
+          "$ref": "#/$defs/u64"
+        },
+        "first_wire_triangle": {
+          "$ref": "#/$defs/u64"
+        },
+        "wire_triangles": {
+          "$ref": "#/$defs/u64"
+        },
+        "material": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "position_accessor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "index_accessor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "uv_accessors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "wire_set": {
+                "$ref": "#/$defs/u32"
+              },
+              "accessor": {
+                "$ref": "#/$defs/u64"
+              }
+            },
+            "required": [
+              "wire_set",
+              "accessor"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "ordinal",
+        "first_wire_vertex",
+        "wire_vertices",
+        "first_wire_triangle",
+        "wire_triangles",
+        "material",
+        "position_accessor",
+        "index_accessor",
+        "uv_accessors"
+      ],
+      "additionalProperties": false
+    },
+    "uv": {
+      "type": "object",
+      "properties": {
+        "source_attribute": {
+          "$ref": "#/$defs/u64"
+        },
+        "source_set": {
+          "$ref": "#/$defs/u32"
+        },
+        "wire_set": {
+          "$ref": "#/$defs/u32"
+        }
+      },
+      "required": [
+        "source_attribute",
+        "source_set",
+        "wire_set"
+      ],
+      "additionalProperties": false
+    },
+    "inverse_uv": {
+      "type": "object",
+      "properties": {
+        "wire_set": {
+          "$ref": "#/$defs/u32"
+        },
+        "source_set": {
+          "$ref": "#/$defs/u32"
+        },
+        "source_attribute": {
+          "$ref": "#/$defs/u64"
+        }
+      },
+      "required": [
+        "wire_set",
+        "source_set",
+        "source_attribute"
+      ],
+      "additionalProperties": false
+    },
+    "channel": {
+      "type": "object",
+      "properties": {
+        "source_attribute": {
+          "$ref": "#/$defs/u64"
+        },
+        "role": {
+          "enum": [
+            "bundle-only",
+            "uv",
+            "stl-corner-normal",
+            "material-id"
+          ]
+        },
+        "acknowledge_ordinary_view_loss": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_attribute",
+        "role",
+        "acknowledge_ordinary_view_loss"
+      ],
+      "additionalProperties": false
+    },
+    "material_binding": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "source_material": {
+          "$ref": "#/$defs/u64"
+        },
+        "wire_material": {
+          "$ref": "#/$defs/u64"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_material",
+        "wire_material"
+      ],
+      "additionalProperties": false
+    },
+    "catalog_uv": {
+      "type": "object",
+      "properties": {
+        "catalog_set": {
+          "$ref": "#/$defs/u32"
+        },
+        "source_set": {
+          "$ref": "#/$defs/u32"
+        }
+      },
+      "required": [
+        "catalog_set",
+        "source_set"
+      ],
+      "additionalProperties": false
+    },
+    "definition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "material",
+            "texture",
+            "image",
+            "sampler",
+            "buffer-view",
+            "buffer"
+          ]
+        },
+        "source_ordinal": {
+          "$ref": "#/$defs/u64"
+        },
+        "wire_ordinal": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "raw_json": {
+          "$ref": "#/$defs/u8_slice"
+        },
+        "source_core_f32": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}$"
+              },
+              "minItems": 6,
+              "maxItems": 6
+            }
+          ]
+        },
+        "wire_core_f32": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}$"
+              },
+              "minItems": 6,
+              "maxItems": 6
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "source_ordinal",
+        "wire_ordinal",
+        "raw_json",
+        "source_core_f32",
+        "wire_core_f32"
+      ],
+      "additionalProperties": false
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "source_image": {
+          "$ref": "#/$defs/u64"
+        },
+        "source_resource": {
+          "$ref": "#/$defs/u64"
+        },
+        "resource_kind": {
+          "enum": [
+            "buffer",
+            "image"
+          ]
+        },
+        "resource_table_index": {
+          "$ref": "#/$defs/u64"
+        },
+        "origin": {
+          "enum": [
+            "caller-binding",
+            "decoded-data-uri",
+            "buffer-view"
+          ]
+        },
+        "source_buffer": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "source_buffer_view": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "wire_image": {
+          "$ref": "#/$defs/u64"
+        },
+        "mime": {
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        },
+        "bytes": {
+          "$ref": "#/$defs/u8_slice"
+        },
+        "ordinary_member": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "bin_offset": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "bin_bytes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_image",
+        "source_resource",
+        "resource_kind",
+        "resource_table_index",
+        "origin",
+        "source_buffer",
+        "source_buffer_view",
+        "wire_image",
+        "mime",
+        "bytes",
+        "ordinary_member",
+        "bin_offset",
+        "bin_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "field_numeric": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "exact32",
+            "bounded-rne32",
+            "exact64"
+          ]
+        },
+        "bound": {
+          "$ref": "#/$defs/dyadic"
+        },
+        "observed": {
+          "$ref": "#/$defs/summary"
+        }
+      },
+      "required": [
+        "mode",
+        "bound",
+        "observed"
+      ],
+      "additionalProperties": false
+    },
+    "catalog": {
+      "type": "object",
+      "properties": {
+        "source_json_sha256": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
+          ]
+        },
+        "source_material_attribute": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/u64"
+            }
+          ]
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/material_binding"
+          }
+        },
+        "uv": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/catalog_uv"
+          }
+        },
+        "definitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/definition"
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/image"
+          }
+        }
+      },
+      "required": [
+        "source_json_sha256",
+        "source_material_attribute",
+        "bindings",
+        "uv",
+        "definitions",
+        "images"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

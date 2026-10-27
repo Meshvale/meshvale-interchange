@@ -18,7 +18,7 @@ BUILD_CONFIGURATION = "Debug"
 CLANG_CXX = "clang++-18"
 CLANG_C = "clang-18"
 CLANG_VERSION = "18.1.3"
-GEOMETRY_REVISION = "48298b24be7c132816fb5580d22d58bde61558d0"
+GEOMETRY_REVISION = "b0935bc912dbc6b5c338652bf2991a2a721d6d94"
 REPAIR_REVISION = "99c2fb742dd16a7d147d7994a8db80088289505d"
 VCPKG_REVISION = "cb5a41b03cde4086d554b3f3e2eac39206b16eda"
 MATERIALIZATION_PROFILE = "qualified"
@@ -212,6 +212,7 @@ def main():
                "-DMESHVALE_INTERCHANGE_GLTF_FILES=ON",
                "-DMESHVALE_INTERCHANGE_OFF_FILES=ON",
                "-DMESHVALE_INTERCHANGE_PLY_FILES=ON",
+               "-DMESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     for suffix in DEPENDENCY_CONFIGURATIONS.values():
         parser_database = (vcpkg / "buildtrees/tinyobjloader" /
@@ -220,11 +221,12 @@ def main():
     runner.run("cmake", "--build", build, "--parallel", BUILD_WORKERS)
     runner.instrumented(build / "compile_commands.json", profile["flags"], True)
     runner.inventory(build, expected_inventory(MATERIALIZATION_PROFILE, workflow_support=True,
-                                               gltf_files=True, off_files=True, ply_files=True), "interchange")
+                                               gltf_files=True, off_files=True, ply_files=True, surface_output=True), "interchange")
     runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
                "--configuration", BUILD_CONFIGURATION,
                "--materialization-profile", MATERIALIZATION_PROFILE,
-               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
+               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION,
+               "--surface-output", "ON")
     runner.test(build, "interchange")
     runner.run("python", "tests/gltf_json_oracle.py", build / "meshvale_gltf_json_tests",
                work / "json-oracle")
@@ -246,16 +248,18 @@ def main():
                "-DMESHVALE_INTERCHANGE_GLTF_FILES=ON",
                "-DMESHVALE_INTERCHANGE_OFF_FILES=ON",
                "-DMESHVALE_INTERCHANGE_PLY_FILES=ON",
+               "-DMESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON",
                f"-DMESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE={MATERIALIZATION_PROFILE}")
     runner.run("cmake", "--build", consumer, "--parallel", BUILD_WORKERS)
     runner.instrumented(consumer / "compile_commands.json", profile["flags"], True)
     runner.inventory(consumer, expected_inventory(MATERIALIZATION_PROFILE, installed=True, workflow_support=True,
-                                                  gltf_files=True, off_files=True, ply_files=True),
+                                                  gltf_files=True, off_files=True, ply_files=True, surface_output=True),
                      "installed")
     runner.run("python", "scripts/check-native-tests.py", "--build-dir", build,
                "--installed-build-dir", consumer, "--configuration", BUILD_CONFIGURATION,
                "--materialization-profile", MATERIALIZATION_PROFILE,
-               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION)
+               "--compiler-id", "Clang", "--compiler-version", CLANG_VERSION,
+               "--surface-output", "ON")
     runner.test(consumer, "installed")
     off_repair = work / "off-repair-build"
     runner.run("cmake", "-S", "examples/off-repair-consumer", "-B", off_repair,

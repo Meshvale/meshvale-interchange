@@ -14,6 +14,11 @@ namespace meshvale::interchange::gltf_detail {
 [[nodiscard]] std::uint64_t ExactUnsigned(std::string_view lexeme);
 [[nodiscard]] std::int64_t ExactSigned(std::string_view lexeme);
 [[nodiscard]] int CompareDecimal(std::string_view left, std::string_view right);
+// Existing external definition in gltf_metadata.cpp. Its native float lexical
+// conversion requires the actual parsing-thread baseline established by callers
+// that promise that profile; this declaration does not change reader behavior.
+[[nodiscard]] std::uint32_t ReadFloatBits(const JsonSnapshot& document,
+                                          std::size_t node);
 void AdmitMetadata(AssetState& state);
 void CheckMetadataRelationships(AssetState& state);
 [[nodiscard]] OwnedVector<char> BuildCoreProjection(const AssetState& state);

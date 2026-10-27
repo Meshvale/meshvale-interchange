@@ -31,6 +31,13 @@
 
 ### Added
 
+- Optional supplied-memory surface output and separate actual-byte inspection
+  for general glTF 2.0 JSON/GLB and bounded ASCII/binary STL. The source contract
+  requires real charged Geometry owners, explicit channel/material/UV policies,
+  verified finite narrowing and strict bare or annotated recovery semantics.
+  The target defaults to OFF. Native, installed, archive and sanitizer
+  qualification is pending; Python and filesystem publication remain separate.
+
 - Opt-in direct node-translation extraction with dense FLOAT LINEAR/STEP sample
   validation, all-user/ancestor inventory, owned proof, actual work observations
   and explicit shared-budget limits. An installed native example demonstrates
