@@ -52,7 +52,13 @@ std::size_t PrefixBytes(std::size_t alignment) {
 }  // namespace
 
 AdmissionFailure::AdmissionFailure(AdmissionCode code) noexcept : code_(code) {}
+AdmissionFailure::AdmissionFailure(AdmissionCode code,
+                                   AdmissionProvenance provenance) noexcept
+    : code_(code), provenance_(provenance) {}
 AdmissionCode AdmissionFailure::Code() const noexcept { return code_; }
+AdmissionProvenance AdmissionFailure::Provenance() const noexcept {
+  return provenance_;
+}
 const char* AdmissionFailure::what() const noexcept {
   return "glTF allocation admission failed";
 }
@@ -96,7 +102,8 @@ void* AllocationContext::Allocate(std::size_t bytes,
   const auto prefix = PrefixBytes(block_alignment);
   const auto request_bytes = AllocationRequestBytes(bytes, alignment);
   if (!operation_.Reserve(request_bytes))
-    throw AdmissionFailure(AdmissionCode::kSizeLimit);
+    throw AdmissionFailure(AdmissionCode::kSizeLimit,
+                           AdmissionProvenance::kOperationRequestLimit);
   // Operation admission is independent from the root ledger and takes no
   // ledger lock. Every exceptional exit rolls back the actual requested block.
   struct Reservation {
@@ -215,7 +222,9 @@ AllocationContext AllocationContext::WithRequestLimit(std::size_t bytes) const {
   if (operation_.budget_) throw AdmissionFailure(AdmissionCode::kInvalidObject);
   const auto seed =
       AllocationRequestBytes(sizeof(OperationBudget), alignof(OperationBudget));
-  if (bytes < seed) throw AdmissionFailure(AdmissionCode::kSizeLimit);
+  if (bytes < seed)
+    throw AdmissionFailure(AdmissionCode::kSizeLimit,
+                           AdmissionProvenance::kOperationRequestLimit);
   AllocationContext result(*this);
   auto* storage = Allocate(sizeof(OperationBudget), alignof(OperationBudget));
   auto* budget = new (storage) OperationBudget(seed, bytes);

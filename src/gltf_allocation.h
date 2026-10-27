@@ -19,14 +19,21 @@ enum class AdmissionCode {
   kCanceled,
   kInvalidObject
 };
+// Preserve the legacy code while distinguishing an actually reached operation
+// cap from checked request-size arithmetic. This is private throw-site
+// evidence.
+enum class AdmissionProvenance { kUnspecified, kOperationRequestLimit };
 class AdmissionFailure : public std::exception {
  public:
   explicit AdmissionFailure(AdmissionCode code) noexcept;
+  AdmissionFailure(AdmissionCode code, AdmissionProvenance provenance) noexcept;
   [[nodiscard]] AdmissionCode Code() const noexcept;
+  [[nodiscard]] AdmissionProvenance Provenance() const noexcept;
   [[nodiscard]] const char* what() const noexcept override;
 
  private:
   AdmissionCode code_;
+  AdmissionProvenance provenance_ = AdmissionProvenance::kUnspecified;
 };
 
 [[nodiscard]] std::size_t CheckedProduct(std::size_t count, std::size_t size);

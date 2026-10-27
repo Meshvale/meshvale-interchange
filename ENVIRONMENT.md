@@ -145,6 +145,36 @@ The [FBX contract](docs/fbx.md) owns exact compiler/configuration admission,
 static-import coverage, SDK cleanup and notice requirements. Default native
 builds and current Python wheels leave FBX disabled.
 
+## Optional supplied surface output
+
+Set `MESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON` to build and install
+`meshvale::surface_output` and `meshvale/interchange/surface_write.h`. The option
+defaults to `OFF`; it adds no Python interface. The
+[surface contract](docs/surface-output.md) owns the four supplied-memory encodings,
+strict/annotated representation, explicit finite numeric policy, caps, lifetimes
+and actual-byte inspection. Build it with matching installed Geometry
+`meshvale::charged_triangulation` and materialization targets. The ON-only
+configuration probe checks the actual charged overloads and strong-owner symbols;
+the shared development version is insufficient to identify that interface.
+
+Use the existing producer/consumer commands with the additional
+`-DMESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON` on **both** configurations. The
+[installed example](examples/consumer/surface_output.cpp) links the public target
+and uses only installed public headers. An ON-only compile check includes the
+new header twice; it is not an extra CTest entry.
+
+The inventory checker accepts `--surface-output ON|OFF`, defaults to the native
+cache selection and requires the same installed selection. ON adds exactly
+`surface_output`, `surface_numeric`, `surface_capsule` and the installed
+`installed_surface_output_consumer` in both declared profiles. Unsupported rows
+must observe the real nonempty Geometry construction refusal before testing a
+genuine admitted empty route; they cannot fabricate a surface owner or a decode
+success. A reached unqueryable parser profile must retain the actual refusal and
+absence of a native read call. OFF preserves the prior inventories.
+
+These are source/configuration gates. No completed native, installed, archive,
+sanitizer or platform qualification is asserted for this new module.
+
 ## Explicit native materialization profiles
 
 The [repository workflow](.github/workflows/repository-checks.yml) selects explicit
@@ -156,21 +186,23 @@ profile matches both CMake caches, the actual configured compiler identity/versi
 build configuration and complete native/installed test sets. No profile selects
 an empty suite or silently skips unsupported numerical capture.
 
-Native and sanitizer rows pin Geometry to
-`48298b24be7c132816fb5580d22d58bde61558d0`, independently of its development
-package version. Its [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/48298b24be7c132816fb5580d22d58bde61558d0/docs/materialization.md#compiled-allocation-profiles)
+Surface-enabled native and sanitizer rows pin Geometry to
+`b0935bc912dbc6b5c338652bf2991a2a721d6d94`, independently of its development
+package version. The all-optional-OFF control retains the original
+`48298b24be7c132816fb5580d22d58bde61558d0` producer and disables surface output.
+The newer [compiled allocation-profile contract](https://github.com/Meshvale/meshvale-geometry/blob/b0935bc912dbc6b5c338652bf2991a2a721d6d94/docs/materialization.md#compiled-allocation-profiles)
 owns the numerical admission tuple. Geometry is configured as a standalone
 producer without the Interchange/vcpkg toolchain. Native lanes disable system
 Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; file module ON | Geometry 16; Interchange 46; installed 24 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; file module ON | Geometry 16; Interchange 46; installed 24 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; file module ON | Geometry 16; Interchange 46; installed 24 |
-| Linux GNU | Release, unsupported; file module ON | Geometry 13; Interchange 37; installed 18 |
-| macOS AppleClang | Release, unsupported; file module ON | Geometry 13; Interchange 37; installed 18 |
-| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files OFF | Geometry 16; Interchange 23; installed 12 |
+| Windows x64 MSVC | Release, qualified; files/surface ON | Geometry 19; Interchange 49; installed 25 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; files/surface ON | Geometry 19; Interchange 49; installed 25 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; files/surface ON | Geometry 19; Interchange 49; installed 25 |
+| Linux GNU | Release, unsupported; files/surface ON | Geometry 14; Interchange 40; installed 19 |
+| macOS AppleClang | Release, unsupported; files/surface ON | Geometry 14; Interchange 40; installed 19 |
+| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files/surface OFF | Geometry 16; Interchange 23; installed 12 |
 
 These inventories include STL, OFF and PLY codec/request tests and their installed
 consumers. Each row additionally builds the separate
@@ -199,8 +231,8 @@ Native builds enable `MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE` and
 owns its compiled Geometry sharing requirement and installed target. Configuration
 checks callable `MaterializedMesh::ShareExecutionContext()` and
 `SharesExecutionBudget()` symbols. Explicitly disabling both options keeps the
-base capped reader/extractor and STL/OFF/PLY available, with qualified 22/installed 11
-or unsupported 21/installed 11 tests. It installs neither optional target nor its
+base capped reader/extractor and STL/OFF/PLY available, with qualified 23/installed 12
+or unsupported 22/installed 12 tests. It installs neither optional target nor its
 header. Workflow support requires the topology writer when enabled.
 
 With the writer ON, qualified rows also require its focused request/worker/fault
@@ -231,7 +263,7 @@ two. This lane is separate from Linux ASan/UBSan and TSan.
 
 The six ordinary Python rows retain the Release OBJ interface and matching
 Geometry wheel/native prefix (`48298b24be7c132816fb5580d22d58bde61558d0`).
-Python packaging explicitly disables the topology writer. These rows do not qualify a glTF Python operation,
+Python packaging explicitly disables the topology writer and surface output. These rows do not qualify a glTF Python operation,
 charged transfer or Linux Release materialization profile. The separate portable
 OBJ candidate workflow retains its own package/dependency preparation checks.
 
@@ -246,7 +278,7 @@ and vcpkg revisions matching the ordinary native job, without changing the Pytho
 cohort. The pinned Repair revision is the example producer described above.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange, the standalone Repair producer, all nineteen base installed
+Geometry, Interchange, the standalone Repair producer, all twenty-five installed
 consumers and the separate OFF and PLY Repair examples. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
@@ -262,10 +294,10 @@ Debug. Tracked environment flags participate in vcpkg's port ABI; binary-cache
 reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
-Both lanes enable JSON/GLB, OFF and PLY files and require Interchange's qualified 46 suites,
-twenty-four base installed test entries and the separate OFF and PLY Repair tests. Geometry
-requires 16 suites with allocation probes enabled under
-ASan/UBSan and 13 suites with them disabled under TSan. TSan retains the actual
+Both lanes enable JSON/GLB, OFF and PLY files plus supplied surface output and
+require Interchange's qualified 49 suites, twenty-five installed test entries and
+the separate OFF and PLY Repair tests. Geometry requires 19 suites with allocation
+probes enabled under ASan/UBSan and 16 with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an
 unsupported fixture or serial allocation observation cannot substitute for them.
 The runner executes independent lexical, accessor, actual Read/extraction,

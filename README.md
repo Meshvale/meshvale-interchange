@@ -73,6 +73,30 @@ ownership and independent physical readback. Enable
 `MESHVALE_INTERCHANGE_PLY_FILES=ON` to build it. Qualification is in progress;
 Python and application entry points remain separate.
 
+## Supplied surface output
+
+A native source implementation is in progress for the optional
+[`meshvale::surface_output` target](docs/surface-output.md). It encodes supplied
+canonical polygon storage to glTF 2.0 JSON/GLB or the bounded ASCII/binary STL
+profile, using genuine charged triangulation and explicit channel, material,
+UV, unit and numeric policies. `MESHVALE_INTERCHANGE_SURFACE_OUTPUT` defaults
+to `OFF` and requires matching installed Geometry charged-triangulation support.
+
+Strict bare output refuses unrepresented storage. The annotated bundle retains
+original typed channels, missing/ragged backing, ordered metadata, seams and maps
+in a [verified sidecar](docs/surface-bundle.schema.json); ordinary viewers see
+only the declared native projection. Finite binary32 narrowing needs either
+exact representation or the caller's explicit bound verified against actual
+decoded values. The bound alone supplies no proof. Shader equivalence and a
+universal format conversion profile are outside this contract.
+
+A separate inspector captures actual supplied member bytes, reloads the native
+view and verifies correspondence and sidecar storage before returning a proof.
+The [installed example](examples/consumer/surface_output.cpp) uses public
+headers and targets. Native, installed, archive and sanitizer qualification is
+pending; this source work adds no filesystem publisher, Python binding,
+application command, stable release or supported-platform claim.
+
 ## Native GLB containers
 
 Read or assemble a supplied GLB 2 byte container with owned JSON, optional BIN and

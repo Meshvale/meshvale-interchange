@@ -66,6 +66,7 @@ jobs:
             link_flags: ""
             sanitizer: ""
             optional_gltf: "OFF"
+            geometry_revision: 48298b24be7c132816fb5580d22d58bde61558d0
           - profile_id: windows-msvc-asan-qualified
             os: windows-latest
             compiler_id: MSVC
@@ -128,7 +129,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: 48298b24be7c132816fb5580d22d58bde61558d0
+          ref: ${{ matrix.geometry_revision || 'b0935bc912dbc6b5c338652bf2991a2a721d6d94' }}
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -227,6 +228,7 @@ jobs:
           -DMESHVALE_INTERCHANGE_GLTF_FILES=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_OFF_FILES=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_PLY_FILES=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_SURFACE_OUTPUT=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -238,7 +240,7 @@ jobs:
         run: |
           $version = @()
           if ('${{ matrix.compiler_version }}') { $version = @('--compiler-version', '${{ matrix.compiler_version }}') }
-          python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} @version
+          python scripts/check-native-tests.py --build-dir .local/build --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} --surface-output ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test native adapters, GLB and glTF ownership
         run: ctest --test-dir .local/build -C ${{ matrix.build_type }} --verbose --output-on-failure
@@ -276,6 +278,7 @@ jobs:
           -DMESHVALE_INTERCHANGE_GLTF_FILES=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_OFF_FILES=${{ matrix.optional_gltf || 'ON' }}
           -DMESHVALE_INTERCHANGE_PLY_FILES=${{ matrix.optional_gltf || 'ON' }}
+          -DMESHVALE_INTERCHANGE_SURFACE_OUTPUT=${{ matrix.optional_gltf || 'ON' }}
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           "-DVCPKG_TARGET_TRIPLET=$env:MESHVALE_TRIPLET"
           "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/sanitizer-triplets"
@@ -343,7 +346,7 @@ jobs:
         run: |
           $version = @()
           if ('${{ matrix.compiler_version }}') { $version = @('--compiler-version', '${{ matrix.compiler_version }}') }
-          python scripts/check-native-tests.py --build-dir .local/build --installed-build-dir .local/consumer --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} @version
+          python scripts/check-native-tests.py --build-dir .local/build --installed-build-dir .local/consumer --configuration ${{ matrix.build_type }} --materialization-profile ${{ matrix.materialization_profile }} --compiler-id ${{ matrix.compiler_id }} --topology-write ${{ matrix.optional_gltf || 'ON' }} --workflow-support ${{ matrix.optional_gltf || 'ON' }} --gltf-files ${{ matrix.optional_gltf || 'ON' }} --surface-output ${{ matrix.optional_gltf || 'ON' }} @version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify actual matching Windows sanitizer compilation
         if: matrix.sanitizer == 'asan'
@@ -436,7 +439,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Meshvale/meshvale-geometry
-          ref: 48298b24be7c132816fb5580d22d58bde61558d0
+          ref: b0935bc912dbc6b5c338652bf2991a2a721d6d94
           path: .local/geometry-source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -526,7 +529,7 @@ jobs:
         run: |
           python -m pip install build==1.6.1
           python -m build .local/geometry-source --outdir .local/geometry-wheels
-          python -m build --outdir .local/dist "--config-setting=cmake.define.CMAKE_PREFIX_PATH=${{ github.workspace }}/.local/geometry-prefix;${{ github.workspace }}/.local/dependencies/$env:MESHVALE_TRIPLET"
+          python -m build --outdir .local/dist --config-setting=cmake.define.MESHVALE_INTERCHANGE_SURFACE_OUTPUT=OFF "--config-setting=cmake.define.CMAKE_PREFIX_PATH=${{ github.workspace }}/.local/geometry-prefix;${{ github.workspace }}/.local/dependencies/$env:MESHVALE_TRIPLET"
       - name: Inspect Interchange packages
         shell: bash
         run: python scripts/check-package.py .local/dist/*.whl .local/dist/*.tar.gz
