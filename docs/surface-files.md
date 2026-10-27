@@ -88,9 +88,10 @@ that order before handling stop or creating a stage. Preserve the memory
 inspector's first-invalid order for its own configuration. An already stopped
 call cannot hide invalid configuration. This operation has no encoder-limit
 object: encoding was validated when the genuine retained output/proof was
-created. The earlier physical-publication paragraph's encoder-cap requirement
-means validating the operations actually invoked, not inventing a new Encode
-call or unused encoding configuration. The memory contract is unchanged.
+created. Validate the retained input and the file/fresh-inspection configuration
+used by this operation. It neither invokes `EncodeSurface` nor takes unused
+encoding configuration; the supplied-memory contract continues to own encoding
+validation.
 
 ## Shared ownership, admission and work
 
@@ -237,6 +238,8 @@ The typed returned receipt view may expose the receipt's actual digest outside
 its JSON. A digest is byte integrity, not a signature or external authority.
 
 ```cpp
+inline constexpr std::string_view kDefaultSurfacePublicationReceiptPath =
+    "publication.json";
 struct SurfaceFileVerifiedContent {
   const SurfaceOutputInspection& inspection;  // Fresh physical V only.
   std::string_view entry_path;
@@ -247,7 +250,7 @@ struct SurfaceReceiptProvider {
   void* state = nullptr;
 };
 struct SurfaceFilePublicationOptions {
-  std::string_view receipt_path = "publication.json";
+  std::string_view receipt_path = kDefaultSurfacePublicationReceiptPath;
   SurfaceReceiptProvider receipt{};
 };
 ```
