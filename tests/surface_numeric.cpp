@@ -148,8 +148,8 @@ void Triangles(const mv::gltf_detail::AllocationContext& allocation) {
       for (std::size_t corner = 0; corner < detail::kTriangleCorners; ++corner)
         for (std::size_t component = 0; component < detail::kPositionComponents;
              ++component) {
-          const auto vertex = test.faces[face][corner],
-                     at = corner * detail::kPositionComponents + component;
+          const auto vertex = test.faces[face][corner];
+          const auto at = corner * detail::kPositionComponents + component;
           original[at] = test.source_words[vertex][component];
           actual[at] = detail::Widen32(test.reference_words[vertex][component]);
         }

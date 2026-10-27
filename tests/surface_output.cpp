@@ -338,7 +338,15 @@ std::optional<Prepared> Prepare(geom::MeshMaterializationInput input,
 struct Plan {
   Plan(const Prepared& source, mv::SurfaceEncoding encoding,
        fixture::Variant variant, bool repeated = false)
-      : request{source.original, source.triangles} {
+      : request{.original = source.original,
+                .triangles = source.triangles,
+                .representation = mv::SurfaceRepresentation::kInvalid,
+                .acknowledge_triangle_conversion = false,
+                .acknowledge_corner_expansion = false,
+                .acknowledge_unused_vertices = false,
+                .channels = {},
+                .numeric = {},
+                .destination = {}} {
     request.representation = mv::SurfaceRepresentation::kAnnotatedBundleV1;
     request.acknowledge_triangle_conversion = true;
     request.acknowledge_corner_expansion = true;
@@ -688,7 +696,16 @@ void Empty(const geom::ExecutionContext& context,
                                  {}},
                                 context, false);
   Require(prepared.has_value(), "genuine empty source and charged result");
-  mv::SurfaceEncodeRequest request{prepared->original, prepared->triangles};
+  mv::SurfaceEncodeRequest request{
+      .original = prepared->original,
+      .triangles = prepared->triangles,
+      .representation = mv::SurfaceRepresentation::kInvalid,
+      .acknowledge_triangle_conversion = false,
+      .acknowledge_corner_expansion = false,
+      .acknowledge_unused_vertices = false,
+      .channels = {},
+      .numeric = {},
+      .destination = {}};
   request.representation = mv::SurfaceRepresentation::kAnnotatedBundleV1;
   request.acknowledge_triangle_conversion = true;
   request.acknowledge_corner_expansion = true;
@@ -810,7 +827,16 @@ void Boundaries(const geom::ExecutionContext& context) {
   for (const auto& test : fixture::TriangleCases()) {
     const auto prepared = Prepare(test.input, context, false);
     if (!prepared) return;
-    mv::SurfaceEncodeRequest request{prepared->original, prepared->triangles};
+    mv::SurfaceEncodeRequest request{
+        .original = prepared->original,
+        .triangles = prepared->triangles,
+        .representation = mv::SurfaceRepresentation::kInvalid,
+        .acknowledge_triangle_conversion = false,
+        .acknowledge_corner_expansion = false,
+        .acknowledge_unused_vertices = false,
+        .channels = {},
+        .numeric = {},
+        .destination = {}};
     request.representation = mv::SurfaceRepresentation::kAnnotatedBundleV1;
     request.acknowledge_triangle_conversion = true;
     request.acknowledge_corner_expansion = true;
@@ -819,8 +845,12 @@ void Boundaries(const geom::ExecutionContext& context) {
     request.numeric.max_position_linf_error =
         std::bit_cast<double>(test.bound_f64);
     request.destination = mv::GltfSurfaceOptions{
-        mv::SurfaceEncoding::kGltfJson,
-        mv::SurfaceCoordinates::kDeclaredMetersRightHandedYUp};
+        .encoding = mv::SurfaceEncoding::kGltfJson,
+        .coordinates = mv::SurfaceCoordinates::kDeclaredMetersRightHandedYUp,
+        .uv = {},
+        .catalog = nullptr,
+        .materials = {},
+        .catalog_uv = {}};
     const auto encoded =
         mv::EncodeSurface(request, EncodeLimits(mv::SurfaceEncoding::kGltfJson),
                           Work(mv::SurfaceEncoding::kGltfJson, false));
@@ -2020,15 +2050,28 @@ void DumpConstruction(const fs::path& directory, std::string_view name,
   Require(!stream.fail(), "close actual construction witness");
 }
 mv::SurfaceEncodeRequest SimpleRequest(const Prepared& source) {
-  mv::SurfaceEncodeRequest request{source.original, source.triangles};
+  mv::SurfaceEncodeRequest request{
+      .original = source.original,
+      .triangles = source.triangles,
+      .representation = mv::SurfaceRepresentation::kInvalid,
+      .acknowledge_triangle_conversion = false,
+      .acknowledge_corner_expansion = false,
+      .acknowledge_unused_vertices = false,
+      .channels = {},
+      .numeric = {},
+      .destination = {}};
   request.representation = mv::SurfaceRepresentation::kAnnotatedBundleV1;
   request.acknowledge_triangle_conversion = true;
   request.acknowledge_corner_expansion = true;
   request.acknowledge_unused_vertices = true;
   request.numeric.positions = mv::SurfaceNarrowing::kExact32;
   request.destination = mv::GltfSurfaceOptions{
-      mv::SurfaceEncoding::kGltfJson,
-      mv::SurfaceCoordinates::kDeclaredMetersRightHandedYUp};
+      .encoding = mv::SurfaceEncoding::kGltfJson,
+      .coordinates = mv::SurfaceCoordinates::kDeclaredMetersRightHandedYUp,
+      .uv = {},
+      .catalog = nullptr,
+      .materials = {},
+      .catalog_uv = {}};
   return request;
 }
 void CompleteCorrespondence(const geom::ExecutionContext& context) {

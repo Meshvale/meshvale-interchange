@@ -3170,11 +3170,11 @@ Vector<SurfaceMaterialFactorView> ObserveWireCatalog(
     const auto pbr = Field(actual, b, key::kPbr, run),
                original_pbr = Field(source, a, key::kPbr, run);
     if (pbr) Whitelist(actual, *pbr, kPbrKeys, run);
-    const auto texture =
-        pbr ? Field(actual, *pbr, key::kBaseTexture, run) : std::nullopt;
-    const auto original_texture =
-        original_pbr ? Field(source, *original_pbr, key::kBaseTexture, run)
-                     : std::nullopt;
+    std::optional<std::size_t> texture;
+    if (pbr) texture = Field(actual, *pbr, key::kBaseTexture, run);
+    std::optional<std::size_t> original_texture;
+    if (original_pbr)
+      original_texture = Field(source, *original_pbr, key::kBaseTexture, run);
     if (texture.has_value() != original_texture.has_value()) wire_fail();
     if (texture) {
       Whitelist(actual, *texture, kTextureInfoKeys, run);
