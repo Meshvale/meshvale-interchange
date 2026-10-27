@@ -196,8 +196,16 @@ void Run(mv::SurfaceEncoding encoding, const geom::ExecutionContext& context) {
               triangulated.triangulation.has_value(),
           "actual charged owner");
 
-  mv::SurfaceEncodeRequest request{*inspected.inspection,
-                                   *triangulated.triangulation};
+  mv::SurfaceEncodeRequest request{
+      .original = *inspected.inspection,
+      .triangles = *triangulated.triangulation,
+      .representation = mv::SurfaceRepresentation::kInvalid,
+      .acknowledge_triangle_conversion = false,
+      .acknowledge_corner_expansion = false,
+      .acknowledge_unused_vertices = false,
+      .channels = {},
+      .numeric = {},
+      .destination = {}};
   request.representation = mv::SurfaceRepresentation::kStrictBare;
   request.acknowledge_triangle_conversion = true;
   request.acknowledge_corner_expansion = true;

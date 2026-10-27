@@ -950,8 +950,16 @@ void FocusedUv(mv::SurfaceEncoding encoding, bool zero_domain,
       {{0, mv::SurfaceChannelRole::kUv, true}}};
   constexpr std::array<mv::SurfaceUvBinding, 1> binding{{{0, 0, 0}}};
   const std::array<double, 1> bounds{zero_domain ? 0 : 0x1p-29};
-  mv::SurfaceEncodeRequest request{*original.inspection,
-                                   *triangles.triangulation};
+  mv::SurfaceEncodeRequest request{
+      .original = *original.inspection,
+      .triangles = *triangles.triangulation,
+      .representation = mv::SurfaceRepresentation::kInvalid,
+      .acknowledge_triangle_conversion = false,
+      .acknowledge_corner_expansion = false,
+      .acknowledge_unused_vertices = false,
+      .channels = {},
+      .numeric = {},
+      .destination = {}};
   request.representation = mv::SurfaceRepresentation::kAnnotatedBundleV1;
   request.acknowledge_triangle_conversion = true;
   request.acknowledge_corner_expansion = true;
@@ -1057,8 +1065,16 @@ void Example(mv::SurfaceEncoding encoding, fixture::Variant variant,
       channels[i].role = mv::SurfaceChannelRole::kUv;
     channels[18].role = mv::SurfaceChannelRole::kMaterialId;
   }
-  mv::SurfaceEncodeRequest request{*inspection.inspection,
-                                   *triangles.triangulation};
+  mv::SurfaceEncodeRequest request{
+      .original = *inspection.inspection,
+      .triangles = *triangles.triangulation,
+      .representation = mv::SurfaceRepresentation::kInvalid,
+      .acknowledge_triangle_conversion = false,
+      .acknowledge_corner_expansion = false,
+      .acknowledge_unused_vertices = false,
+      .channels = {},
+      .numeric = {},
+      .destination = {}};
   request.representation = mv::SurfaceRepresentation::kAnnotatedBundleV1;
   request.acknowledge_triangle_conversion = true;
   request.acknowledge_corner_expansion = true;
