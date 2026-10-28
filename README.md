@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, supplied-surface glTF/GLB/STL output and optional verified directory publication, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, supplied-surface glTF/GLB/STL output and optional verified directory publication, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release yet.
 
 The [source-version profile](docs/versioning.md) preserves one native identity
 for tagged checkouts, tagged archives and source packages named for this product.
@@ -24,8 +24,9 @@ raw normals and source metadata, uses charged canonical Geometry storage, and
 refuses unsupported attributes or inexact binary32 export. Import gives each
 facet three distinct vertices; it does not infer shared connectivity. The
 [installed consumer](examples/stl-consumer/main.cpp) demonstrates inspection and
-physical reload. Qualification is in progress; filesystem publication, Python
-and application entry points remain separate.
+physical reload. Qualification is in progress. The separate
+[STL-file walkthrough](docs/stl-file-walkthrough.md) demonstrates source-built
+Python/API/command read and verified rewrite, neutral receipts and ordered batches.
 
 ## Native indexed OFF polygons
 

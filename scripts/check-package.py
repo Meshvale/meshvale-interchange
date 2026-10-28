@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Inspect Interchange wheel/source archives against the product publication list."""
 import argparse
+import configparser
 from pathlib import Path, PurePosixPath
 import tarfile
 import zipfile
@@ -12,6 +13,16 @@ def inspect(path):
             members = archive.infolist()
             names = [member.filename for member in members if not member.is_dir()]
             notice_contents = {name: archive.read(name) for name in names if ".dist-info/licenses/" in name}
+            preset = archive.read("meshvale_interchange/_stl_file_presets.json")
+            entry_points = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
+            assert len(entry_points) == 1, entry_points
+            entry_point_text = archive.read(entry_points[0]).decode("utf-8")
+        assert "meshvale_interchange/stl_files.py" in names
+        assert preset == (Path(__file__).resolve().parents[1] / "docs/stl-file-presets.json").read_bytes()
+        entry_point_config = configparser.ConfigParser()
+        entry_point_config.read_string(entry_point_text)
+        assert dict(entry_point_config["console_scripts"]) == {
+            "meshvale-stl": "meshvale_interchange.stl_files:main"}
         for member in members:
             name = member.filename
             parts = PurePosixPath(name).parts
@@ -22,10 +33,10 @@ def inspect(path):
                 assert len(parts) == 1 or parts[0].endswith(".dist-info"), name
                 continue
             if parts[0] == "meshvale_interchange":
-                assert len(parts) == 2 and (parts[1] in {"__init__.py","_version.py"} or
+                assert len(parts) == 2 and (parts[1] in {"__init__.py","_version.py","stl_files.py","_stl_file_presets.json"} or
                     (parts[1].startswith("_interchange.") and parts[1].endswith((".pyd",".so")))), name
             else:
-                assert parts[1:] in [("METADATA",), ("WHEEL",), ("RECORD",),
+                assert parts[1:] in [("METADATA",), ("WHEEL",), ("RECORD",), ("entry_points.txt",),
                     ("licenses", "LICENSE"), ("licenses", "NOTICE"),
                     ("licenses", "licenses", "nanobind.txt"),
                     ("licenses", "licenses", "robin-map.txt"),
@@ -73,6 +84,27 @@ def inspect(path):
                          "tests/header_stl.cpp", "tests/stl.cpp", "tests/stl_requests.cpp",
                          "tests/stl_fixture.h", "examples/stl-consumer/CMakeLists.txt",
                          "examples/stl-consumer/main.cpp",
+                         "include/meshvale/interchange/stl_files.h", "docs/stl-files.md",
+                         "docs/stl-file-presets.json", "cmake/StlFiles.cmake",
+                         "src/stl_files.cpp", "src/stl_files_internal.h",
+                         "tests/stl_files_fixture.h", "tests/stl_files_semantics.cpp",
+                         "tests/stl_files_requests.cpp", "tests/stl_files_consumer.cpp",
+                         "tests/headers/stl_files_h.cpp",
+                         "examples/stl-files-consumer/CMakeLists.txt",
+                         "python/stl_files_bindings.h", "python/stl_files_bindings.cpp",
+                         "python/meshvale_interchange/stl_files.py",
+                         "python/meshvale_interchange/_stl_file_presets.json",
+                         "tests/python/stl_files_fixture.py",
+                         "tests/python/test_stl_files_api.py",
+                         "tests/python/test_stl_files_admission.py",
+                         "tests/python/test_stl_files_commands.py",
+                         "tests/python/stl_boundary_fixture.cpp",
+                         "tests/python/stl_boundary_probe.py",
+                         "tests/stl_files_alias_witness.h",
+                         "tests/stl_files_aliases.cpp",
+                         "tests/stl_files_aliases_internal.cpp",
+                         "tests/python/stl_files_aliases_gate.py",
+                         "examples/stl-files-alias-consumer/CMakeLists.txt",
                          "include/meshvale/interchange/off.h", "docs/off.md",
                          "src/off.cpp", "src/off_test_internal.h",
                          "tests/header_off.cpp", "tests/off.cpp", "tests/off_requests.cpp",

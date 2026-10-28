@@ -1,0 +1,169 @@
+{
+  "schema": "meshvale.stl-file-presets/1",
+  "contract": "STL-FILES-001/0.1.0",
+  "presets": {
+    "bounded": {
+      "application_limits": {
+        "max_jobs": 4,
+        "max_manifest_bytes": 1048576,
+        "max_manifest_line_bytes": 262144,
+        "max_job_id_bytes": 128,
+        "max_result_bytes": 1048576,
+        "max_delivery_bytes": 1048576,
+        "max_application_new_requested_bytes": 67108864,
+        "max_job_new_requested_bytes": 696254464
+      },
+      "single_execution": {
+        "worker_budget": 4,
+        "minimum_parallel_vertices": 65536,
+        "tracked_payload_budget_bytes": 1073741824
+      },
+      "batch_execution": {
+        "worker_budget": 4,
+        "minimum_parallel_vertices": 65536,
+        "tracked_payload_budget_bytes": 4294967296
+      },
+      "read_limits": {
+        "files": {
+          "max_entry_bytes": 67108864,
+          "max_receipt_bytes": 1048576,
+          "max_total_file_bytes": 68157440,
+          "max_entry_name_bytes": 240,
+          "max_native_path_code_units": 32768,
+          "max_unit_label_bytes": 128,
+          "max_caller_report_bytes": 65536,
+          "max_file_new_requested_bytes": 100663296
+        },
+        "read": {
+          "max_source_bytes": 67108864,
+          "max_facets": 100000,
+          "max_name_bytes": 1024,
+          "max_line_bytes": 8192,
+          "max_token_bytes": 128,
+          "max_codec_new_requested_bytes": 100663296,
+          "max_total_new_requested_bytes": 176160768,
+          "materialization": {
+            "max_vertices": 300000,
+            "max_faces": 100000,
+            "max_corners": 300000,
+            "max_face_offsets": 100001,
+            "max_attributes": 1,
+            "max_attribute_scalars": 300000,
+            "max_attribute_offsets": 1,
+            "max_presence_bytes": 1,
+            "max_metadata_entries": 1,
+            "max_descriptor_bytes": 4096,
+            "max_new_requested_bytes": 67108864
+          },
+          "inspection": {
+            "max_issues": 1024,
+            "max_new_requested_bytes": 8388608
+          }
+        }
+      },
+      "read_work": {
+        "files": {
+          "io_block_bytes": 65536,
+          "parallel_min_bytes": 65536,
+          "partition_bytes": 32768,
+          "cancellation_block_bytes": 4096,
+          "max_jobs": 4
+        },
+        "read": {
+          "cancellation_block_bytes": 4096,
+          "cancellation_block_tokens": 128,
+          "cancellation_block_facets": 128,
+          "geometry": {
+            "parallel_min_bytes": 65536,
+            "partition_bytes": 32768,
+            "cancellation_block_scalars": 1024,
+            "max_jobs": 4
+          }
+        }
+      },
+      "rewrite_limits": {
+        "files": {
+          "max_entry_bytes": 67108864,
+          "max_receipt_bytes": 1048576,
+          "max_total_file_bytes": 68157440,
+          "max_entry_name_bytes": 240,
+          "max_native_path_code_units": 32768,
+          "max_unit_label_bytes": 128,
+          "max_caller_report_bytes": 65536,
+          "max_file_new_requested_bytes": 134217728
+        },
+        "write": {
+          "max_output_bytes": 67108864,
+          "max_facets": 100000,
+          "max_name_bytes": 1024,
+          "max_line_bytes": 8192,
+          "max_token_bytes": 128,
+          "max_codec_new_requested_bytes": 100663296,
+          "max_total_new_requested_bytes": 109051904,
+          "inspection": {
+            "max_issues": 1024,
+            "max_new_requested_bytes": 8388608
+          }
+        },
+        "fresh_read": {
+          "max_source_bytes": 67108864,
+          "max_facets": 100000,
+          "max_name_bytes": 1024,
+          "max_line_bytes": 8192,
+          "max_token_bytes": 128,
+          "max_codec_new_requested_bytes": 100663296,
+          "max_total_new_requested_bytes": 176160768,
+          "materialization": {
+            "max_vertices": 300000,
+            "max_faces": 100000,
+            "max_corners": 300000,
+            "max_face_offsets": 100001,
+            "max_attributes": 1,
+            "max_attribute_scalars": 300000,
+            "max_attribute_offsets": 1,
+            "max_presence_bytes": 1,
+            "max_metadata_entries": 1,
+            "max_descriptor_bytes": 4096,
+            "max_new_requested_bytes": 67108864
+          },
+          "inspection": {
+            "max_issues": 1024,
+            "max_new_requested_bytes": 8388608
+          }
+        },
+        "max_total_new_requested_bytes": 419430400
+      },
+      "rewrite_work": {
+        "files": {
+          "io_block_bytes": 65536,
+          "parallel_min_bytes": 65536,
+          "partition_bytes": 32768,
+          "cancellation_block_bytes": 4096,
+          "max_jobs": 4
+        },
+        "write": {
+          "cancellation_block_bytes": 4096,
+          "cancellation_block_tokens": 128,
+          "cancellation_block_facets": 128,
+          "geometry": {
+            "parallel_min_bytes": 65536,
+            "partition_bytes": 32768,
+            "cancellation_block_scalars": 1024,
+            "max_jobs": 4
+          }
+        },
+        "fresh_read": {
+          "cancellation_block_bytes": 4096,
+          "cancellation_block_tokens": 128,
+          "cancellation_block_facets": 128,
+          "geometry": {
+            "parallel_min_bytes": 65536,
+            "partition_bytes": 32768,
+            "cancellation_block_scalars": 1024,
+            "max_jobs": 4
+          }
+        }
+      }
+    }
+  }
+}
