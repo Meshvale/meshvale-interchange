@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iomanip>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <source_location>
@@ -29,7 +31,141 @@
 #include <variant>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace meshvale::interchange::stl_files_fixture {
+// Failure-only observations never replace the original product input or retry
+// its operation. Enum integers refer to the public stl_files.h declarations.
+inline constexpr std::string_view kReadFailureTag = "[STL-read-diagnostic] ";
+inline void PrintDiagnosticPath(std::string_view label,
+                                const std::filesystem::path& path) {
+  const auto utf8 = path.u8string();
+  std::cerr << kReadFailureTag << label << '='
+            << std::quoted(std::string(
+                   reinterpret_cast<const char*>(utf8.data()), utf8.size()))
+            << '\n';
+}
+#ifdef _WIN32
+inline void PrintWindowsPathFacts(const std::filesystem::path& input) {
+  // Fixed diagnostic-only capacity accommodates extended-length spellings;
+  // oversized observations report their returned length without retrying.
+  constexpr DWORD kDiagnosticPathCodeUnits = 32768;
+  std::array<wchar_t, kDiagnosticPathCodeUnits> buffer{};
+  auto size = GetFullPathNameW(input.c_str(), kDiagnosticPathCodeUnits,
+                               buffer.data(), nullptr);
+  auto error = size == 0 ? GetLastError() : ERROR_SUCCESS;
+  std::cerr << kReadFailureTag << "GetFullPathNameW length=" << size
+            << " error=" << error << '\n';
+  if (size > 0 && size < kDiagnosticPathCodeUnits)
+    PrintDiagnosticPath("full spelling", std::filesystem::path(buffer.data()));
+  size =
+      GetLongPathNameW(input.c_str(), buffer.data(), kDiagnosticPathCodeUnits);
+  error = size == 0 ? GetLastError() : ERROR_SUCCESS;
+  std::cerr << kReadFailureTag << "GetLongPathNameW length=" << size
+            << " error=" << error << '\n';
+  if (size > 0 && size < kDiagnosticPathCodeUnits)
+    PrintDiagnosticPath("long spelling", std::filesystem::path(buffer.data()));
+  auto prefix = input.root_path();
+  for (const auto& component : input.relative_path()) {
+    prefix /= component;
+    const auto attributes = GetFileAttributesW(prefix.c_str());
+    error =
+        attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_SUCCESS;
+    PrintDiagnosticPath("prefix", prefix);
+    std::cerr << kReadFailureTag << "attributes=" << attributes << " reparse="
+              << (attributes != INVALID_FILE_ATTRIBUTES &&
+                  (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+              << " error=" << error << '\n';
+  }
+  struct DiagnosticHandle {
+    HANDLE value;
+    ~DiagnosticHandle() {
+      if (value != INVALID_HANDLE_VALUE) CloseHandle(value);
+    }
+    DWORD Close() noexcept {
+      const auto owned = value;
+      value = INVALID_HANDLE_VALUE;
+      return CloseHandle(owned) ? ERROR_SUCCESS : GetLastError();
+    }
+  };
+  DiagnosticHandle handle{
+      CreateFileW(input.c_str(), FILE_READ_ATTRIBUTES,
+                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                  nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
+  if (handle.value == INVALID_HANDLE_VALUE) {
+    error = GetLastError();
+    std::cerr << kReadFailureTag << "observer CreateFileW error=" << error
+              << '\n';
+    return;
+  }
+  size = GetFinalPathNameByHandleW(handle.value, buffer.data(),
+                                   kDiagnosticPathCodeUnits,
+                                   FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+  error = size == 0 ? GetLastError() : ERROR_SUCCESS;
+  const auto close_error = handle.Close();
+  std::cerr << kReadFailureTag << "GetFinalPathNameByHandleW length=" << size
+            << " error=" << error << " observer close error=" << close_error
+            << '\n';
+  if (size > 0 && size < kDiagnosticPathCodeUnits)
+    PrintDiagnosticPath("handle final spelling",
+                        std::filesystem::path(buffer.data()));
+}
+#endif
+inline void PrintReadFailure(const StlFileResult& result,
+                             const std::filesystem::path& input) noexcept {
+  try {
+    std::cerr << kReadFailureTag
+              << "status(enum)=" << static_cast<int>(result.status)
+              << " phase(enum)=" << static_cast<int>(result.phase)
+              << " diagnostic.status(enum)="
+              << static_cast<int>(result.diagnostic.status)
+              << " diagnostic.phase(enum)="
+              << static_cast<int>(result.diagnostic.phase)
+              << " diagnostic.code(enum)="
+              << static_cast<int>(result.diagnostic.code) << '\n';
+    if (result.diagnostic.system_error) {
+      const auto& error = *result.diagnostic.system_error;
+      std::cerr << kReadFailureTag
+                << "system error category=" << error.category().name()
+                << " value=" << error.value()
+                << " message=" << std::quoted(error.message()) << '\n';
+    } else {
+      std::cerr << kReadFailureTag << "system error absent\n";
+    }
+    if (result.diagnostic.stl_status)
+      std::cerr << kReadFailureTag << "delegated STL status(enum)="
+                << static_cast<int>(*result.diagnostic.stl_status) << '\n';
+    std::cerr << kReadFailureTag << "capture observation(enum)="
+              << static_cast<int>(result.observations.capture.state)
+              << " read observation(enum)="
+              << static_cast<int>(result.observations.read.state)
+              << " capture workers launched="
+              << result.execution.capture.launched_workers
+              << " joined=" << result.execution.capture.joined_workers << '\n';
+    std::cerr << kReadFailureTag
+              << "independent later filesystem observations (not original "
+                 "operation state)\n";
+    PrintDiagnosticPath("unchanged input", input);
+    std::error_code error;
+    const auto size = std::filesystem::file_size(input, error);
+    std::cerr << kReadFailureTag << "observed file bytes=" << size
+              << " error category=" << error.category().name()
+              << " value=" << error.value() << '\n';
+#ifdef _WIN32
+    PrintWindowsPathFacts(input);
+#endif
+  } catch (...) {
+    // Observation failure must not replace the unchanged original assertion.
+  }
+}
 inline void Require(bool value, std::string_view message,
                     std::source_location at = std::source_location::current()) {
   if (!value)

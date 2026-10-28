@@ -627,6 +627,10 @@ void CaptureRequests(const fs::path& root,
     options.workers = workers.Options();
     const auto captured = detail::CaptureForTesting(
         input, f::FileLimits(), f::FileWork(), context, {}, options);
+    if (!captured.captured || workers.launched == 0 ||
+        workers.launched != workers.joined || workers.entered == 0 ||
+        context.ActiveWorkers() != 0)
+      f::PrintReadFailure(captured, input);
     Require(captured.captured && workers.launched > 0 &&
                 workers.launched == workers.joined && workers.entered > 0 &&
                 context.ActiveWorkers() == 0,

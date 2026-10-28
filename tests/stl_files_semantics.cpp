@@ -109,6 +109,8 @@ void RoundTrip(std::span<const std::byte> bytes, ic::StlEncoding encoding,
   {
     const auto capture =
         ic::CaptureStlFile(input, f::FileLimits(), f::FileWork(), context);
+    if (capture.status != ic::StlFileStatus::kSuccess || !capture.captured)
+      f::PrintReadFailure(capture, input);
     Require(capture.status == ic::StlFileStatus::kSuccess && capture.captured,
             "genuine native regular-file capture");
     Require(

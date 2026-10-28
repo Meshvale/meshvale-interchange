@@ -42,6 +42,7 @@ void Consumer(bool unsupported) {
     const auto nonempty =
         ic::ReadStlFileAsset(input, ic::StlEncoding::kAscii, f::ReadLimits(),
                              f::ReadWork(), context);
+    if (!nonempty.asset && !unsupported) f::PrintReadFailure(nonempty, input);
     const bool use_empty = f::Unsupported(nonempty, unsupported);
     if (use_empty) f::Write(input, f::Bytes(f::kEmpty));
     const auto read =
