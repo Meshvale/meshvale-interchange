@@ -13,6 +13,9 @@
 
 #include "meshvale/geometry/python/record.h"
 #include "meshvale/interchange/obj_files.h"
+#ifdef MESHVALE_INTERCHANGE_STL_FILES_PYTHON
+#include "stl_files_bindings.h"
+#endif
 
 namespace nb = nanobind;
 namespace geo = meshvale::geometry;
@@ -296,4 +299,12 @@ NB_MODULE(_interchange, module) {
   module.def("publish", &publish, nb::arg("asset"), nb::arg("destination"),
              nb::arg("cancellation").none(), nb::arg("callback").none(),
              nb::arg("supplemental"), nb::arg("verified_callback").none());
+#ifdef MESHVALE_INTERCHANGE_STL_FILES_PYTHON
+  meshvale::interchange::stl_python_detail::RegisterStlFiles(
+      module, [](nb::handle value) {
+        if (!value.is_none() && !nb::isinstance<Cancellation>(value))
+          throw nb::type_error("cancellation must be Cancellation or None");
+        return stop(value.is_none() ? nullptr : nb::cast<Cancellation*>(value));
+      });
+#endif
 }

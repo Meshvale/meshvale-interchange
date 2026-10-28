@@ -14,6 +14,9 @@ license-files = ["LICENSE", "NOTICE", "licenses/*.txt"]
 authors = [{name = "Meshvale contributors"}]
 dependencies = ["meshvale-geometry==0.0.1.dev134+g48298b24b"]
 
+[project.scripts]
+meshvale-stl = "meshvale_interchange.stl_files:main"
+
 [project.urls]
 Repository = "https://github.com/Meshvale/meshvale-interchange"
 Issues = "https://github.com/Meshvale/meshvale-interchange/issues"
@@ -23,11 +26,12 @@ minimum-version = "1.1"
 wheel.packages = ["python/meshvale_interchange"]
 install.components = ["python"]
 cmake.define.MESHVALE_INTERCHANGE_PYTHON = true
+cmake.define.MESHVALE_INTERCHANGE_STL_FILES = true
 cmake.define.MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE = false
 cmake.define.MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT = false
 cmake.define.MESHVALE_INTERCHANGE_GLTF_FILES = false
 cmake.define.BUILD_TESTING = false
-sdist.include = [".clang-format", ".gitattributes", ".git_archival.txt", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/bindings.cpp", "python/meshvale_interchange/*.py", "docs/**", "examples/**", "tests/**", "licenses/**", "scripts/*.py"]
+sdist.include = [".clang-format", ".gitattributes", ".git_archival.txt", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/*.cpp", "python/*.h", "python/meshvale_interchange/*.py", "python/meshvale_interchange/_stl_file_presets.json", "docs/**", "examples/**", "tests/**", "licenses/**", "scripts/*.py"]
 sdist.inclusion-mode = "explicit"
 sdist.exclude = ["**/__pycache__/**", "**/*.pyc", "**/.local/**", "**/.scratch/**", "**/build/**", "**/references/**"]
 
