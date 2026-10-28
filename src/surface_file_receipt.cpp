@@ -213,6 +213,8 @@ void Emit(Json& j, PublishedState& s, bool report,
 }  // namespace
 std::string_view EntryPath(SurfaceEncoding encoding) {
   switch (encoding) {
+    case SurfaceEncoding::kInvalid:
+      break;
     case SurfaceEncoding::kGltfJson:
       return "surface.gltf";
     case SurfaceEncoding::kGlb:
