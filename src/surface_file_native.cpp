@@ -498,10 +498,12 @@ namespace {
 char Fold(char c) noexcept {
   return c >= 'A' && c <= 'Z' ? static_cast<char>(c + ('a' - 'A')) : c;
 }
+#ifdef _WIN32
 [[noreturn]] void Unsupported() {
   Fail(SurfaceFileStatus::kUnsupportedProfile, SurfaceFileStage::kPathPlanning,
        SurfaceFileCode::kReceiptPath);
 }
+#endif
 template <class Char>
 void Zeros(std::basic_string<Char, std::char_traits<Char>,
                              allocation::Allocator<Char>>& text,
