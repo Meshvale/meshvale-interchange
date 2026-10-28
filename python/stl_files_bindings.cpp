@@ -2176,8 +2176,9 @@ std::span<const std::byte> Provider(const io::StlFileVerifiedContent& content,
   if (app.interrupted && !PyErr_Occurred()) return {};
   if (PyErr_Occurred() && raised()) return {};
   if (PyErr_CheckSignals() < 0 && raised()) return {};
-  auto returned = nb::steal<nb::object>(
-      PyObject_CallOneArg(job.provider.ptr(), job.owners.verified.ptr()));
+  auto returned = nb::steal<nb::object>(PyObject_CallFunctionObjArgs(
+      job.provider.ptr(), job.owners.verified.ptr(),
+      static_cast<PyObject*>(nullptr)));
   if (!returned.is_valid() && raised()) return {};
   if (PyErr_Occurred() && raised()) return {};
   if (PyErr_CheckSignals() < 0 && raised()) return {};
