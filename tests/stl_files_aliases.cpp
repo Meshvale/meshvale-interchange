@@ -675,10 +675,10 @@ void Run(a::Inventory& inventory, a::Tree& tree,
       const auto destination = i ? mixed : source.parent_short;
       Require(!fs::exists(destination), "remembered ancestor target absent");
       a::OrdinaryPrefixes(destination.parent_path());
-      const auto grand = a::Observe(destination.parent_path());
       const auto sentinel = tree.grand_long / (id + " sentinel");
       f::Write(sentinel, f::Bytes(a::kSentinel));
       const auto before = Names(tree.grand_long);
+      const auto grand = a::Observe(destination.parent_path());
       const auto result = ic::RewriteStlFile(
           *read.asset, destination, f::Retain(ic::StlEncoding::kAscii),
           f::RewriteLimits(), f::RewriteWork());
