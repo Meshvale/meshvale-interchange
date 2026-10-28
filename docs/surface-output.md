@@ -4,7 +4,7 @@
 |---|---|
 | ID | SURFACE-OUTPUT-001 |
 | Version | 0.1.0 |
-| Status | Native source implementation and qualification in progress |
+| Status | Development native module; support qualification is separate |
 | Owner | surface_write.h and the optional surface_output target |
 
 This document defines a supplied-memory encoder and a separate actual-byte

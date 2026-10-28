@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, supplied-surface glTF/GLB/STL output and optional verified directory publication, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release or CLI yet.
 
 The [source-version profile](docs/versioning.md) preserves one native identity
 for tagged checkouts, tagged archives and source packages named for this product.
@@ -75,11 +75,10 @@ Python and application entry points remain separate.
 
 ## Supplied surface output
 
-A native source implementation is in progress for the optional
-[`meshvale::surface_output` target](docs/surface-output.md). It encodes supplied
-canonical polygon storage to glTF 2.0 JSON/GLB or the bounded ASCII/binary STL
-profile, using genuine charged triangulation and explicit channel, material,
-UV, unit and numeric policies. `MESHVALE_INTERCHANGE_SURFACE_OUTPUT` defaults
+The optional [`meshvale::surface_output` target](docs/surface-output.md) encodes
+supplied canonical polygon storage to glTF 2.0 JSON/GLB or the bounded
+ASCII/binary STL profile, using genuine charged triangulation and explicit
+channel, material, UV, unit and numeric policies. `MESHVALE_INTERCHANGE_SURFACE_OUTPUT` defaults
 to `OFF` and requires matching installed Geometry charged-triangulation support.
 
 Strict bare output refuses unrepresented storage. The annotated bundle retains
@@ -93,9 +92,33 @@ universal format conversion profile are outside this contract.
 A separate inspector captures actual supplied member bytes, reloads the native
 view and verifies correspondence and sidecar storage before returning a proof.
 The [installed example](examples/consumer/surface_output.cpp) uses public
-headers and targets. Native, installed, archive and sanitizer qualification is
-pending; this source work adds no filesystem publisher, Python binding,
-application command, stable release or supported-platform claim.
+headers and targets. Filesystem publication uses the separate optional target
+below. Python bindings, application commands, supported-platform acceptance and
+a stable release remain separate work.
+
+### Verified surface directories
+
+Enable `MESHVALE_INTERCHANGE_SURFACE_FILES=ON` together with
+`MESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON` for `meshvale::surface_files` and its
+public `meshvale/interchange/surface_files.h` header. Match the installed
+producer's Geometry, compiler, runtime and materialization profile as described
+in the [build instructions](ENVIRONMENT.md#optional-verified-surface-files).
+
+`PublishSurfaceBundle` takes a genuine retained `SurfaceOutputInspection`,
+publishes its captured bytes without re-encoding, verifies staged physical
+content and commits a new directory without replacing an existing destination.
+Its [contract](docs/surface-files.md) requires explicit positive file,
+fresh-inspection, work and allocation limits, including receipt and caller-report
+caps. A mandatory module-owned [receipt](docs/surface-publication.schema.json)
+defaults to `publication.json` and may include an uninterpreted UTF-8 caller
+report. Borrowed inputs and provider backing stay valid through return and all
+joins; returned inspection/receipt views borrow a live `SurfacePublishedBundle`.
+
+The [installed example](examples/consumer/surface_files.cpp) uses only public
+headers and targets. This development module has local native and installed
+test coverage; source-package, relocated, hosted-platform and sanitizer
+qualification remain separate gates. No universal filesystem, platform or ABI
+guarantee follows from those local results.
 
 ## Native GLB containers
 

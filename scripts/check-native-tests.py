@@ -17,6 +17,7 @@ GLTF_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_GLTF_FILES"
 OFF_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_OFF_FILES"
 PLY_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_PLY_FILES"
 SURFACE_OUTPUT_CACHE_KEY = "MESHVALE_INTERCHANGE_SURFACE_OUTPUT"
+SURFACE_FILES_CACHE_KEY = "MESHVALE_INTERCHANGE_SURFACE_FILES"
 TOPOLOGY_WRITE_ON = "ON"
 TOPOLOGY_WRITE_OFF = "OFF"
 TOPOLOGY_WRITE_STATES = (TOPOLOGY_WRITE_ON, TOPOLOGY_WRITE_OFF)
@@ -55,6 +56,10 @@ PROFILE_INSTALLED_TESTS = {
 }
 SURFACE_OUTPUT_TESTS = frozenset({"surface_output", "surface_numeric", "surface_capsule"})
 SURFACE_OUTPUT_INSTALLED_TESTS = frozenset({"installed_surface_output_consumer"})
+SURFACE_FILE_TESTS = frozenset({
+    "surface_files_semantics", "surface_files_requests", "surface_files_consumer",
+})
+SURFACE_FILE_INSTALLED_TESTS = frozenset({"installed_surface_files_consumer"})
 TOPOLOGY_WRITE_TESTS = frozenset({"gltf_topology_write_link"})
 TOPOLOGY_WRITE_QUALIFIED_TESTS = frozenset({
     "gltf_topology_write", "gltf_topology_write_semantics",
@@ -114,7 +119,7 @@ def cache_value(cache, name, expected_type):
 
 def validate_cache(cache, profile, configuration, topology_write=True,
                    workflow_support=None, gltf_files=None, off_files=None, ply_files=None,
-                   surface_output=None):
+                   surface_output=None, surface_files=None):
     if cache_value(cache, PROFILE_CACHE_KEY, STRING_CACHE_TYPE) != profile:
         raise ValueError("materialization CLI profile differs from configured CMake profile")
     if cache_value(cache, TESTING_CACHE_KEY, BOOL_CACHE_TYPE).upper() not in TRUE_CACHE_VALUES:
@@ -142,6 +147,10 @@ def validate_cache(cache, profile, configuration, topology_write=True,
         actual_surface = cache_value(cache, SURFACE_OUTPUT_CACHE_KEY, BOOL_CACHE_TYPE)
         if (actual_surface.upper() in TRUE_CACHE_VALUES) != surface_output:
             raise ValueError("surface output selection differs from configured CMake option")
+    if surface_files is not None:
+        actual_surface_files = cache_value(cache, SURFACE_FILES_CACHE_KEY, BOOL_CACHE_TYPE)
+        if (actual_surface_files.upper() in TRUE_CACHE_VALUES) != surface_files:
+            raise ValueError("surface files selection differs from configured CMake option")
     if CONFIGURATIONS_CACHE_KEY in cache:
         configurations = cache_value(cache, CONFIGURATIONS_CACHE_KEY, STRING_CACHE_TYPE).split(";")
         if configuration not in configurations:
@@ -165,7 +174,7 @@ def validate_compiler(build_dir, expected_id, expected_version):
 
 def expected_inventory(profile, installed=False, topology_write=True,
                        workflow_support=False, gltf_files=False, off_files=False, ply_files=False,
-                       surface_output=False):
+                       surface_output=False, surface_files=False):
     common = COMMON_INSTALLED_TESTS if installed else COMMON_TESTS
     specific = PROFILE_INSTALLED_TESTS if installed else PROFILE_TESTS
     expected = common | specific[profile]
@@ -192,6 +201,8 @@ def expected_inventory(profile, installed=False, topology_write=True,
         expected |= PLY_FILE_INSTALLED_TESTS if installed else PLY_FILE_TESTS
     if surface_output:
         expected |= SURFACE_OUTPUT_INSTALLED_TESTS if installed else SURFACE_OUTPUT_TESTS
+    if surface_files:
+        expected |= SURFACE_FILE_INSTALLED_TESTS if installed else SURFACE_FILE_TESTS
     return expected
 
 
@@ -226,6 +237,8 @@ def main():
                         help="Defaults to the native configured PLY files option")
     parser.add_argument("--surface-output", choices=TOPOLOGY_WRITE_STATES,
                         help="Defaults to the native configured surface output option")
+    parser.add_argument("--surface-files", choices=TOPOLOGY_WRITE_STATES,
+                        help="Defaults to the native configured surface files option")
     args = parser.parse_args()
     try:
         checked = []
@@ -245,6 +258,10 @@ def main():
         surface_selection = (cache_value(native_cache, SURFACE_OUTPUT_CACHE_KEY, BOOL_CACHE_TYPE)
                              if args.surface_output is None else args.surface_output)
         surface_output = surface_selection.upper() in TRUE_CACHE_VALUES
+        surface_files_selection = (
+            cache_value(native_cache, SURFACE_FILES_CACHE_KEY, BOOL_CACHE_TYPE)
+            if args.surface_files is None else args.surface_files)
+        surface_files = surface_files_selection.upper() in TRUE_CACHE_VALUES
         for build_dir, installed in ((args.build_dir, False),
                                      (args.installed_build_dir, True)):
             if build_dir is None:
@@ -252,7 +269,7 @@ def main():
             validate_cache(cache_entries(build_dir / "CMakeCache.txt"),
                            args.materialization_profile, args.configuration,
                            args.topology_write == TOPOLOGY_WRITE_ON, workflow_support,
-                           gltf_files, off_files, ply_files, surface_output)
+                           gltf_files, off_files, ply_files, surface_output, surface_files)
             validate_compiler(build_dir, args.compiler_id, args.compiler_version)
             checked.append(("installed" if installed else "native",
                             validate_inventory(build_dir, args.configuration,
@@ -263,7 +280,8 @@ def main():
                                                                   gltf_files,
                                                                   off_files,
                                                                   ply_files,
-                                                                  surface_output))))
+                                                                  surface_output,
+                                                                  surface_files))))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     for label, names in checked:
@@ -271,6 +289,7 @@ def main():
               f"{args.materialization_profile}; topology writer {args.topology_write}; "
               f"workflow support {support}; glTF files {files}; OFF files {off_selection}; "
               f"PLY files {ply_selection}; surface output {surface_selection}; "
+              f"surface files {surface_files_selection}; "
               f"{args.configuration}; {names}")
 
 
