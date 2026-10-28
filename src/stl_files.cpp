@@ -84,6 +84,58 @@ void Zeros(std::basic_string<Char, std::char_traits<Char>,
     text.push_back(0);
   }
 }
+NativeString Normalize(NativeView p, const allocation::AllocationContext& a) {
+  NativeString out{allocation::Allocator<NativeChar>(a)};
+  out.reserve(p.size());
+#ifdef _WIN32
+  constexpr auto root = kDriveRootUnits;
+#else
+  constexpr std::size_t root = 1;
+#endif
+  Extend(out, p.substr(0, root), a);
+  for (std::size_t begin = root; begin < p.size();) {
+    a.Checkpoint();
+    while (begin < p.size() && p[begin] == kSeparator) ++begin;
+    auto end = begin;
+    while (end < p.size() && p[end] != kSeparator) {
+      a.Checkpoint();
+      ++end;
+    }
+    const auto part = p.substr(begin, end - begin);
+    if (part.size() == 1 && part[0] == static_cast<NativeChar>('.')) {
+    } else if (part.size() == 2 && part[0] == static_cast<NativeChar>('.') &&
+               part[1] == static_cast<NativeChar>('.')) {
+      if (out.size() > root) {
+        auto last = out.size();
+        while (last > root && out[last - 1] != kSeparator) {
+          a.Checkpoint();
+          --last;
+        }
+        out.resize(last > root ? last - 1 : root);
+      }
+    } else if (!part.empty()) {
+      if (out.back() != kSeparator) out.push_back(kSeparator);
+      Extend(out, part, a);
+    }
+    begin = end;
+  }
+  return out;
+}
+NativeChar NativeFold(NativeChar c) noexcept {
+#ifdef _WIN32
+  if (c >= L'A' && c <= L'Z') return static_cast<NativeChar>(c + (L'a' - L'A'));
+#endif
+  return c;
+}
+bool EqualNative(NativeView a, NativeView b,
+                 const allocation::AllocationContext& x) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    x.Checkpoint();
+    if (NativeFold(a[i]) != NativeFold(b[i])) return false;
+  }
+  return true;
+}
 }  // namespace
 bool EqualFold(std::string_view a, std::string_view b,
                const allocation::AllocationContext* allocator) {
@@ -748,6 +800,310 @@ void CloseChecked(NativeFile& file, const TestOptions& testing,
     Fail(StlFileStatus::kIoFailure, stage, StlFileDiagnosticCode::kClose,
          file.ordinal, {}, error);
 }
+#ifdef _WIN32
+NativeSourceKeys::NativeSourceKeys(
+    const allocation::AllocationContext& allocator)
+    : primary(allocation::Allocator<NativeChar>(allocator)),
+      submitted(allocation::Allocator<NativeChar>(allocator)),
+      short_alias(allocation::Allocator<NativeChar>(allocator)) {}
+#else
+NativeSourceKeys::NativeSourceKeys(
+    const allocation::AllocationContext& allocator)
+    : primary(allocation::Allocator<NativeChar>(allocator)) {}
+#endif
+std::array<NativeView, kNativeSourceKeySlots> NativeSourceKeys::Views()
+    const noexcept {
+#ifdef _WIN32
+  return {NativeView(primary), NativeView(submitted), NativeView(short_alias)};
+#else
+  return {NativeView(primary)};
+#endif
+}
+NativePathAdmission::NativePathAdmission(
+    const allocation::AllocationContext& allocator)
+    : keys(allocator) {}
+namespace {
+#ifdef _WIN32
+constexpr std::size_t kNativeRootUnits = kDriveRootUnits;
+#else
+constexpr std::size_t kNativeRootUnits = 1;
+#endif
+struct NativeComponentCursor {
+  NativeView path;
+  std::size_t position = kNativeRootUnits;
+  NativeView Next(const allocation::AllocationContext& allocator) {
+    if (position >= path.size()) return {};
+    const auto begin = position;
+    while (position < path.size() && path[position] != kSeparator) {
+      allocator.Checkpoint();
+      ++position;
+    }
+    const auto component = path.substr(begin, position - begin);
+    if (position < path.size()) ++position;
+    return component;
+  }
+};
+using NativeKeyCursors =
+    std::array<NativeComponentCursor, kNativeSourceKeySlots>;
+NativeKeyCursors KeyCursors(const NativeSourceKeys& keys) {
+  NativeKeyCursors result{};
+  const auto views = keys.Views();
+  for (std::size_t index = 0; index < views.size(); ++index)
+    result[index].path = views[index];
+  return result;
+}
+bool EqualRoot(NativeView first, NativeView second,
+               const allocation::AllocationContext& allocator) {
+  return first.size() >= kNativeRootUnits &&
+         second.size() >= kNativeRootUnits &&
+         EqualNative(first.substr(0, kNativeRootUnits),
+                     second.substr(0, kNativeRootUnits), allocator);
+}
+void RequireAligned(const NativeSourceKeys& keys) {
+  if (!keys.aligned || keys.primary.empty())
+    Fail(StlFileStatus::kUnsupportedProfile, StlFilePhase::kPathPlanning,
+         StlFileDiagnosticCode::kPathUnsupported);
+}
+#ifdef _WIN32
+enum class WindowsPathSpelling { kLong, kShort };
+std::size_t ValidateWindowsKey(NativeView path,
+                               const allocation::AllocationContext& allocator,
+                               const StlFileLimits& limits,
+                               StlFilePhase stage) {
+  Count(path.size() + 1, limits.max_native_path_code_units, stage);
+  if (path.size() < kNativeRootUnits || path[1] != L':' ||
+      path[2] != kSeparator ||
+      !((path[0] >= L'A' && path[0] <= L'Z') ||
+        (path[0] >= L'a' && path[0] <= L'z')) ||
+      (path.size() > kNativeRootUnits && path.back() == kSeparator))
+    Fail(StlFileStatus::kUnsupportedProfile, stage,
+         StlFileDiagnosticCode::kPathUnsupported);
+  std::size_t components = 0;
+  NativeComponentCursor cursor{path};
+  while (cursor.position < path.size()) {
+    const auto component = cursor.Next(allocator);
+    if (component.empty() || component == L"." || component == L"..")
+      Fail(StlFileStatus::kUnsupportedProfile, stage,
+           StlFileDiagnosticCode::kPathUnsupported);
+    for (auto unit : component) {
+      allocator.Checkpoint();
+      if (!unit || unit == L'/' || unit == L':')
+        Fail(StlFileStatus::kUnsupportedProfile, stage,
+             StlFileDiagnosticCode::kPathUnsupported);
+    }
+    ++components;
+  }
+  return components;
+}
+NativeString QueryWindowsPath(NativeView path, WindowsPathSpelling spelling,
+                              const allocation::AllocationContext& allocator,
+                              const StlFileLimits& limits, StlFilePhase stage) {
+  Count(limits.max_native_path_code_units, std::numeric_limits<DWORD>::max(),
+        stage);
+  Count(limits.max_native_path_code_units,
+        std::numeric_limits<std::size_t>::max(), stage);
+  NativeString result{allocation::Allocator<NativeChar>(allocator)};
+  Zeros(result, static_cast<std::size_t>(limits.max_native_path_code_units),
+        allocator);
+  allocator.Checkpoint();
+  const auto length =
+      spelling == WindowsPathSpelling::kLong
+          ? GetLongPathNameW(path.data(), result.data(),
+                             static_cast<DWORD>(result.size()))
+          : GetShortPathNameW(path.data(), result.data(),
+                              static_cast<DWORD>(result.size()));
+  if (!length)
+    Fail(StlFileStatus::kIoFailure, stage,
+         StlFileDiagnosticCode::kPathUnsupported, {}, {}, NativeError());
+  if (length >= result.size())
+    Fail(StlFileStatus::kLimitExceeded, stage,
+         StlFileDiagnosticCode::kCountLimit);
+  allocator.Checkpoint();
+  result.resize(length);
+  (void)ValidateWindowsKey(result, allocator, limits, stage);
+  return result;
+}
+// Only private planning buffers are temporarily terminated. In particular the
+// caller's original traversal and public retained keys are never modified.
+class NativePrefixTerminator {
+ public:
+  NativePrefixTerminator(NativeString& path, std::size_t end) noexcept
+      : path_(path),
+        end_(end),
+        saved_(end < path.size() ? path[end] : NativeChar{}) {
+    if (end_ < path_.size()) path_[end_] = 0;
+  }
+  ~NativePrefixTerminator() noexcept {
+    if (end_ < path_.size()) path_[end_] = saved_;
+  }
+  NativePrefixTerminator(const NativePrefixTerminator&) = delete;
+  NativePrefixTerminator& operator=(const NativePrefixTerminator&) = delete;
+  NativeView View() const noexcept { return {path_.data(), end_}; }
+
+ private:
+  NativeString& path_;
+  std::size_t end_;
+  NativeChar saved_;
+};
+void AlignWindowsKeys(NativeSourceKeys& keys, const NativeMetadata& expected,
+                      const allocation::AllocationContext& allocator,
+                      const StlFileLimits& limits, const TestOptions& testing,
+                      StlFilePhase stage, std::uint64_t ordinal) {
+  const std::array paths{&keys.primary, &keys.submitted, &keys.short_alias};
+  const auto count = ValidateWindowsKey(keys.primary, allocator, limits, stage);
+  bool alternative = false;
+  for (auto* path : paths) {
+    if (path->empty()) continue;
+    if (!EqualRoot(*path, keys.primary, allocator) ||
+        ValidateWindowsKey(*path, allocator, limits, stage) != count)
+      Fail(StlFileStatus::kUnsupportedProfile, stage,
+           StlFileDiagnosticCode::kPathUnsupported, ordinal);
+    alternative = alternative || path != &keys.primary;
+  }
+  if (!alternative) return;
+  auto cursors = KeyCursors(keys);
+  // Each slot is an observed complete path. At each ordinal, real prefix
+  // identities prove that its component is an alternative in that directory.
+  // No mixed full path is generated, and no per-component table is allocated.
+  for (std::size_t level = 0; level <= count; ++level) {
+    std::optional<NativeMetadata> reference;
+    const bool directory = level < count;
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+      auto& path = *paths[index];
+      if (path.empty()) continue;
+      allocator.Checkpoint();
+      std::size_t end = kNativeRootUnits;
+      if (level) {
+        const auto component = cursors[index].Next(allocator);
+        end = static_cast<std::size_t>(component.data() - path.data()) +
+              component.size();
+      }
+      NativePrefixTerminator prefix(path, end);
+      auto file =
+          OpenFile(prefix.View(), ordinal, testing.files, directory, stage);
+      const auto observed = Metadata(file, directory);
+      if (reference && (observed.volume != reference->volume ||
+                        observed.identity != reference->identity))
+        Fail(StlFileStatus::kFileChanged, stage,
+             StlFileDiagnosticCode::kChanged, ordinal);
+      if (!reference) reference = observed;
+      if (!directory) {
+        if (observed != expected)
+          Fail(StlFileStatus::kFileChanged, stage,
+               StlFileDiagnosticCode::kChanged, ordinal);
+        auto canonical = CanonicalPath(file, allocator, limits);
+        // primary may currently expose its final prefix: it is the complete
+        // source at this level, and the terminator guard remains in scope.
+        if (!EqualNative(keys.primary, canonical, allocator))
+          Fail(StlFileStatus::kFileChanged, stage,
+               StlFileDiagnosticCode::kChanged, ordinal);
+      }
+      CloseChecked(file, testing, stage);
+      allocator.Checkpoint();
+    }
+  }
+}
+#endif
+}  // namespace
+NativeSourceKeys PlanNativePath(NativeView original, NativePathUse use,
+                                const allocation::AllocationContext& allocator,
+                                const StlFileLimits& limits,
+                                StlFilePhase stage) {
+  RejectAliases(original, use == NativePathUse::kParentDirectory, allocator,
+                limits, stage);
+  auto normalized = Normalize(original, allocator);
+  NativeSourceKeys keys(allocator);
+#ifdef _WIN32
+  keys.primary = QueryWindowsPath(normalized, WindowsPathSpelling::kLong,
+                                  allocator, limits, stage);
+  if (use == NativePathUse::kRetainedSource) {
+    if (!EqualNative(normalized, keys.primary, allocator))
+      keys.submitted = std::move(normalized);
+    auto short_path = QueryWindowsPath(
+        keys.primary, WindowsPathSpelling::kShort, allocator, limits, stage);
+    if (!EqualNative(short_path, keys.primary, allocator) &&
+        (keys.submitted.empty() ||
+         !EqualNative(short_path, keys.submitted, allocator)))
+      keys.short_alias = std::move(short_path);
+  }
+#else
+  keys.primary = std::move(normalized);
+#endif
+  return keys;
+}
+NativePathAdmission OpenAdmittedNativePath(
+    NativeView original, NativePathUse use, NativeSourceKeys&& keys,
+    const allocation::AllocationContext& allocator, const StlFileLimits& limits,
+    const TestOptions& testing, StlFilePhase stage, std::uint64_t ordinal) {
+  const bool directory = use == NativePathUse::kParentDirectory;
+  RejectAliases(original, directory, allocator, limits, stage);
+  NativePathAdmission result(allocator);
+  result.keys = std::move(keys);
+  result.file = OpenFile(original, ordinal, testing.files, directory, stage);
+  result.identity = Metadata(result.file, directory);
+  auto canonical = CanonicalPath(result.file, allocator, limits);
+  if (!EqualNative(result.keys.primary, canonical, allocator))
+    Fail(StlFileStatus::kFileChanged, stage, StlFileDiagnosticCode::kChanged,
+         ordinal);
+#ifdef _WIN32
+  if (use == NativePathUse::kRetainedSource)
+    AlignWindowsKeys(result.keys, result.identity, allocator, limits, testing,
+                     stage, ordinal);
+#endif
+  const auto after = Metadata(result.file, directory);
+  const bool changed = directory
+                           ? after.volume != result.identity.volume ||
+                                 after.identity != result.identity.identity
+                           : after != result.identity;
+  if (changed)
+    Fail(StlFileStatus::kFileChanged, stage, StlFileDiagnosticCode::kChanged,
+         ordinal);
+  result.keys.aligned = true;
+  allocator.Checkpoint();
+  return result;
+}
+bool SourceOverlaps(NativeView destination, const NativeSourceKeys& source,
+                    const allocation::AllocationContext& allocator) {
+  RequireAligned(source);
+  if (!EqualRoot(destination, source.primary, allocator)) return false;
+  NativeComponentCursor target{destination};
+  auto sources = KeyCursors(source);
+  for (;;) {
+    const auto component = target.Next(allocator);
+    std::array<NativeView, kNativeSourceKeySlots> alternatives{};
+    for (std::size_t index = 0; index < alternatives.size(); ++index)
+      alternatives[index] = sources[index].Next(allocator);
+    if (component.empty() || alternatives.front().empty()) return true;
+    bool matches = false;
+    for (auto alternative : alternatives)
+      if (!alternative.empty() &&
+          EqualNative(component, alternative, allocator))
+        matches = true;
+    if (!matches) return false;
+  }
+}
+bool SourcesEqual(const NativeSourceKeys& first, const NativeSourceKeys& second,
+                  const allocation::AllocationContext& allocator) {
+  RequireAligned(first);
+  RequireAligned(second);
+  if (!EqualRoot(first.primary, second.primary, allocator)) return false;
+  auto a = KeyCursors(first), b = KeyCursors(second);
+  for (;;) {
+    std::array<NativeView, kNativeSourceKeySlots> left{}, right{};
+    for (std::size_t index = 0; index < left.size(); ++index) {
+      left[index] = a[index].Next(allocator);
+      right[index] = b[index].Next(allocator);
+    }
+    if (left.front().empty() || right.front().empty())
+      return left.front().empty() && right.front().empty();
+    bool matches = false;
+    for (auto x : left)
+      for (auto y : right)
+        if (!x.empty() && !y.empty() && EqualNative(x, y, allocator))
+          matches = true;
+    if (!matches) return false;
+  }
+}
 void WriteFile(NativeView path, std::span<const std::byte> bytes,
                std::uint64_t ordinal, const StlFileWorkPolicy& work,
                const allocation::AllocationContext& allocator,
@@ -852,15 +1208,41 @@ void NativePublication::Plan(NativeView destination, std::string_view entry,
   Assign(parent_, NativeView(destination_).substr(0, std::max(separator, root)),
          allocation_);
   Assign(logical_parent_, NativeView(parent_), allocation_);
-  RejectAliases(parent_, true, allocation_, limits_);
-  auto parent =
-      OpenFile(parent_, 0, testing_.files, true, StlFilePhase::kPathPlanning);
-  parent_identity_ = Metadata(parent, true);
-  auto canonical = CanonicalPath(parent, allocation_, limits_);
-  CloseChecked(parent, testing_, StlFilePhase::kPathPlanning);
+  auto keys = PlanNativePath(parent_, NativePathUse::kParentDirectory,
+                             allocation_, limits_, StlFilePhase::kPathPlanning);
+  auto parent = OpenAdmittedNativePath(
+      parent_, NativePathUse::kParentDirectory, std::move(keys), allocation_,
+      limits_, testing_, StlFilePhase::kPathPlanning, 0);
+  parent_identity_ = parent.identity;
+  CloseChecked(parent.file, testing_, StlFilePhase::kPathPlanning);
   // Admission precedes use of canonical parent. Logical alias traversal has
   // already been refused; canonicalization never makes an alias acceptable.
-  parent_ = std::move(canonical);
+  parent_ = std::move(parent.keys.primary);
+  if (Present(destination_))
+    Fail(StlFileStatus::kDestinationExists, StlFilePhase::kPathPlanning,
+         StlFileDiagnosticCode::kDestinationExists);
+  // The new leaf has no native alias yet. Its existing parent has one admitted
+  // long key; retain the requested leaf unchanged under that parent.
+  const auto destination_name = NativeView(destination_).substr(separator + 1);
+  const std::size_t separator_units = parent_.back() == kSeparator ? 0 : 1;
+  const auto native_capacity =
+      std::min<std::uint64_t>(limits_.max_native_path_code_units,
+                              std::numeric_limits<std::size_t>::max());
+  Count(destination_name.size(), native_capacity - 1);
+  Count(parent_.size(), native_capacity - 1 - destination_name.size());
+  Count(separator_units,
+        native_capacity - 1 - destination_name.size() - parent_.size());
+  NativeString admitted_destination{
+      allocation::Allocator<NativeChar>(allocation_)};
+  admitted_destination.reserve(parent_.size() + separator_units +
+                               destination_name.size());
+  Extend(admitted_destination, NativeView(parent_), allocation_);
+  if (separator_units) {
+    allocation_.Checkpoint();
+    admitted_destination.push_back(kSeparator);
+  }
+  Extend(admitted_destination, destination_name, allocation_);
+  destination_ = std::move(admitted_destination);
   if (Present(destination_))
     Fail(StlFileStatus::kDestinationExists, StlFilePhase::kPathPlanning,
          StlFileDiagnosticCode::kDestinationExists);
@@ -1076,18 +1458,20 @@ StlFileCleanupOutcome NativePublication::Cleanup(
 void NativePublication::Commit() {
   allocation_.Checkpoint();
   if (testing_.before_commit) testing_.before_commit(stage_, testing_.state);
-  RejectAliases(logical_parent_, true, allocation_, limits_,
-                StlFilePhase::kPublication);
+  auto keys = PlanNativePath(logical_parent_, NativePathUse::kParentDirectory,
+                             allocation_, limits_, StlFilePhase::kPublication);
   RejectAliases(parent_, true, allocation_, limits_,
                 StlFilePhase::kPublication);
-  auto parent = OpenFile(logical_parent_, 0, testing_.files, true,
-                         StlFilePhase::kPublication);
-  const auto observed_parent = Metadata(parent, true);
+  auto parent = OpenAdmittedNativePath(
+      logical_parent_, NativePathUse::kParentDirectory, std::move(keys),
+      allocation_, limits_, testing_, StlFilePhase::kPublication, 0);
+  const auto observed_parent = parent.identity;
   if (observed_parent.volume != parent_identity_.volume ||
-      observed_parent.identity != parent_identity_.identity)
+      observed_parent.identity != parent_identity_.identity ||
+      !EqualNative(parent.keys.primary, parent_, allocation_))
     Fail(StlFileStatus::kFileChanged, StlFilePhase::kPublication,
          StlFileDiagnosticCode::kChanged);
-  CloseChecked(parent, testing_, StlFilePhase::kPublication);
+  CloseChecked(parent.file, testing_, StlFilePhase::kPublication);
   std::error_code identity_error;
   if (!SameIdentity(stage_, identity_, identity_error))
     Fail(StlFileStatus::kPreservationMismatch, StlFilePhase::kPublication,
@@ -1151,13 +1535,13 @@ struct Isolation {
         max_requests(cap),
         allocation_backend(backend),
         name(allocation::Allocator<char>(a)),
-        logical(allocation::Allocator<NativeChar>(a)) {}
+        keys(a) {}
   allocation::AllocationContext allocation;
   geo::ExecutionContext context;
   std::uint64_t max_requests;
   allocation::AllocationBackend allocation_backend;
   String name;
-  NativeString logical;
+  NativeSourceKeys keys;
   NativeMetadata identity;
   DigestValue digest{};
 };
@@ -1360,65 +1744,6 @@ StlFileDiagnostic Admission(const allocation::AdmissionFailure& e,
       break;
   }
   return d;
-}
-NativeString Normalize(NativeView p, const allocation::AllocationContext& a) {
-  NativeString out{allocation::Allocator<NativeChar>(a)};
-  out.reserve(p.size());
-#ifdef _WIN32
-  constexpr auto root = kDriveRootUnits;
-#else
-  constexpr std::size_t root = 1;
-#endif
-  Extend(out, p.substr(0, root), a);
-  for (std::size_t begin = root; begin < p.size();) {
-    a.Checkpoint();
-    while (begin < p.size() && p[begin] == kSeparator) ++begin;
-    auto end = begin;
-    while (end < p.size() && p[end] != kSeparator) {
-      a.Checkpoint();
-      ++end;
-    }
-    const auto part = p.substr(begin, end - begin);
-    if (part.size() == 1 && part[0] == static_cast<NativeChar>('.')) {
-    } else if (part.size() == 2 && part[0] == static_cast<NativeChar>('.') &&
-               part[1] == static_cast<NativeChar>('.')) {
-      if (out.size() > root) {
-        auto last = out.size();
-        while (last > root && out[last - 1] != kSeparator) {
-          a.Checkpoint();
-          --last;
-        }
-        out.resize(last > root ? last - 1 : root);
-      }
-    } else if (!part.empty()) {
-      if (out.back() != kSeparator) out.push_back(kSeparator);
-      Extend(out, part, a);
-    }
-    begin = end;
-  }
-  return out;
-}
-NativeChar NativeFold(NativeChar c) noexcept {
-#ifdef _WIN32
-  if (c >= L'A' && c <= L'Z') return static_cast<NativeChar>(c + (L'a' - L'A'));
-#endif
-  return c;
-}
-bool EqualNative(NativeView a, NativeView b,
-                 const allocation::AllocationContext& x) {
-  if (a.size() != b.size()) return false;
-  for (std::size_t i = 0; i < a.size(); ++i) {
-    x.Checkpoint();
-    if (NativeFold(a[i]) != NativeFold(b[i])) return false;
-  }
-  return true;
-}
-bool Ancestor(NativeView a, NativeView b,
-              const allocation::AllocationContext& x) {
-  if (a.size() > b.size() || !EqualNative(a, b.substr(0, a.size()), x))
-    return false;
-  return a.size() == b.size() || a.back() == kSeparator ||
-         b[a.size()] == kSeparator;
 }
 NativeFile OpenRangeWriter(NativeView path, std::uint64_t ordinal,
                            const TestOptions& testing, Stage phase) {
@@ -1693,14 +2018,18 @@ void WritePhysical(NativeView path, std::span<const std::byte> bytes,
            stats);
   s.Check(phase);
 }
-Buffer ReadPhysical(NativeView path, std::uint64_t ordinal,
-                    std::uint64_t maximum, const StlFileLimits& limits,
-                    const Session& session, Stage stage,
-                    geo::MaterializationExecutionStats& statistics,
-                    NativeMetadata* observed = nullptr) {
-  RejectAliases(path, false, session.allocation, limits, stage);
-  auto file = OpenFile(path, ordinal, session.testing.files, false, stage);
-  const auto before = Metadata(file);
+Buffer ReadPhysicalPlan(NativeView path, NativePathUse use,
+                        NativeSourceKeys&& keys, std::uint64_t ordinal,
+                        std::uint64_t maximum, const StlFileLimits& limits,
+                        const Session& session, Stage stage,
+                        geo::MaterializationExecutionStats& statistics,
+                        NativeMetadata* observed = nullptr,
+                        NativeSourceKeys* retained = nullptr) {
+  auto admission =
+      OpenAdmittedNativePath(path, use, std::move(keys), session.allocation,
+                             limits, session.testing, stage, ordinal);
+  auto& file = admission.file;
+  const auto before = admission.identity;
 #ifdef _WIN32
   Count(before.size, std::numeric_limits<LONGLONG>::max(), stage);
 #else
@@ -1709,12 +2038,8 @@ Buffer ReadPhysical(NativeView path, std::uint64_t ordinal,
   Count(before.size, maximum, stage);
   Count(before.size, limits.max_total_file_bytes, stage);
   const auto size = Host(before.size);
-  auto canonical = CanonicalPath(file, session.allocation, limits);
-  auto admitted = Normalize(path, session.allocation);
-  if (!EqualNative(admitted, canonical, session.allocation))
-    Fail(Status::kFileChanged, stage, Code::kChanged, ordinal);
-  auto check =
-      OpenFile(canonical, ordinal, session.testing.files, false, stage);
+  auto check = OpenFile(admission.keys.primary, ordinal, session.testing.files,
+                        false, stage);
   if (Metadata(check) != before)
     Fail(Status::kFileChanged, stage, Code::kChanged, ordinal);
   CloseChecked(check, session.testing, stage);
@@ -1726,7 +2051,17 @@ Buffer ReadPhysical(NativeView path, std::uint64_t ordinal,
     Fail(Status::kFileChanged, stage, Code::kChanged, ordinal);
   CloseChecked(file, session.testing, stage);
   if (observed) *observed = before;
+  if (retained) *retained = std::move(admission.keys);
   return bytes;
+}
+Buffer ReadPhysical(NativeView path, std::uint64_t ordinal,
+                    std::uint64_t maximum, const StlFileLimits& limits,
+                    const Session& session, Stage stage,
+                    geo::MaterializationExecutionStats& statistics) {
+  auto keys = PlanNativePath(path, NativePathUse::kReadback, session.allocation,
+                             limits, stage);
+  return ReadPhysicalPlan(path, NativePathUse::kReadback, std::move(keys),
+                          ordinal, maximum, limits, session, stage, statistics);
 }
 void Compare(const Session& session, std::span<const std::byte> expected,
              std::span<const std::byte> actual, Stage stage,
@@ -2534,13 +2869,14 @@ StlFileCaptureResult CaptureNative(NativeView input,
     token->name = EntryName(path, a, limits);
     if (EqualFold(token->name, kReceiptName, &a))
       Fail(Status::kInvalidRequest, phase, Code::kNameCollision);
-    RejectAliases(path, false, a, limits);
-    token->logical = Normalize(path, a);
+    auto keys =
+        PlanNativePath(path, NativePathUse::kRetainedSource, a, limits, phase);
     phase = Stage::kCapture;
     s.Check(phase);
-    auto bytes =
-        ReadPhysical(path, kEntryIndex, limits.max_entry_bytes, limits, s,
-                     phase, result.execution.capture, &token->identity);
+    auto bytes = ReadPhysicalPlan(
+        path, NativePathUse::kRetainedSource, std::move(keys), kEntryIndex,
+        limits.max_entry_bytes, limits, s, phase, result.execution.capture,
+        &token->identity, &token->keys);
     token->digest = Digest(bytes.Bytes(), s, phase);
     auto state = std::allocate_shared<CaptureState>(
         allocation::Allocator<CaptureState>(a), a, token, std::move(bytes));
@@ -2684,17 +3020,7 @@ StlFileRewriteResult RewriteNative(const StlFileAsset& source,
     transaction.emplace(a, limits.files, testing);
     transaction->Plan(destination, source.EntryPath(), kReceiptName);
     const auto& token = *Access::State(source).token;
-    auto logical = Normalize(transaction->Destination(), a);
-    if (Ancestor(logical, token.logical, a) ||
-        Ancestor(token.logical, logical, a))
-      Fail(Status::kInvalidRequest, phase, Code::kSourceDestinationOverlap);
-    // A canonical parent also detects native Unicode aliases while the
-    // original traversal has already passed every no-alias component check.
-    auto canonical_child =
-        JoinPath(transaction->Parent(), EntryName(logical, a, limits.files), a,
-                 limits.files);
-    if (Ancestor(canonical_child, token.logical, a) ||
-        Ancestor(token.logical, canonical_child, a))
+    if (SourceOverlaps(transaction->Destination(), token.keys, a))
       Fail(Status::kInvalidRequest, phase, Code::kSourceDestinationOverlap);
     phase = Stage::kWrite;
     s.Check(phase);

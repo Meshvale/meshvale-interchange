@@ -138,6 +138,52 @@ struct NativeFile {
   ~NativeFile() noexcept;
   void Close() noexcept;
 };
+enum class NativePathUse { kRetainedSource, kReadback, kParentDirectory };
+#ifdef _WIN32
+inline constexpr std::size_t kNativeSourceKeySlots = 3;
+#else
+inline constexpr std::size_t kNativeSourceKeySlots = 1;
+#endif
+// Complete observed paths, never combinations reanchored under another parent.
+// Alternatives become trusted only after actual prefix-identity alignment.
+struct NativeSourceKeys {
+  explicit NativeSourceKeys(const allocation::AllocationContext&);
+  NativeSourceKeys(const NativeSourceKeys&) = delete;
+  NativeSourceKeys& operator=(const NativeSourceKeys&) = delete;
+  NativeSourceKeys(NativeSourceKeys&&) noexcept = default;
+  NativeSourceKeys& operator=(NativeSourceKeys&&) noexcept = default;
+  std::array<NativeView, kNativeSourceKeySlots> Views() const noexcept;
+  NativeString primary;
+#ifdef _WIN32
+  NativeString submitted, short_alias;
+#endif
+  bool aligned = false;
+};
+struct NativePathAdmission {
+  explicit NativePathAdmission(const allocation::AllocationContext&);
+  NativePathAdmission(const NativePathAdmission&) = delete;
+  NativePathAdmission& operator=(const NativePathAdmission&) = delete;
+  NativePathAdmission(NativePathAdmission&&) noexcept = default;
+  NativePathAdmission& operator=(NativePathAdmission&&) noexcept = default;
+  NativeFile file;
+  NativeMetadata identity;
+  NativeSourceKeys keys;
+};
+// original_absolute borrows a complete, terminated, unchanged NativeString.
+// Planning preserves the original traversal before deriving any other spelling.
+NativeSourceKeys PlanNativePath(NativeView original_absolute, NativePathUse,
+                                const allocation::AllocationContext&,
+                                const StlFileLimits&, StlFilePhase);
+NativePathAdmission OpenAdmittedNativePath(NativeView original_absolute,
+                                           NativePathUse, NativeSourceKeys&&,
+                                           const allocation::AllocationContext&,
+                                           const StlFileLimits&,
+                                           const TestOptions&, StlFilePhase,
+                                           std::uint64_t ordinal);
+bool SourceOverlaps(NativeView admitted_destination, const NativeSourceKeys&,
+                    const allocation::AllocationContext&);
+bool SourcesEqual(const NativeSourceKeys&, const NativeSourceKeys&,
+                  const allocation::AllocationContext&);
 NativeString AbsolutePath(NativeView input,
                           const allocation::AllocationContext& allocator,
                           const StlFileLimits& limits);

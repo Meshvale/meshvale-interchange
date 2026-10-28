@@ -208,6 +208,47 @@ void RoundTrip(std::span<const std::byte> bytes, ic::StlEncoding encoding,
           "all joined work and overlapping owner charges released");
 }
 
+void NativeDestinationLeaves() {
+  f::TempTree tree;
+  geo::ExecutionContext context({4, 1, f::kContextBytes});
+  // The entry and fixed receipt fit this cap; the directory is a native path.
+  constexpr std::size_t kEntryNameBytes = 32;
+  constexpr std::size_t kLongDirectoryLeafBytes = 64;
+  const auto input = tree.root / "a.stl";
+  f::Write(input, f::Bytes(f::kEmpty));
+  {
+    auto read_limits = f::ReadLimits();
+    read_limits.files.max_entry_name_bytes = kEntryNameBytes;
+    const auto read = ic::ReadStlFileAsset(input, ic::StlEncoding::kAscii,
+                                           read_limits, f::ReadWork(), context);
+    Require(read.asset.has_value(), "small portable source entry admitted");
+    auto limits = f::RewriteLimits();
+    limits.files.max_entry_name_bytes = kEntryNameBytes;
+    std::vector<std::filesystem::path> destinations{
+        tree.root / std::string(kLongDirectoryLeafBytes, 'x')};
+#ifndef _WIN32
+    destinations.push_back(tree.root / "result:1");
+    destinations.push_back(tree.root / std::string("raw-\xff"));
+#endif
+    for (const auto& destination : destinations) {
+      const auto result = ic::RewriteStlFile(*read.asset, destination,
+                                             f::Retain(ic::StlEncoding::kAscii),
+                                             limits, f::RewriteWork());
+      f::Published(result);
+      Require(result.bundle->Verified().EntryPath() == "a.stl",
+              "native directory spelling does not rename the portable entry");
+      f::CheckDocument(result.verified->Document(), {});
+      Require(std::ranges::equal(f::Read(destination / "a.stl"),
+                                 result.verified->EntryBytes()),
+              "native destination contains the verified physical entry");
+      Require(std::ranges::equal(f::Read(input), f::Bytes(f::kEmpty)),
+              "native directory rewrite preserves the source bytes");
+    }
+  }
+  Require(context.ActiveWorkers() == 0 && context.ActiveTrackedPayload() == 0,
+          "native directory cases release all operation ownership");
+}
+
 void RefusedWireAndNarrowing(bool unsupported) {
   f::TempTree tree;
   geo::ExecutionContext context({4, 1, f::kContextBytes});
@@ -269,6 +310,7 @@ int main(int argc, char** argv) {
               f::kBoundaryBits, unsupported);
     RoundTrip(f::Bytes(f::kEmpty), ic::StlEncoding::kAscii, {}, false);
     RoundTrip(f::Binary({}), ic::StlEncoding::kBinary, {}, false);
+    NativeDestinationLeaves();
     RefusedWireAndNarrowing(unsupported);
     std::cout << "STL file literal/physical semantics passed\n";
     return 0;

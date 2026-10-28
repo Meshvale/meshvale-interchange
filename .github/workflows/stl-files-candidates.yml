@@ -16,6 +16,7 @@ name: STL file development candidates
       - python/**
       - tests/**
       - examples/stl-files-consumer/**
+      - examples/stl-files-alias-consumer/**
       - docs/stl-files.md
       - docs/stl-file-presets.json
 
@@ -88,7 +89,7 @@ jobs:
       - name: Install selected build tooling
         run: python -m pip install cmake==4.3.1
       - name: Qualify actual native SDK and installed public consumers
-        run: python scripts/stl-files-candidate.py native --profile ${{ matrix.profile }}
+        run: python scripts/stl-files-candidate.py native --profile ${{ matrix.profile }} ${{ matrix.profile == 'qualified' && '--require-windows-aliases' || '' }}
       - name: Preserve candidate artifacts and failures
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -161,7 +162,7 @@ jobs:
       - name: Install selected build frontend
         run: python -m pip install build==1.6.1 cmake==4.3.1
       - name: Build source and extracted-sdist candidates and test both fresh runtimes
-        run: python scripts/stl-files-candidate.py python --profile qualified --python ${{ matrix.python }}
+        run: python scripts/stl-files-candidate.py python --profile qualified --python ${{ matrix.python }} --require-windows-aliases
       - name: Preserve source candidates and actual full-suite records
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

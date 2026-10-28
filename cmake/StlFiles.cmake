@@ -59,4 +59,17 @@ function(meshvale_add_stl_file_tests)
   file(WRITE "${probe}"
     "#include \"stl_files_internal.h\"\n#include \"stl_files_internal.h\"\n")
   target_sources(meshvale_interchange_stl_files PRIVATE "${probe}")
+  if(WIN32)
+    # Explicit alias qualification is separate from the ordinary CTest inventory.
+    add_executable(meshvale_stl_files_aliases_tests
+      tests/stl_files_aliases.cpp tests/stl_files_aliases_internal.cpp)
+    target_include_directories(meshvale_stl_files_aliases_tests PRIVATE tests)
+    set_source_files_properties(tests/stl_files_aliases_internal.cpp PROPERTIES
+      INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src")
+    target_compile_definitions(meshvale_stl_files_aliases_tests PRIVATE
+      MESHVALE_STL_ALIAS_INTERNAL_PROBE=1)
+    target_link_libraries(meshvale_stl_files_aliases_tests PRIVATE meshvale::stl_files)
+    meshvale_warnings(meshvale_stl_files_aliases_tests)
+    meshvale_stl_files_strict_floating_point(meshvale_stl_files_aliases_tests)
+  endif()
 endfunction()

@@ -1237,12 +1237,14 @@ struct StlPythonJob {
       : job_id(alloc::Allocator<char>(a)),
         input(alloc::Allocator<sd::NativeChar>(a)),
         destination(alloc::Allocator<sd::NativeChar>(a)),
-        logical(alloc::Allocator<sd::NativeChar>(a)),
+        source_keys(a),
         destination_logical(alloc::Allocator<sd::NativeChar>(a)),
         ascii_name(alloc::Allocator<char>(a)),
         unit_label(alloc::Allocator<char>(a)) {}
   sd::String job_id;
-  sd::NativeString input, destination, logical, destination_logical;
+  sd::NativeString input, destination;
+  sd::NativeSourceKeys source_keys;
+  sd::NativeString destination_logical;
   sd::String ascii_name, unit_label;
   std::array<std::byte, io::kStlFileBinaryHeaderBytes> binary_header{};
   io::StlEncoding source_encoding = io::StlEncoding::kInvalid,
@@ -1295,7 +1297,7 @@ struct StlPythonApp {
         jobs(alloc::Allocator<StlPythonJob>(a)),
         frame(a, Host(p.application.max_result_bytes)),
         manifest_path(alloc::Allocator<sd::NativeChar>(a)),
-        manifest_logical(alloc::Allocator<sd::NativeChar>(a)),
+        manifest_keys(a),
         manifest_parent(alloc::Allocator<sd::NativeChar>(a)) {
     jobs.reserve(Host(p.application.max_jobs));
     for (std::uint64_t i = 0; i < p.application.max_jobs; ++i) {
@@ -1314,7 +1316,9 @@ struct StlPythonApp {
   std::size_t count = 0, frame_size = 0;
   sd::Buffer frame;
   std::optional<sd::Buffer> manifest;
-  sd::NativeString manifest_path, manifest_logical, manifest_parent;
+  sd::NativeString manifest_path;
+  sd::NativeSourceKeys manifest_keys;
+  sd::NativeString manifest_parent;
   std::optional<sd::NativeMetadata> manifest_identity;
   StlPythonAdmission admission;
   StlPythonDelivery delivery;
@@ -1824,38 +1828,6 @@ bool Overlap(sd::NativeView a, sd::NativeView b) noexcept {
   };
   return ancestor(a, b) || ancestor(b, a);
 }
-sd::NativeString Normalize(sd::NativeView path,
-                           const alloc::AllocationContext& a) {
-  sd::NativeString out{alloc::Allocator<sd::NativeChar>(a)};
-  out.reserve(path.size());
-#ifdef _WIN32
-  constexpr auto root = sd::kDriveRootUnits;
-#else
-  constexpr std::size_t root = 1;
-#endif
-  sd::Extend(out, path.substr(0, root), a);
-  for (std::size_t begin = root; begin < path.size();) {
-    while (begin < path.size() && path[begin] == sd::kSeparator) ++begin;
-    auto end = begin;
-    while (end < path.size() && path[end] != sd::kSeparator) ++end;
-    const auto part = path.substr(begin, end - begin);
-    if (part.size() == 1 && part[0] == static_cast<sd::NativeChar>('.')) {
-    } else if (part.size() == 2 &&
-               part[0] == static_cast<sd::NativeChar>('.') &&
-               part[1] == static_cast<sd::NativeChar>('.')) {
-      if (out.size() > root) {
-        auto last = out.size();
-        while (last > root && out[last - 1] != sd::kSeparator) --last;
-        out.resize(last > root ? last - 1 : root);
-      }
-    } else if (!part.empty()) {
-      if (out.back() != sd::kSeparator) out.push_back(sd::kSeparator);
-      sd::Extend(out, part, a);
-    }
-    begin = end;
-  }
-  return out;
-}
 sd::NativeString Absolute(sd::NativeView path, sd::NativeView cwd,
                           const alloc::AllocationContext& a,
                           const io::StlFileLimits& limits) {
@@ -1874,7 +1846,7 @@ sd::NativeString Absolute(sd::NativeView path, sd::NativeView cwd,
   sd::Extend(joined, path, a);
   return sd::AbsolutePath(joined, a, limits);
 }
-void AdmitSource(sd::NativeView path, sd::NativeString& logical,
+void AdmitSource(sd::NativeView path, sd::NativeSourceKeys& keys,
                  sd::NativeMetadata& identity, StlPythonApp& app,
                  bool stl_entry = true) {
   const auto& a = app.allocation;
@@ -1886,15 +1858,15 @@ void AdmitSource(sd::NativeView path, sd::NativeString& logical,
                io::StlFilePhase::kPathPlanning,
                io::StlFileDiagnosticCode::kNameCollision);
   }
-  sd::RejectAliases(path, false, a, limits);
-  logical = Normalize(path, a);
-  auto file = sd::OpenFile(path, 0, {}, false, io::StlFilePhase::kPathPlanning);
-  identity = sd::Metadata(file);
-  auto canonical = sd::CanonicalPath(file, a, limits);
-  if (!EqualPath(logical, canonical))
-    sd::Fail(io::StlFileStatus::kFileChanged, io::StlFilePhase::kPathPlanning,
-             io::StlFileDiagnosticCode::kChanged);
-  sd::CloseChecked(file, {}, io::StlFilePhase::kPathPlanning);
+  const sd::TestOptions testing;
+  auto planned = sd::PlanNativePath(path, sd::NativePathUse::kRetainedSource, a,
+                                    limits, io::StlFilePhase::kPathPlanning);
+  auto admitted = sd::OpenAdmittedNativePath(
+      path, sd::NativePathUse::kRetainedSource, std::move(planned), a, limits,
+      testing, io::StlFilePhase::kPathPlanning, 0);
+  identity = admitted.identity;
+  sd::CloseChecked(admitted.file, testing, io::StlFilePhase::kPathPlanning);
+  keys = std::move(admitted.keys);
 }
 void Finish(nb::handle prepared, nb::handle current_directory) {
   auto& storage = Prepared(prepared);
@@ -1933,7 +1905,7 @@ void Finish(nb::handle prepared, nb::handle current_directory) {
     std::string_view planning_field = wire_key::kInput;
     try {
       job.input = Absolute(job.input, base, a, app.preset.read_limits.files);
-      AdmitSource(job.input, job.logical, job.identity, app);
+      AdmitSource(job.input, job.source_keys, job.identity, app);
       if (job.rewrite) {
         planning_field = wire_key::kDestination;
         job.destination =
@@ -1942,16 +1914,7 @@ void Finish(nb::handle prepared, nb::handle current_directory) {
             sd::EntryName(job.input, a, app.preset.read_limits.files);
         sd::NativePublication plan(a, app.preset.rewrite_limits.files, testing);
         plan.Plan(job.destination, entry, kReceipt);
-        auto normalized = Normalize(job.destination, a);
-        const auto separator = sd::LastSeparator(normalized, a);
-        const auto tail = sd::NativeView(normalized).substr(separator + 1);
-        sd::NativeString canonical{alloc::Allocator<sd::NativeChar>(a)};
-        canonical.reserve(plan.Parent().size() + tail.size() + 1);
-        sd::Extend(canonical, plan.Parent(), a);
-        if (canonical.back() != sd::kSeparator)
-          canonical.push_back(sd::kSeparator);
-        sd::Extend(canonical, tail, a);
-        job.destination_logical = Normalize(canonical, a);
+        sd::Assign(job.destination_logical, plan.Destination(), a);
       }
     } catch (const sd::Failure& error) {
       Reject(app, admission_code::kPathAdmission, {}, i, planning_field,
@@ -1967,13 +1930,16 @@ void Finish(nb::handle prepared, nb::handle current_directory) {
           first.identity.volume == second.identity.volume &&
           first.identity.identity == second.identity.identity;
       if ((i != j &&
-           (EqualPath(first.logical, second.logical) || same_identity)) ||
+           (sd::SourcesEqual(first.source_keys, second.source_keys, a) ||
+            same_identity)) ||
           (first.rewrite &&
-           (Overlap(first.destination_logical, second.logical) ||
+           (sd::SourceOverlaps(first.destination_logical, second.source_keys,
+                               a) ||
             (i != j && second.rewrite &&
              Overlap(first.destination_logical, second.destination_logical)) ||
-            (!app.manifest_logical.empty() &&
-             Overlap(first.destination_logical, app.manifest_logical))))) {
+            (!app.manifest_keys.primary.empty() &&
+             sd::SourceOverlaps(first.destination_logical, app.manifest_keys,
+                                a))))) {
         io::StlFileDiagnostic d;
         d.status = io::StlFileStatus::kInvalidRequest;
         d.phase = io::StlFilePhase::kPathPlanning;
@@ -2002,7 +1968,7 @@ nb::object Manifest(nb::handle prepared, nb::handle path,
   app.manifest_path = Absolute(input, cwd, a, limits);
   try {
     sd::NativeMetadata identity;
-    AdmitSource(app.manifest_path, app.manifest_logical, identity, app, false);
+    AdmitSource(app.manifest_path, app.manifest_keys, identity, app, false);
     app.manifest_identity = identity;
     if (identity.size > app.preset.application.max_manifest_bytes) {
       Reject(app, admission_code::kManifestExtent);
@@ -2026,9 +1992,9 @@ nb::object Manifest(nb::handle prepared, nb::handle path,
       sd::Fail(io::StlFileStatus::kFileChanged, io::StlFilePhase::kPathPlanning,
                io::StlFileDiagnosticCode::kChanged);
     sd::CloseChecked(file, {}, io::StlFilePhase::kPathPlanning);
-    const auto separator = sd::LastSeparator(app.manifest_logical, a);
+    const auto separator = sd::LastSeparator(app.manifest_keys.primary, a);
     sd::Assign(app.manifest_parent,
-               sd::NativeView(app.manifest_logical)
+               sd::NativeView(app.manifest_keys.primary)
                    .substr(0, separator ? separator : 1),
                a);
     return Binary(app.manifest->Bytes());

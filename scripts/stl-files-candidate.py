@@ -41,6 +41,22 @@ PYTHON_TEST_COUNTS = {"test_obj": 8, "test_stl_files_admission": 10,
                       "test_stl_files_api": 9, "test_stl_files_commands": 7}
 STL_TESTS = {"stl_files_semantics", "stl_files_requests", "stl_files_consumer"}
 INSTALLED_TESTS = {"installed_stl_files_consumer"}
+ALIAS_PROTOCOL = "STL_ALIAS_1"
+NATIVE_ALIAS_CASES = (
+    "N01.1", "N01.2", "N01.3", "N01.4", "N02.1", "N02.2", "N03.1", "N03.2",
+    "N04.1", "N04.2", "N04.3", "N04.4", "N05.1", "N05.2", "N05.3", "N05.4",
+    "N05.5", "N05.6", "N05.7", "N05.8", "N06.1", "N06.2", "N07.1", "N08.1",
+    "N09.1", "N10.1", "N10.2", "T01.1", "T01.2")
+PYTHON_ALIAS_CASES = (
+    "A01.1", "A01.2", "A01.3", "A01.4", "A02.1", "A02.2", "A02.3", "A02.4",
+    "A03.1", "A03.2", "A03.3", "A03.4", "A04.1", "A04.2", "C01.1", "C01.2",
+    "C01.3", "C01.4", "C02.1", "C02.2", "C03.1", "C03.2", "C04.1", "C04.2")
+ALIAS_WITNESSES = {"parent-alias", "source-leaf-alias", "mixed-component", "reparse-traversal"}
+ALIAS_TRACE_TAGS = {"RESULT", "WORK", "BYTES", "CLOSURE", "DISTINCT", "CHILD"}
+ALIAS_HOOK_CASES = ("N03.1", "N03.2", "N04.1", "N04.2", "N04.3", "N04.4")
+ALIAS_WORK_FAMILIES = {"capture", "writing_files", "staged_reread", "byte_verification",
+                       "value_verification", "receipt_verification", "inventory", "hashing",
+                       "provider_import"}
 OPTIONAL_OFF = ("GLTF_TOPOLOGY_WRITE", "GLTF_WORKFLOW_SUPPORT", "GLTF_FILES",
                 "OFF_FILES", "PLY_FILES", "SURFACE_OUTPUT", "SURFACE_FILES", "USD", "FBX")
 
@@ -155,6 +171,166 @@ def sdk_manifest(prefix):
              "sha256": sha256(p)} for p in sorted(prefix.rglob("*")) if p.is_file()]
 
 
+def alias_unsigned(value, bits):
+    if not value.isascii() or not value.isdigit() or not 0 <= int(value) < 2**bits:
+        raise RuntimeError("Malformed alias native integer")
+    return int(value)
+
+
+def alias_hex(value, text=False, allow_empty=False):
+    if not value and allow_empty:
+        return b""
+    if not re.fullmatch(r"(?:[0-9a-f]{2})+", value):
+        raise RuntimeError("Malformed alias hexadecimal payload")
+    data = bytes.fromhex(value)
+    if text and "\0" in data.decode("utf-8", "strict"):
+        raise RuntimeError("Alias text contains NUL")
+    return data
+
+
+def alias_path_fields(fields):
+    if len(fields) != 6:
+        raise RuntimeError("Malformed alias path observation")
+    for spelling in fields[:2]:
+        alias_hex(spelling, text=True)
+    for value, bits in zip(fields[2:], (64, 64, 64, 32)):
+        alias_unsigned(value, bits)
+
+
+def alias_trace(row, reached):
+    tag = row[1]
+    if tag == "RESULT" and len(row) == 6 and row[2] in reached:
+        for value in row[3:]:
+            alias_unsigned(value, 32)
+    elif tag == "WORK" and len(row) == 8 and row[2] in reached and row[3] in ALIAS_WORK_FAMILIES:
+        for value in row[4:]:
+            alias_unsigned(value, 64)
+    elif tag == "BYTES" and len(row) == 5:
+        alias_hex(row[2], text=True)
+        alias_unsigned(row[3], 64)
+        if not re.fullmatch(r"[0-9a-f]{64}", row[4]):
+            raise RuntimeError("Malformed alias byte digest")
+    elif tag == "CLOSURE" and len(row) == 5 and row[3:] == ["GENERIC_READ_ONLY", "PASS"]:
+        alias_hex(row[2], text=True)
+    elif tag == "DISTINCT" and len(row) == 5 and row[4] in {"0", "1"}:
+        alias_hex(row[2], text=True)
+        alias_hex(row[3], text=True)
+    elif tag == "CHILD" and len(row) == 7 and row[2] in reached:
+        alias_unsigned(row[3], 64)
+        if not re.fullmatch(r"-?[0-9]+", row[4]) or not -(2**63) <= int(row[4]) < 2**64:
+            raise RuntimeError("Malformed alias child exit")
+        alias_hex(row[5], allow_empty=True)
+        alias_hex(row[6], allow_empty=True)
+    else:
+        raise RuntimeError("Malformed alias supplemental observation")
+
+
+def check_alias_report(data, required, mode):
+    """Require the frozen receiving contract, including every independent case."""
+    text = data.decode("utf-8", "strict")
+    if not text.endswith("\n"):
+        raise RuntimeError("Alias report lacks its final LF record terminator")
+    rows = []
+    for raw in text.split("\n")[:-1]:
+        # Runner normalizes native CRLF; direct binary captures may retain it.
+        line = raw[:-1] if raw.endswith("\r") else raw
+        if any(character in line for character in "\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"):
+            raise RuntimeError("Alias report contains a non-record separator")
+        rows.append(line.split("\t"))
+    planned, reached, passed, modes, summaries, witnesses, hooks = [], [], [], [], [], set(), []
+    if not rows:
+        raise RuntimeError("Empty alias gate report")
+    for row in rows:
+        if len(row) < 2 or row[0] != ALIAS_PROTOCOL:
+            raise RuntimeError("Unexpected alias gate output")
+        tag = row[1]
+        if tag == "PLANNED" and len(row) == 3:
+            if modes or witnesses or reached or len(planned) >= len(required) or row[2] != required[len(planned)]:
+                raise RuntimeError("Alias case inventory is out of order")
+            planned.append(row[2])
+        elif tag == "REACHED" and len(row) == 3:
+            expected_witnesses = ALIAS_WITNESSES | ({"manifest-leaf-alias"} if mode[0] == "python" else set())
+            if (tuple(planned) != required or modes != [mode] or not expected_witnesses <= witnesses or
+                    len(reached) >= len(required) or row[2] != required[len(reached)]):
+                raise RuntimeError("Alias product execution preceded complete inventory/witness admission")
+            reached.append(row[2])
+        elif tag == "CASE" and len(row) == 4 and row[3] == "PASS":
+            if len(passed) >= len(reached) or row[2] != reached[len(passed)]:
+                raise RuntimeError("Alias case result lacks its ordered reached record")
+            passed.append(row[2])
+        elif tag == "MODE" and len(row) == 4:
+            if tuple(planned) != required or modes or witnesses or reached or tuple(row[2:]) != mode:
+                raise RuntimeError("Alias build mode preceded its inventory or is duplicated/incorrect")
+            modes.append(tuple(row[2:]))
+        elif tag == "WITNESS" and len(row) == 10 and row[3] == "PASS":
+            if modes != [mode] or reached or row[2] not in ALIAS_WITNESSES | {"manifest-leaf-alias", "path"}:
+                raise RuntimeError("Unexpected or late alias witness")
+            alias_path_fields(row[4:])
+            witnesses.add(row[2])
+        elif tag == "PATH" and len(row) == 8:
+            alias_path_fields(row[2:])
+        elif tag == "HOOK" and len(row) == 5:
+            if mode != ("source", "actual-filehooks") or row[2] not in reached or row[2] not in ALIAS_HOOK_CASES:
+                raise RuntimeError("Unexpected alias internal callback record")
+            opened, closed = (alias_unsigned(value, 64) for value in row[3:])
+            if not opened or opened != closed:
+                raise RuntimeError("Alias native handles remain outstanding or lack a real open")
+            hooks.append(row[2])
+        elif tag == "SUMMARY" and len(row) == 5:
+            if tuple(passed) != required or tuple(reached) != required or summaries:
+                raise RuntimeError("Alias summary preceded complete case results or is duplicated")
+            summaries.append(tuple(row[2:]))
+        elif tag in ALIAS_TRACE_TAGS:
+            alias_trace(row, reached)
+        else:
+            raise RuntimeError("Unknown or failing alias gate record")
+    if (tuple(planned) != required or tuple(reached) != required or tuple(passed) != required or
+            modes != [mode] or summaries != [("PASS", str(len(required)), str(len(required)))] or
+            rows[-1] != [ALIAS_PROTOCOL, "SUMMARY", "PASS", str(len(required)), str(len(required))] or
+            tuple(hooks) != (ALIAS_HOOK_CASES if mode[0] == "source" else ())):
+        raise RuntimeError("Alias gate incomplete, duplicated or wrong-mode inventory")
+    return {"mode": list(mode), "required_case_ids": list(required),
+            "planned": planned, "reached": reached, "passed": passed,
+            "witness_roles": sorted(witnesses), "internal_hook_cases": hooks}
+
+
+def alias_gate(runner, argv, required, mode, label):
+    record_path = runner.evidence / ("alias-" + label + ".json")
+    if record_path.exists():
+        raise RuntimeError("Alias gate evidence already exists")
+    previous_command = runner.command_number
+    record = {"status": "RUNNING", "argv": list(map(str, argv)),
+              "previous_command_number": previous_command,
+              "expected_mode": list(mode), "required_case_ids": list(required)}
+    try:
+        runner.run(*argv)
+        if runner.command_number != previous_command + 1:
+            raise RuntimeError("Alias runner did not produce exactly one new command record")
+        prefix = runner.evidence / f"command-{runner.command_number:03}"
+        stdout, stderr = Path(str(prefix) + ".stdout"), Path(str(prefix) + ".stderr")
+        record["stdout_sha256"], record["stderr_sha256"] = sha256(stdout), sha256(stderr)
+        if stderr.read_bytes():
+            raise RuntimeError("Successful alias gate emitted stderr")
+        record["report"] = check_alias_report(stdout.read_bytes(), required, mode)
+        record["status"] = "PASS"
+    except BaseException as error:
+        record.update(status="FAIL", exception_type=type(error).__name__, exception=str(error))
+        raise
+    finally:
+        number = runner.command_number if runner.command_number == previous_command + 1 else None
+        record["command_number"] = number
+        record["logs"] = []
+        if number is not None:
+            prefix = runner.evidence / f"command-{number:03}"
+            record["logs"] = [{"path": str(path), "bytes": path.stat().st_size,
+                               "sha256": sha256(path)} for path in
+                              (Path(str(prefix) + ".stdout"), Path(str(prefix) + ".stderr"))
+                              if path.is_file()]
+        record["log_capture"] = ("complete" if len(record["logs"]) == 2 else
+                                 "partial" if record["logs"] else "unavailable")
+        write_json(record_path, record)
+
+
 def consumer(runner, root, build, sdk, common, dependencies, checker, compiler, version,
              label, unsupported):
     configure(runner, root / "examples/stl-files-consumer", build, common + dependencies + [
@@ -200,7 +376,8 @@ def dependencies(runner, root, work, output, profile):
     return parser
 
 
-def native(runner, root, output, profile, common, dependency, checker, compiler, version):
+def native(runner, root, output, profile, common, dependency, checker, compiler, version,
+           require_aliases=False):
     build, sdk = output / "native-build", output / "sdk"
     options = common + dependency + selections(profile) + [
         "-DBUILD_TESTING=ON", "-DMESHVALE_INTERCHANGE_STL_FILES=ON"]
@@ -260,6 +437,23 @@ def native(runner, root, output, profile, common, dependency, checker, compiler,
                     "reason": "The installed package lacks optional meshvale::stl_files"})
     else:
         raise RuntimeError("Default-OFF optional consumer unexpectedly configured")
+    if require_aliases:
+        alias_gate(runner, [build / "meshvale_stl_files_aliases_tests.exe", "--require-windows-aliases"],
+                   NATIVE_ALIAS_CASES, ("source", "actual-filehooks"), "native-source")
+        alias_build = output / "moved-alias-build"
+        configure(runner, root / "examples/stl-files-alias-consumer", alias_build,
+                  common + dependency + ["-DMeshvaleInterchange_DIR=" + str(
+                      moved / "lib/cmake/MeshvaleInterchange")])
+        build_install(runner, alias_build)
+        audit_compilation(checker, alias_build, root, compiler, version)
+        commands = (alias_build / "compile_commands.json").read_text(encoding="utf-8").replace("\\\\", "/").replace("\\", "/")
+        if str(moved / "include").replace("\\", "/") not in commands:
+            raise RuntimeError("Alias SDK consumer lacks actual relocated header provenance")
+        for forbidden in (root / "include", root / "src"):
+            if str(forbidden).replace("\\", "/") in commands:
+                raise RuntimeError("Alias SDK consumer reached a source-private include")
+        alias_gate(runner, [alias_build / "meshvale_stl_files_alias_consumer.exe", "--require-windows-aliases"],
+                   NATIVE_ALIAS_CASES, ("public-sdk", "no-private-hooks"), "relocated-sdk")
 
 
 def package_metadata(path):
@@ -442,7 +636,8 @@ def boundary_gate(runner, python, source, product_build, selected_python, wheel)
         write_json(evidence / "boundary-gate.json", record)
 
 
-def python_candidate(runner, root, work, output, parser, selected_python, checker):
+def python_candidate(runner, root, work, output, parser, selected_python, checker,
+                     require_aliases=False):
     ordinary_python(selected_python)
     runner.environment["CMAKE_GENERATOR"] = "Ninja"
     if not re.search(r'^requires-python\s*=\s*">=3\.10"\s*$',
@@ -512,10 +707,17 @@ def python_candidate(runner, root, work, output, parser, selected_python, checke
         runtime_runner.run(python, "-m", "pip", "check")
         product_build = output / ("source-wheel-build" if label == "source" else "sdist-wheel-build")
         boundary_gate(runtime_runner, python, source, product_build, selected_python, wheel)
+        if require_aliases:
+            alias_gate(runtime_runner, [python, "-I", "-B", "-W", "error",
+                       source / "tests/python/stl_files_aliases_gate.py", "--require-windows-aliases"],
+                       PYTHON_ALIAS_CASES, ("python", "public-api-module-console"), "python")
         write_json(evidence / "runtime-gates.json", {"status": "PASS", "ordinary_tests": 34,
                    "unittest_sha256": sha256(evidence / "unittest.json"),
                    "boundary_sha256": sha256(evidence / "boundary-gate.json"),
-                   "boundary_cases": 4, "boundary_terminal_replays": 15})
+                   "boundary_cases": 4, "boundary_terminal_replays": 15,
+                   "windows_alias_gate_required": require_aliases,
+                   "windows_alias_gate_sha256": sha256(evidence / "alias-python.json")
+                   if require_aliases else None})
 
 
 def flatten(suite):
@@ -596,6 +798,7 @@ def qualify(args):
               "runtime_tests_per_wheel": 34 if args.mode == "python" else None,
               "boundary_cases_per_runtime": 4 if args.mode == "python" else None,
               "boundary_replays_per_runtime": 15 if args.mode == "python" else None,
+              "windows_alias_gate_required": args.require_windows_aliases,
               "default_off_expected": 23 if args.mode == "native" and
                                       args.profile == "qualified" else None,
               "native_geometry": GEOMETRY_NATIVE_REVISION,
@@ -605,6 +808,8 @@ def qualify(args):
         if any(name.startswith("SETUPTOOLS_SCM_PRETEND") for name in environment):
             raise RuntimeError("Version overrides are forbidden in this candidate")
         windows = platform.system() == "Windows"
+        if args.require_windows_aliases and (not windows or args.profile != "qualified"):
+            raise RuntimeError("The required OS alias gate is selected only for actual qualified Windows rows")
         if platform.machine().lower() not in ("amd64", "x86_64") or windows != (args.profile == "qualified"):
             raise RuntimeError("Need Windows x64 MSVC or Linux x64 genuine GNU13")
         if not windows and platform.system() != "Linux":
@@ -639,11 +844,13 @@ def qualify(args):
         dependency = ["-DMeshvaleGeometry_DIR=" + str(geometry_prefix / "lib/cmake/MeshvaleGeometry"),
                       "-Dtinyobjloader_DIR=" + str(parser)]
         if args.mode == "native":
-            native(runner, root, output, args.profile, common, dependency, checker, compiler, version)
+            native(runner, root, output, args.profile, common, dependency, checker, compiler, version,
+                   args.require_windows_aliases)
         else:
             if not windows:
                 raise RuntimeError("The selected Python candidate is Windows ordinary CPython only")
-            python_candidate(runner, root, work, output, parser, args.python, checker)
+            python_candidate(runner, root, work, output, parser, args.python, checker,
+                             args.require_windows_aliases)
         result["passed"] = True
     except BaseException as error:
         result["exception_type"] = type(error).__name__
@@ -673,8 +880,11 @@ if __name__ == "__main__":
     parser.add_argument("--source", type=Path)
     parser.add_argument("--wheel", type=Path)
     parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--require-windows-aliases", action="store_true")
     arguments = parser.parse_args()
     if arguments.mode == "runtime-tests":
+        if arguments.require_windows_aliases:
+            parser.error("runtime-tests retains its ordinary inventory; use the explicit candidate alias gate")
         runtime_tests(arguments)
     else:
         qualify(arguments)
