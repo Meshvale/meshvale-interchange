@@ -1167,9 +1167,23 @@ StlPythonPreset Preset(nb::handle value) {
 }
 template <class Native>
 struct StlPythonOwner {
+  StlPythonOwner() = default;
+  StlPythonOwner(const StlPythonOwner&) = default;
   std::optional<Native> native;
   nb::object source = nb::none(), output = nb::none(), document = nb::none(),
              verified = nb::none();
+  ~StlPythonOwner() { Clear(); }
+  void Clear() noexcept {
+    native.reset();
+    auto* old_source = source.release().ptr();
+    auto* old_output = output.release().ptr();
+    auto* old_document = document.release().ptr();
+    auto* old_verified = verified.release().ptr();
+    Py_XDECREF(old_source);
+    Py_XDECREF(old_output);
+    Py_XDECREF(old_document);
+    Py_XDECREF(old_verified);
+  }
 };
 using StlPythonCaptured = StlPythonOwner<io::StlCapturedFile>;
 using StlPythonDocument = StlPythonOwner<io::StlDocument>;
@@ -1255,6 +1269,20 @@ struct StlPythonDelivery {
   std::string_view state = app_value::kNotAttempted, code;
   std::uint64_t bytes_written = 0;
 };
+// A Python exception instance is a GC-visible edge, never an opaque native
+// exception_ptr payload. The value is already normalized by pinned nanobind.
+struct StlPythonUnexpected {
+  StlPythonUnexpected() = default;
+  StlPythonUnexpected(const StlPythonUnexpected&) = delete;
+  StlPythonUnexpected& operator=(const StlPythonUnexpected&) = delete;
+  nb::object python_value;
+  // Only Run's non-python_error catch populates this native-only slot.
+  std::exception_ptr native;
+  ~StlPythonUnexpected() {
+    auto* value = python_value.release().ptr();
+    Py_XDECREF(value);
+  }
+};
 struct StlPythonApp {
   StlPythonApp(const alloc::AllocationContext& a,
                const geo::ExecutionContext& c, const StlPythonPreset& p,
@@ -1290,36 +1318,190 @@ struct StlPythonApp {
   std::optional<sd::NativeMetadata> manifest_identity;
   StlPythonAdmission admission;
   StlPythonDelivery delivery;
-  std::exception_ptr unexpected;
+  StlPythonUnexpected unexpected;
+};
+// Exactly one GC node owns the native App. Every prepared/result alias owns
+// a counted Python edge to this node rather than an invisible C++ App alias.
+struct StlPythonApplicationOwner {
+  StlPythonApplicationOwner() = default;
+  StlPythonApplicationOwner(const StlPythonApplicationOwner&) = delete;
+  StlPythonApplicationOwner& operator=(const StlPythonApplicationOwner&) =
+      delete;
+  std::shared_ptr<StlPythonApp> app;
+  ~StlPythonApplicationOwner() { Clear(); }
+  void Clear() noexcept {
+    std::shared_ptr<StlPythonApp> detached;
+    detached.swap(app);
+    // The published pointer is empty before App destruction can invoke Python.
+  }
+};
+constexpr char kApplicationOwnerName[] = "_StlApplicationOwner";
+class StlPythonApplicationRef {
+ public:
+  explicit StlPythonApplicationRef(nb::object owner)
+      : owner_(std::move(owner)) {}
+  StlPythonApplicationRef(const StlPythonApplicationRef&) = default;
+  StlPythonApplicationRef(StlPythonApplicationRef&&) noexcept = default;
+  StlPythonApplicationRef& operator=(const StlPythonApplicationRef&) = delete;
+  StlPythonApplicationRef& operator=(StlPythonApplicationRef&&) = delete;
+  ~StlPythonApplicationRef() { Clear(); }
+  StlPythonApp& operator*() const { return Get(); }
+  StlPythonApp* operator->() const { return &Get(); }
+  PyObject* Owner() const noexcept { return owner_.ptr(); }
+  PyObject* Release() noexcept { return owner_.release().ptr(); }
+  void Clear() noexcept {
+    auto* old_owner = Release();
+    Py_XDECREF(old_owner);
+  }
+
+ private:
+  StlPythonApp& Get() const {
+    if (!owner_.is_valid() || !nb::inst_ready(owner_))
+      throw nb::value_error("STL application reference is cleared or unready");
+    const auto& app = nb::inst_ptr<StlPythonApplicationOwner>(owner_)->app;
+    if (!app) throw nb::value_error("STL application has been cleared");
+    return *app;
+  }
+  nb::object owner_;
 };
 struct StlPythonResult {
-  std::shared_ptr<StlPythonApp> app;
+  StlPythonResult(const StlPythonApplicationRef& application,
+                  std::size_t result_index)
+      : app(application), index(result_index) {}
+  StlPythonResult(const StlPythonResult&) = default;
+  StlPythonApplicationRef app;
   std::size_t index;
+  ~StlPythonResult() { Clear(); }
+  void Clear() noexcept { app.Clear(); }
 };
 struct StlPythonBatchResult {
-  std::shared_ptr<StlPythonApp> app;
+  StlPythonBatchResult(const StlPythonApplicationRef& application,
+                       nb::tuple result_jobs)
+      : app(application), jobs(std::move(result_jobs)) {}
+  StlPythonBatchResult(const StlPythonBatchResult&) = default;
+  StlPythonApplicationRef app;
   nb::tuple jobs;
+  ~StlPythonBatchResult() { Clear(); }
+  void Clear() noexcept {
+    auto* old_app = app.Release();
+    auto* old_jobs = jobs.release().ptr();
+    Py_XDECREF(old_jobs);
+    Py_XDECREF(old_app);
+  }
 };
 struct StlPythonPreparedStorage {
-  std::shared_ptr<StlPythonApp> app;
+  StlPythonPreparedStorage(const StlPythonApplicationRef& application,
+                           nb::tuple result_slots, nb::object holder)
+      : app(application),
+        slots(std::move(result_slots)),
+        result(std::move(holder)) {}
+  StlPythonPreparedStorage(const StlPythonPreparedStorage&) = default;
+  StlPythonApplicationRef app;
   nb::tuple slots;
   nb::object result;
+  ~StlPythonPreparedStorage() { Clear(); }
+  void Clear() noexcept {
+    auto* old_app = app.Release();
+    auto* old_slots = slots.release().ptr();
+    auto* old_result = result.release().ptr();
+    Py_XDECREF(old_result);
+    Py_XDECREF(old_slots);
+    Py_XDECREF(old_app);
+  }
 };
 struct StlPythonPreparedSingle : StlPythonPreparedStorage {};
 struct StlPythonPreparedBatch : StlPythonPreparedStorage {};
+template <class T>
+T& ReadyPayload(nb::handle value) {
+  if (!nb::inst_ready(value)) throw nb::value_error("STL holder is unready");
+  return *nb::inst_ptr<T>(value);
+}
 StlPythonPreparedStorage& Prepared(nb::handle value) {
   if (nb::isinstance<StlPythonPreparedSingle>(value))
-    return *nb::inst_ptr<StlPythonPreparedSingle>(value);
+    return ReadyPayload<StlPythonPreparedSingle>(value);
   if (nb::isinstance<StlPythonPreparedBatch>(value))
-    return *nb::inst_ptr<StlPythonPreparedBatch>(value);
+    return ReadyPayload<StlPythonPreparedBatch>(value);
   throw nb::type_error("expected a prepared STL operation");
 }
 StlPythonApp& Application(nb::handle value) {
   if (nb::isinstance<StlPythonResult>(value))
-    return *nb::inst_ptr<StlPythonResult>(value)->app;
+    return *ReadyPayload<StlPythonResult>(value).app;
   if (nb::isinstance<StlPythonBatchResult>(value))
-    return *nb::inst_ptr<StlPythonBatchResult>(value)->app;
+    return *ReadyPayload<StlPythonBatchResult>(value).app;
   throw nb::type_error("expected a stable STL result");
+}
+
+// These visits describe physical owning references, including duplicate
+// targets. The shared native App is traversed only at its one application-owner
+// node.
+int Traverse(const StlPythonApplicationOwner& owner, visitproc visit,
+             void* arg) noexcept {
+  const auto* app = owner.app.get();
+  if (!app) return 0;
+  for (const auto& job : app->jobs) {
+    Py_VISIT(job.provider.ptr());
+    Py_VISIT(job.report_backing.ptr());
+    Py_VISIT(job.owners.captured.ptr());
+    Py_VISIT(job.owners.source_document.ptr());
+    Py_VISIT(job.owners.asset.ptr());
+    Py_VISIT(job.owners.output.ptr());
+    Py_VISIT(job.owners.fresh_document.ptr());
+    Py_VISIT(job.owners.verified.ptr());
+    Py_VISIT(job.owners.bundle.ptr());
+  }
+  Py_VISIT(app->unexpected.python_value.ptr());
+  return 0;
+}
+int Traverse(const StlPythonResult& self, visitproc visit, void* arg) noexcept {
+  Py_VISIT(self.app.Owner());
+  return 0;
+}
+int Traverse(const StlPythonBatchResult& self, visitproc visit,
+             void* arg) noexcept {
+  Py_VISIT(self.app.Owner());
+  Py_VISIT(self.jobs.ptr());
+  return 0;
+}
+int Traverse(const StlPythonPreparedStorage& self, visitproc visit,
+             void* arg) noexcept {
+  Py_VISIT(self.app.Owner());
+  Py_VISIT(self.slots.ptr());
+  Py_VISIT(self.result.ptr());
+  return 0;
+}
+template <class Native>
+int Traverse(const StlPythonOwner<Native>& self, visitproc visit,
+             void* arg) noexcept {
+  Py_VISIT(self.source.ptr());
+  Py_VISIT(self.output.ptr());
+  Py_VISIT(self.document.ptr());
+  Py_VISIT(self.verified.ptr());
+  return 0;
+}
+template <class T>
+int TraverseShell(PyObject* self, visitproc visit, void* arg) noexcept {
+  // NB may track the shell before placement construction. The type reference
+  // already exists, but no C++ payload field may be read before mark-ready.
+  // CPython's subtype traversal handles subclass fields and delegates this
+  // heap-type edge here; do not visit it again through a base traversal.
+  Py_VISIT(Py_TYPE(self));
+  const nb::handle object(self);
+  if (!nb::inst_ready(object)) return 0;
+  return Traverse(*nb::inst_ptr<T>(object), visit, arg);
+}
+template <class T>
+int ClearShell(PyObject* self) noexcept {
+  const nb::handle object(self);
+  if (nb::inst_ready(object)) nb::inst_ptr<T>(object)->Clear();
+  return 0;
+}
+template <class T>
+nb::type_slots GcSlots() {
+  static const PyType_Slot kSlots[] = {
+      {Py_tp_traverse, reinterpret_cast<void*>(TraverseShell<T>)},
+      {Py_tp_clear, reinterpret_cast<void*>(ClearShell<T>)},
+      {0, nullptr}};
+  return nb::type_slots(kSlots);
 }
 
 void NativeExtent(std::size_t size, std::uint64_t cap) {
@@ -1419,8 +1601,7 @@ void ReadOnly(io::StlFileObservations& o) noexcept {
         &o.receipt_verification, &o.inventory, &o.publication})
     stage->state = io::StlFileObservationState::kNotApplicable;
 }
-nb::tuple ResultSlots(const std::shared_ptr<StlPythonApp>& app,
-                      std::size_t count) {
+nb::tuple ResultSlots(const StlPythonApplicationRef& app, std::size_t count) {
   auto slots =
       nb::steal<nb::tuple>(PyTuple_New(static_cast<Py_ssize_t>(count)));
   if (!slots.is_valid()) throw nb::python_error();
@@ -1445,14 +1626,17 @@ nb::object Create(nb::handle config, nb::handle execution, nb::handle mode,
   if (fail != app_value::kContinue && fail != app_value::kFailFastPolicy)
     throw nb::value_error("invalid failure policy");
   const auto preset = Preset(config);
-  const auto& context = nb::inst_ptr<StlPythonExecution>(execution)->context;
+  const auto& context = ReadyPayload<StlPythonExecution>(execution).context;
   auto a = alloc::AllocationContext(context, {})
                .WithRequestLimit(Host(
                    preset.application.max_application_new_requested_bytes));
-  auto app = std::allocate_shared<StlPythonApp>(
-      alloc::Allocator<StlPythonApp>(a), a, context, preset,
-      batch ? kBatch : (m == kRead ? kRead : kRewrite),
-      fail == app_value::kFailFastPolicy);
+  auto application_owner = Shell<StlPythonApplicationOwner>();
+  nb::inst_ptr<StlPythonApplicationOwner>(application_owner)->app =
+      std::allocate_shared<StlPythonApp>(
+          alloc::Allocator<StlPythonApp>(a), a, context, preset,
+          batch ? kBatch : (m == kRead ? kRead : kRewrite),
+          fail == app_value::kFailFastPolicy);
+  const StlPythonApplicationRef app(std::move(application_owner));
   const auto slots = ResultSlots(app, Host(preset.application.max_jobs));
   nb::object result;
   if (batch) {
@@ -1725,7 +1909,9 @@ void Finish(nb::handle prepared, nb::handle current_directory) {
       PyTuple_SET_ITEM(tuple.ptr(), static_cast<Py_ssize_t>(i),
                        item.release().ptr());
     }
-    nb::inst_ptr<StlPythonBatchResult>(storage.result)->jobs = std::move(tuple);
+    auto& result = ReadyPayload<StlPythonBatchResult>(storage.result);
+    (void)*result.app;
+    result.jobs = std::move(tuple);
   }
   app.finished = true;
   if (!app.admission.code.empty()) return;
@@ -1867,18 +2053,25 @@ std::string_view JobOutcome(const StlPythonJob& job) noexcept {
   if (job.boundary_canceled) return app_value::kCanceled;
   return wire_key::kRead;
 }
-// Called with the GIL held. The retained exception is never passed to
-// nanobind's consuming restore: each Python boundary receives an independently
-// owned copy. Native unexpected exceptions preserve their original propagation
-// unchanged.
-void RethrowUnexpected(const std::exception_ptr& unexpected) {
-  if (!unexpected) return;
-  try {
-    std::rethrow_exception(unexpected);
-  } catch (const nb::python_error& error) {
-    throw nb::python_error(error);
+// Called with the GIL held. Preserve the same normalized instance and its
+// current traceback/payload, but give each consuming NB throwable fresh refs.
+// CPython introduced the raised-instance interface in 3.12. A preprocessor
+// version constant is required because the older interpreter lacks its symbol.
+#define MESHVALE_STL_RAISED_EXCEPTION_API_MIN_VERSION 0x030C0000
+void RethrowUnexpected(const StlPythonUnexpected& unexpected) {
+  if (unexpected.python_value.is_valid()) {
+    auto* value = unexpected.python_value.ptr();
+#if PY_VERSION_HEX >= MESHVALE_STL_RAISED_EXCEPTION_API_MIN_VERSION
+    PyErr_SetRaisedException(Py_NewRef(value));
+#else
+    PyErr_Restore(Py_NewRef(Py_TYPE(value)), Py_NewRef(value),
+                  PyException_GetTraceback(value));
+#endif
+    throw nb::python_error();
   }
+  if (unexpected.native) std::rethrow_exception(unexpected.native);
 }
+#undef MESHVALE_STL_RAISED_EXCEPTION_API_MIN_VERSION
 std::string_view BatchOutcome(const StlPythonApp& app) {
   RethrowUnexpected(app.unexpected);
   if (!app.admission.code.empty()) return app_value::kAdmissionFailed;
@@ -2090,9 +2283,15 @@ nb::object Run(nb::handle prepared, nb::handle cancellation) {
       }
     }
     return storage.result;
-  } catch (...) {
-    app.unexpected = std::current_exception();
+  } catch (const nb::python_error& error) {
+    // Pinned NB3.1's pre3.12 fetch normalizes the C-API triple and attaches its
+    // fetched traceback to value before this catch. Retain it before release;
+    // do not replace it with a traceback snapshot or reconstruct the exception.
+    app.unexpected.python_value = nb::borrow<nb::object>(error.value());
     RethrowUnexpected(app.unexpected);
+    throw;
+  } catch (...) {
+    app.unexpected.native = std::current_exception();
     throw;
   }
 }
@@ -2340,7 +2539,7 @@ nb::object ExportJson(nb::handle value) {
   return nb::module_::import_("meshvale_interchange.stl_files")
       .attr("_export_json")(value);
 }
-StlPythonJob& Job(const StlPythonResult& result) noexcept {
+StlPythonJob& Job(const StlPythonResult& result) {
   return result.app->jobs[result.index];
 }
 int JobExitCode(const StlPythonResult& result) {
@@ -2356,6 +2555,8 @@ int JobExitCode(const StlPythonResult& result) {
 }  // namespace
 void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
   g_cancellation_reader = reader;
+  nb::class_<StlPythonApplicationOwner>(module, kApplicationOwnerName,
+                                        GcSlots<StlPythonApplicationOwner>());
   nb::class_<StlPythonExecution>(module, "StlExecutionContext")
       .def(nb::init<nb::handle, nb::handle, nb::handle>(),
            nb::arg(wire_key::kWorkerBudget),
@@ -2385,7 +2586,8 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
                    [](const StlPythonExecution& self) {
                      return self.context.PeakTrackedPayload();
                    });
-  nb::class_<StlPythonCaptured>(module, "StlCapturedFile")
+  nb::class_<StlPythonCaptured>(module, "StlCapturedFile",
+                                GcSlots<StlPythonCaptured>())
       .def_prop_ro("entry",
                    [](const StlPythonCaptured& self) {
                      return PythonText(RequireOwner(self).EntryPath());
@@ -2405,7 +2607,8 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
       .def("export_bytes", [](const StlPythonCaptured& self) {
         return Binary(RequireOwner(self).EntryBytes());
       });
-  nb::class_<StlPythonDocument>(module, "StlDocument")
+  nb::class_<StlPythonDocument>(module, "StlDocument",
+                                GcSlots<StlPythonDocument>())
       .def_prop_ro("encoding",
                    [](const StlPythonDocument& self) {
                      return Wire(RequireOwner(self).Encoding());
@@ -2448,7 +2651,7 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
              return Binary(RequireOwner(self).OriginalBytes());
            })
       .def("export_mesh", ExportMesh);
-  nb::class_<StlPythonAsset>(module, "StlFileAsset")
+  nb::class_<StlPythonAsset>(module, "StlFileAsset", GcSlots<StlPythonAsset>())
       .def_prop_ro("document",
                    [](const StlPythonAsset& self) {
                      (void)RequireOwner(self);
@@ -2473,7 +2676,7 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
       .def("export_bytes", [](const StlPythonAsset& self) {
         return Binary(RequireOwner(self).EntryBytes());
       });
-  nb::class_<StlPythonOutput>(module, "StlOutput")
+  nb::class_<StlPythonOutput>(module, "StlOutput", GcSlots<StlPythonOutput>())
       .def_prop_ro("encoding",
                    [](const StlPythonOutput& self) {
                      return Wire(RequireOwner(self).Facts().encoding);
@@ -2514,7 +2717,8 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
         }
         return out;
       });
-  nb::class_<StlPythonVerified>(module, "StlVerifiedRewrite")
+  nb::class_<StlPythonVerified>(module, "StlVerifiedRewrite",
+                                GcSlots<StlPythonVerified>())
       .def_prop_ro("source",
                    [](const StlPythonVerified& self) {
                      (void)RequireOwner(self);
@@ -2549,7 +2753,8 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
       .def("export_bytes", [](const StlPythonVerified& self) {
         return Binary(RequireOwner(self).EntryBytes());
       });
-  nb::class_<StlPythonBundle>(module, "StlPublishedBundle")
+  nb::class_<StlPythonBundle>(module, "StlPublishedBundle",
+                              GcSlots<StlPythonBundle>())
       .def_prop_ro(wire_key::kVerified,
                    [](const StlPythonBundle& self) {
                      (void)RequireOwner(self);
@@ -2574,7 +2779,8 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
       .def("export_receipt_bytes", [](const StlPythonBundle& self) {
         return Binary(RequireOwner(self).ReceiptBytes());
       });
-  auto result = nb::class_<StlPythonResult>(module, "StlResult");
+  auto result = nb::class_<StlPythonResult>(module, "StlResult",
+                                            GcSlots<StlPythonResult>());
   result.def_prop_ro(wire_key::kJobId, [](const StlPythonResult& self) {
     return PythonText(Job(self).job_id);
   });
@@ -2650,9 +2856,13 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
   result.def("export_json", [](nb::handle self) { return ExportJson(self); });
   result.def("_wire",
              [](const StlPythonResult& self) { return Frame(*self.app); });
-  nb::class_<StlPythonBatchResult>(module, "StlBatchResult")
+  nb::class_<StlPythonBatchResult>(module, "StlBatchResult",
+                                   GcSlots<StlPythonBatchResult>())
       .def_prop_ro(wire_key::kJobs,
-                   [](const StlPythonBatchResult& self) { return self.jobs; })
+                   [](const StlPythonBatchResult& self) {
+                     (void)*self.app;
+                     return self.jobs;
+                   })
       .def_prop_ro(wire_key::kOutcome,
                    [](const StlPythonBatchResult& self) {
                      return PythonText(BatchOutcome(*self.app));
@@ -2670,12 +2880,16 @@ void RegisterStlFiles(nb::module_& module, StlCancellationReader reader) {
       .def("export_json", [](nb::handle self) { return ExportJson(self); })
       .def("_wire",
            [](const StlPythonBatchResult& self) { return Frame(*self.app); });
-  nb::class_<StlPythonPreparedSingle>(module, "PreparedStl")
+  nb::class_<StlPythonPreparedSingle>(module, "PreparedStl",
+                                      GcSlots<StlPythonPreparedSingle>())
       .def_prop_ro("result", [](const StlPythonPreparedSingle& self) {
+        (void)*self.app;
         return self.result;
       });
-  nb::class_<StlPythonPreparedBatch>(module, "PreparedStlBatch")
+  nb::class_<StlPythonPreparedBatch>(module, "PreparedStlBatch",
+                                     GcSlots<StlPythonPreparedBatch>())
       .def_prop_ro("result", [](const StlPythonPreparedBatch& self) {
+        (void)*self.app;
         return self.result;
       });
   module.def("_stl_create", [](nb::handle config, nb::handle execution,
