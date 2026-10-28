@@ -133,7 +133,7 @@ def audit_compilation(checker, build, source, compiler, version, stl_files=None)
     entries = json.loads((build / "compile_commands.json").read_text(encoding="utf-8"))
     if not entries:
         raise RuntimeError("No actual compilation records: " + str(build))
-    owned = [source / name for name in ("src", "python", "tests", "examples")]
+    owned = [(source / name).resolve() for name in ("src", "python", "tests", "examples")]
     first_party = [entry for entry in entries if any(
         directory in Path(entry["file"]).resolve().parents for directory in owned)]
     if not first_party:
