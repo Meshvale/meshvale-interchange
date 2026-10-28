@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: Apache-2.0
+name: STL file development candidates
+
+"on":
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/stl-files-candidates.yml
+      - scripts/**
+      - cmake/**
+      - CMakeLists.txt
+      - vcpkg.json
+      - pyproject.toml
+      - include/**
+      - src/**
+      - python/**
+      - tests/**
+      - examples/stl-files-consumer/**
+      - docs/stl-files.md
+      - docs/stl-file-presets.json
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: STL native ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            label: MSVC qualified 26 and default-OFF 23
+            profile: qualified
+          - os: ubuntu-24.04
+            label: GNU13 unsupported 25
+            profile: unsupported
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          architecture: x64
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Meshvale/meshvale-geometry
+          ref: 5dd210b19d05bf651b853b8fdac398c7feceeba9
+          path: .local/stl-candidate/g
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: microsoft/vcpkg
+          ref: cb5a41b03cde4086d554b3f3e2eac39206b16eda
+          path: .local/stl-candidate/v
+      - name: Select Windows x64 developer environment
+        if: runner.os == 'Windows'
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $visualStudio) { throw 'No Windows x64 compiler environment' }
+          $environment = & cmd /d /c "call `"$visualStudio/Common7/Tools/VsDevCmd.bat`" -arch=x64 -host_arch=x64 >nul && set"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $compilerVariables = @('PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'WindowsSdkDir', 'WindowsSDKVersion', 'VCINSTALLDIR', 'VCToolsInstallDir', 'UniversalCRTSdkDir', 'UCRTVersion')
+          foreach ($line in $environment) {
+            $name, $value = $line -split '=', 2
+            if ($name -in $compilerVariables) {
+              "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+      - name: Select genuine GNU13 tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 gcc-13 ninja-build zip unzip
+          g++-13 --version
+          gcc-13 --version
+      - name: Install selected build tooling
+        run: python -m pip install cmake==4.3.1
+      - name: Qualify actual native SDK and installed public consumers
+        run: python scripts/stl-files-candidate.py native --profile ${{ matrix.profile }}
+      - name: Preserve candidate artifacts and failures
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: stl-native-${{ matrix.profile }}-${{ github.sha }}
+          path: |
+            .local/stl-candidate/out/evidence
+            .local/stl-candidate/v/buildtrees/tinyobjloader/**/*.log
+            .local/stl-candidate/v/buildtrees/tinyobjloader/**/CMakeCache.txt
+            .local/stl-candidate/v/buildtrees/tinyobjloader/**/compile_commands.json
+            .local/stl-candidate/v/buildtrees/tinyobjloader/**/CMakeCXXCompiler.cmake
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  python:
+    name: STL Python MSVC ordinary ${{ matrix.python }}
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: x64
+      # The native SDK and Python owned-record producer deliberately differ.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Meshvale/meshvale-geometry
+          ref: 5dd210b19d05bf651b853b8fdac398c7feceeba9
+          path: .local/stl-candidate/g
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Meshvale/meshvale-geometry
+          ref: 48298b24be7c132816fb5580d22d58bde61558d0
+          path: .local/stl-candidate/gp
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: microsoft/vcpkg
+          ref: cb5a41b03cde4086d554b3f3e2eac39206b16eda
+          path: .local/stl-candidate/v
+      - name: Select Windows x64 developer environment
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $visualStudio) { throw 'No Windows x64 compiler environment' }
+          $environment = & cmd /d /c "call `"$visualStudio/Common7/Tools/VsDevCmd.bat`" -arch=x64 -host_arch=x64 >nul && set"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $compilerVariables = @('PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'WindowsSdkDir', 'WindowsSDKVersion', 'VCINSTALLDIR', 'VCToolsInstallDir', 'UniversalCRTSdkDir', 'UCRTVersion')
+          foreach ($line in $environment) {
+            $name, $value = $line -split '=', 2
+            if ($name -in $compilerVariables) {
+              "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+      - name: Install selected build frontend
+        run: python -m pip install build==1.6.1 cmake==4.3.1
+      - name: Build source and extracted-sdist candidates and test both fresh runtimes
+        run: python scripts/stl-files-candidate.py python --profile qualified --python ${{ matrix.python }}
+      - name: Preserve source candidates and actual full-suite records
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: stl-python-${{ matrix.python }}-${{ github.sha }}
+          path: |
+            .local/stl-candidate/out/evidence
+            .local/stl-candidate/out/dist
+            .local/stl-candidate/out/geometry-wheels
+            .local/stl-candidate/out/source-wheels
+            .local/stl-candidate/out/sdist-wheels
+            .local/stl-candidate/v/buildtrees/tinyobjloader/**/*.log
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
