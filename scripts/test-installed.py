@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Install exact producer/consumer wheels and test outside the source directory."""
+"""Install exact wheels and verify the OBJ baseline outside the source directory.
+
+The separate STL candidate runner owns its full suite and boundary qualification.
+"""
 import argparse
 from pathlib import Path
 import subprocess
@@ -22,7 +25,7 @@ if __name__ == "__main__":
         venv.EnvBuilder(with_pip=True).create(environment)
         python = environment/("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         run(python,"-m","pip","install","--no-index",options.geometry_wheel.resolve(),options.interchange_wheel.resolve(),cwd=directory)
-        run(python,"-I","-m","unittest","discover","-s",root/"tests/python","-v",cwd=directory)
+        run(python,"-I","-m","unittest","discover","-s",root/"tests/python","-p","test_obj.py","-v",cwd=directory)
         run(python,"-I",root/"examples/python/obj_bundle.py",cwd=directory)
         for order in ["geometry-first","interchange-first"]:
             code = ("import meshvale_geometry; import meshvale_interchange" if order == "geometry-first" else

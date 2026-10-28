@@ -43,9 +43,14 @@ In the [configured native dependency environment](../ENVIRONMENT.md), pass insta
 ```sh
 python -m pip wheel . --no-deps --wheel-dir .local/wheels --config-settings=cmake.define.CMAKE_PREFIX_PATH="$GEOMETRY_PREFIX;$TINYOBJLOADER_PREFIX"
 python -m pip install --no-index --find-links "$CANDIDATE_WHEELS" meshvale-interchange
-python -m unittest discover -s tests/python -v
+python -m unittest discover -s tests/python -p test_obj.py -v
 python examples/python/obj_bundle.py
 ```
+
+These commands verify the OBJ baseline. The separate
+[STL candidate workflow](../.github/workflows/stl-files-candidates.yml) requires
+all 34 OBJ/STL methods and the standalone exception and lifetime checks for each of its
+selected source/sdist runtimes; OBJ baseline success does not qualify STL.
 
 The wheel statically incorporates the used Interchange, tinyobjloader and nanobind code with their actual notices. License metadata also includes the private cgltf/jsoncons parser foundation notices; this adds no Python glTF API. It contains Python code/extension and license metadata, excluding native install trees/tests/build logs. Source archives select product-owned build/test/docs files and generated source-version metadata; they rebuild without Git. Exact `vX.Y.Z` tags own release versions; untagged builds use full-history development versions. Wheels are Python/platform specific and retain dynamic platform C++ runtime requirements. Free-threaded/stable-ABI wheels and a supported release matrix are not established by this experiment. Focused installed tests exercise polygon/seam/resource fidelity, representation errors, cancellation/callback failures, source protection, publication races and both extension import orders. Shared reports, CLI/batch and glTF/GLB remain separate work.
 

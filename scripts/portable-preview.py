@@ -126,8 +126,10 @@ def before_test():
 def test():
     root = dependency_root()
     geometry = root / "geometry"
-    for owner, directory in [(geometry, "tests/python"), (geometry, "tests/reports"), (PACKAGE, "tests/python")]:
+    for owner, directory in [(geometry, "tests/python"), (geometry, "tests/reports")]:
         run(sys.executable, "-I", "-m", "unittest", "discover", "-s", owner / directory, "-v")
+    run(sys.executable, "-I", "-m", "unittest", "discover", "-s", PACKAGE / "tests/python",
+        "-p", "test_obj.py", "-v")
     run(sys.executable, "-I", PACKAGE / "examples/python/obj_bundle.py")
     run(sys.executable, "-I", geometry / "examples/python/inspect_mesh.py")
     for order in ["geometry-first", "consumer-first"]:
