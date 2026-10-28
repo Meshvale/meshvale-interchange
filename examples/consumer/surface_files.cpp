@@ -293,11 +293,12 @@ class OutputDirectory {
  public:
   OutputDirectory() {
     static std::atomic<std::uint64_t> sequence{0};
+    const auto canonical_parent = fs::canonical(fs::temp_directory_path());
     const auto stamp =
         std::chrono::steady_clock::now().time_since_epoch().count();
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
       auto candidate =
-          fs::temp_directory_path() /
+          canonical_parent /
           ("meshvale-surface-files-consumer-" + std::to_string(stamp) + "-" +
            std::to_string(sequence.fetch_add(1)));
       std::error_code error;

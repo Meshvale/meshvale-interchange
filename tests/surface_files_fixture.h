@@ -169,11 +169,17 @@ class TempTree {
  public:
   TempTree() {
     static std::atomic<std::uint64_t> serial{0};
+    const auto temporary_parent = fs::temp_directory_path();
+    const auto canonical_parent = fs::canonical(temporary_parent);
+    if (serial.load(std::memory_order_relaxed) == 0)
+      std::cerr << "surface files temporary parent: supplied="
+                << temporary_parent << " canonical=" << canonical_parent
+                << '\n';
     const auto stamp =
         std::chrono::steady_clock::now().time_since_epoch().count();
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
       const auto candidate =
-          fs::temp_directory_path() /
+          canonical_parent /
           ("meshvale-surface-files-" + std::to_string(stamp) + "-" +
            std::to_string(serial.fetch_add(1)));
       std::error_code error;
