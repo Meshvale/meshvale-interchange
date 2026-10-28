@@ -1,9 +1,10 @@
 # Read and rewrite an STL file
 
 This walkthrough uses the development `meshvale_interchange.stl_files` API and
-`meshvale-stl` command. The evaluated development combination is ordinary
-GIL-enabled CPython 3.13 with MSVC; wider interpreter/platform qualification and
-stable release distribution remain open. No package-index artifact is implied.
+`meshvale-stl` command. The evaluated development combinations use ordinary
+GIL-enabled CPython 3.10 and 3.13 with MSVC on Windows. Wider interpreter/platform
+qualification and stable release distribution remain open. No package-index
+artifact is implied.
 The [STL file contract](stl-files.md) owns the complete behavior and limits.
 
 Start with an installed source-built candidate from this checkout. Follow

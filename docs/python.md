@@ -11,6 +11,12 @@
 
 ## Interfaces and values
 
+This guide covers the OBJ interface and its evaluated build/test cohort. The
+separate implemented [STL file interface](stl-files.md) has its own Python API,
+module/console commands and ordered batches. Follow its
+[walkthrough](stl-file-walkthrough.md) for the independently selected native SDK
+and Python record-provider inputs.
+
 | Function | Result |
 |---|---|
 | `read_obj(obj, mtl=b"")` | `ObjImportResult(document, diagnostics)` |
@@ -36,6 +42,10 @@ Existing destinations are rejected. Native staging, inventory/reload verificatio
 
 ## Build, installation and example
 
+The build and test combination below describes the OBJ baseline. STL file users
+should select the separate native and Python inputs in its
+[walkthrough](stl-file-walkthrough.md).
+
 The development distribution is `meshvale-interchange`; import is `meshvale_interchange`. Build with C++20, CMake 3.24+, ordinary GIL-enabled CPython 3.10+, pinned [Python build/runtime requirements](../pyproject.toml), the installed compiled Geometry native package at revision `48298b24be7c132816fb5580d22d58bde61558d0` and the [pinned double-precision tinyobjloader](../THIRD_PARTY.md). The exact Python Geometry dependency is `0.0.1.dev134+g48298b24b`; build its candidate wheel first. No private checkout or automatic sibling build is required. Native-only builds remain independent of Python. The optional binding uses the installed `meshvale_geometry_add_python_record` factory with its existing `meshvale_interchange` nanobind domain. This compiles Geometry's installed record implementation into a per-extension target linked to `meshvale::geometry`; no Python ABI archive is shared between products. Both Geometry/Interchange native snapshot packages still use `0.0.0`.
 
 In the [configured native dependency environment](../ENVIRONMENT.md), pass installed package prefixes to the optional wheel build:
@@ -52,7 +62,7 @@ These commands verify the OBJ baseline. The separate
 all 34 OBJ/STL methods and the standalone exception and lifetime checks for each of its
 selected source/sdist runtimes; OBJ baseline success does not qualify STL.
 
-The wheel statically incorporates the used Interchange, tinyobjloader and nanobind code with their actual notices. License metadata also includes the private cgltf/jsoncons parser foundation notices; this adds no Python glTF API. It contains Python code/extension and license metadata, excluding native install trees/tests/build logs. Source archives select product-owned build/test/docs files and generated source-version metadata; they rebuild without Git. Exact `vX.Y.Z` tags own release versions; untagged builds use full-history development versions. Wheels are Python/platform specific and retain dynamic platform C++ runtime requirements. Free-threaded/stable-ABI wheels and a supported release matrix are not established by this experiment. Focused installed tests exercise polygon/seam/resource fidelity, representation errors, cancellation/callback failures, source protection, publication races and both extension import orders. Shared reports, CLI/batch and glTF/GLB remain separate work.
+The wheel statically incorporates the used Interchange, tinyobjloader and nanobind code with their actual notices. License metadata also includes the private cgltf/jsoncons parser foundation notices; this adds no Python glTF API. It contains Python code/extension and license metadata, excluding native install trees/tests/build logs. Source archives select product-owned build/test/docs files and generated source-version metadata; they rebuild without Git. Exact `vX.Y.Z` tags own release versions; untagged builds use full-history development versions. Wheels are Python/platform specific and retain dynamic platform C++ runtime requirements. Free-threaded/stable-ABI wheels and a supported release matrix are not established by this experiment. Focused installed tests exercise polygon/seam/resource fidelity, representation errors, cancellation/callback failures, source protection, publication races and both extension import orders. Shared reports, OBJ CLI/batch and glTF/GLB remain separate work.
 
 ```python
 from meshvale_interchange import read_obj_file, publish_obj_bundle
