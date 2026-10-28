@@ -444,6 +444,7 @@ def boundary_gate(runner, python, source, product_build, selected_python, wheel)
 
 def python_candidate(runner, root, work, output, parser, selected_python, checker):
     ordinary_python(selected_python)
+    runner.environment["CMAKE_GENERATOR"] = "Ninja"
     if not re.search(r'^requires-python\s*=\s*">=3\.10"\s*$',
                      (root / "pyproject.toml").read_text(encoding="utf-8"), re.M):
         raise RuntimeError("Declared runtime minimum changed; reselect the floor gate")
