@@ -1,18 +1,18 @@
 # Verified surface directory publication
 
-**Status: contract draft; implementation pending.** This document selects the
-intended physical publication behavior for a separate opt-in
-`meshvale::surface_files` target and proposed `surface_files.h` interface.
+**Status: development native module; qualification in progress.** This document
+defines physical publication behavior for the separate opt-in
+`meshvale::surface_files` target and `surface_files.h` interface.
 `MESHVALE_INTERCHANGE_SURFACE_FILES` defaults to `OFF` and requires
-`MESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON`. These declarations, target and file
-operations are not implemented by this draft. The supplied-memory
+`MESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON`. The supplied-memory
 [surface contract](surface-output.md), its existing header and its qualification
-remain separate. This draft and [receipt schema](surface-publication.schema.json)
-require independent review before implementation.
+remain separate. The [receipt schema](surface-publication.schema.json) owns wire
+structure; the checks and limits below are also mandatory. Listed platform routes
+specify required behavior rather than completed platform qualification.
 
 ## Scope and interface
 
-The proposed single operation is `PublishSurfaceBundle(proof, destination,
+The single operation is `PublishSurfaceBundle(proof, destination,
 options, limits, work, stop)`. The input is a genuine, retained
 `SurfaceOutputInspection`. The operation writes its exact captured payloads;
 it does not encode again or construct a source `GltfFileAsset`. It covers admitted
@@ -21,7 +21,7 @@ representations. A publication receipt is present in every successful physical
 bundle, including strict bare output. The receipt is publication metadata, not
 an additional `SurfaceMemberKind` or a member supplied to memory inspection.
 
-The proposed names are `SurfaceFilePublicationOptions`,
+The records are `SurfaceFilePublicationOptions`,
 `SurfaceFilePublicationLimits`, `SurfaceFilePublicationWorkPolicy`,
 `SurfaceFilePublicationResult` and `SurfacePublishedBundle`. The result has an
 outcome (`kFailed`, `kCanceled`, `kPublished`), fixed typed diagnostic, cleanup
@@ -30,15 +30,16 @@ copy-only bundle has a private constructor and exposes only `Inspection()`
 (the fresh physical proof), `Receipt()` (owned path/bytes/SHA256 view) and
 `NewRequestedBytes()`. It is exposed only after actual successful commit.
 No public context, transaction, overwrite switch, arbitrary supplemental-file
-list or phase callback is provided. The complete typed outline below fixes the draft interface names and fields;
-implementation must follow the independently reviewed contract. Enum ordinal
-values have no receipt-wire meaning. This draft is not an implemented ABI.
+list or phase callback is provided. The complete typed outline below fixes the
+interface names and fields; implementation follows this contract. Enum ordinal
+values have no receipt-wire meaning. This development interface has no stable
+ABI guarantee.
 
 ## Configuration and limits
 
 All scalar count/byte/work limits are positive, inclusive and checked for
 uint64_t, size_t, ptrdiff_t and actual platform extents. No clamping or implicit
-limit defaults. The proposed records are:
+limit defaults. The records are:
 
 ```cpp
 struct SurfaceFileLimits {
@@ -81,6 +82,12 @@ Cleanup uses the same bounded, pre-admitted walk capacity and reports failure
 rather than silently exceeding it. Stage attempts count actual exclusive
 creation attempts, not existence probes. Receipt and report byte limits include
 zero actual bytes while remaining positive configured caps.
+
+`files.max_jobs` bounds planned job records in one executor invocation, including
+the complete prepared final group. A job may traverse multiple admitted member
+subranges. A phase's counters may aggregate separate per-member invocations and
+therefore exceed that one-invocation job cap; they must count the real records.
+The native worker count also remains bounded by actual shared-lease admission.
 
 Validate active file/fresh-inspection caps, selected nested work, checked
 allowance, provider configuration, receipt path and known input/path extents in
@@ -136,6 +143,11 @@ bytes are aggregate completed stores, not an invented global prefix. Stop is
 cooperative, checked between bounded blocks; no hard wall-clock or OS-I/O latency
 guarantee. Delegate profile checks and work remain the fresh inspector's actual
 thread-local observations, never copies from the input proof.
+
+The prepared final group is per-operation storage and native scheduling on that
+same lease, not another executor or global worker budget. Work-policy thresholds
+and actual worker admission determine caller fallback; a desired count never
+substitutes for actual admission.
 
 ## Paths and selected platform behavior
 
@@ -204,19 +216,43 @@ on a listed OS. This table specifies required behavior, not current availability
 3. Invoke the optional provider once, synchronously on the calling thread, using
    that actual staged proof. Import its bounded UTF-8 report, generate the native
    receipt, write/join/close it, and reopen/reread its complete bytes.
-4. Finish every callback, join, fallible committed-owner preparation and
-   temporary-owner release. Prepare immutable state/strong aliases and all
-   buffers/records needed for the last pass before that pass begins. Retain all
-   storage whose later destruction could otherwise trigger a free callback.
-5. Repeat complete inventory (payloads plus receipt) and raw verification of
-   every payload and receipt against retained actual expected bytes, not just
-   sizes, JSON shape or cached digests. A changed payload refuses; never silently
-   update the proof/receipt to it. This pass invokes no application or
-   allocation/free callback. Its native read/enumeration/close operations can
-   still fail. Close every handle before commit.
+4. Finish every application or injected callback, fallible committed-owner
+   preparation and temporary release that could invoke an allocation/free
+   callback. Admit final range, worker, native-handle, scratch and failure storage
+   under P and prepare immutable state/strong aliases. Acquire the genuine shared
+   executor's worker lease and launch the final group's known default native
+   workers before the protected pass; they wait on an already prepared gate.
+   Launch failure aborts the gate and joins every started worker before
+   propagation and cleanup. No arbitrary backend or observer is used inside the
+   protected pass.
+5. Repeat complete inventory (payloads plus receipt), then release the prepared
+   group to verify every payload and receipt against retained actual expected
+   bytes using admitted disjoint ranges, not just sizes, JSON shape or cached
+   digests. A changed member refuses; never update proof or receipt to match it.
+   This pass invokes no application, injected worker, file, allocation or free
+   callback, and performs no new module allocation, worker launch or fallible
+   owner preparation. Known default native synchronization and its native-runtime
+   thread teardown are permitted; they do not authorize custom allocation/free
+   callbacks. Join every launched worker, explicitly close every file handle,
+   reduce the fixed result records and release the worker lease before commit.
+   Normal lease reset is nonthrowing and allocates nothing; genuine input, P and
+   fresh V still strongly own its ledger. Retain inert backing/capacity and
+   potentially last strong owners through handoff. Native I/O, identity checks,
+   observed stop and fixed reductions can still refuse. On any refusal,
+   abort/join remaining prepared work and release its lease before cleanup.
 6. Invoke native no-replace commit as the last fallible action. Only no-throw
    field/strong-owner handoff follows successful commit. No new stop check,
    callback, allocation, temporary-owner release or free callback follows it.
+
+The nonthrowing success transition clears operation-only native path content and
+operation/provider/test-hook callback pointers before exposing the committed
+owner, without shrinking, freeing or replacing storage. Inert charged capacity
+and strong owners whose release might trigger destruction remain retained; the
+owner retains no operation destination content. Retained allocation/deallocation
+functions and their required state ownership remain valid through last-owner
+destruction; clearing operation-only pointers does not remove that backend or
+permit its invocation in the protected pass. No stop-state ownership is reset
+as part of that transition.
 
 The receipt cannot describe its own write/close/reread, the later final recheck,
 commit or cleanup as already successful. Their actual observations belong only
@@ -302,7 +338,7 @@ are unchanged by publication.
 Use a fixed `SurfaceFileDiagnostic`: status/stage/code, optional member ordinal
 and byte offset, optional `std::error_code`, and optional actual delegated
 `SurfaceStatus`/`SurfaceDiagnostic`. No unbounded owned diagnostic string.
-Primary diagnostic is never overwritten by cleanup. Proposed stage names are
+Primary diagnostic is never overwritten by cleanup. Stage names are
 Configuration, PathPlanning, Staging, Reread, Inspection, Receipt, Inventory,
 Publication and Complete. The semantic mapping is:
 
@@ -321,7 +357,7 @@ Publication and Complete. The semantic mapping is:
 | Non-`bad_alloc` provider exception | `kCallbackFailure` in Receipt, after joins/cleanup |
 | Actual no-replace success | `kSuccess`/`kPublished`; committed owner present |
 
-`SurfaceFileCode` uses the following complete draft vocabulary; the names and
+`SurfaceFileCode` uses the following complete vocabulary; the names and
 meanings below are fixed. It is not a receipt-wire integer enumeration.
 Member ordinals address the path-sorted payload list; ordinal N addresses the
 separate receipt after N payloads. Unrelated path/parent errors have no member
@@ -529,9 +565,19 @@ never sum them as one byte stream. Short transfers count only bytes really
 transferred. A completed file passed all of that phase's operations and identity
 checks; `closed_files` counts successful explicit closes only. Report import has
 no native files/closes. Native-runtime buffering and V's separate work are not
-P I/O counters. Job counters are actual planned range records, successfully
+P I/O counters. Job counters are actual planned job records, successfully
 launched threads, caller-executed jobs, joined threads and completely finished
 jobs. Canceled/partial jobs are not completed jobs; no global prefix follows.
+
+Final payload and receipt observations are reached-only views of one prepared
+final-verification group. Each reached view contains the same actual group
+execution snapshot; those snapshots are nonadditive aliases, not separate
+launches or executions. Transfer, comparison, completed-file and close counters
+remain specific to payload or receipt members. Planning or prelaunch alone
+creates no reached observation. The group's completed-job count includes only
+jobs that actually finished; partial or canceled jobs do not count. Earlier
+phases retain their own independent execution observations.
+
 Inventory counts exclude the stage root and dot/dot-dot enumeration sentinels.
 All counters are checked before incrementing and never wrap.
 
@@ -568,6 +614,7 @@ Prove no allocation/free callback or fallible owner preparation after successful
 commit, no worker/handle escape and actual ledger release after the last strong
 alias. Required source/header/package/installed/archive/relocation/sanitizer and
 declared platform routes must execute the new target; existing memory-only or
-base compatibility greens do not establish this module. This draft grants no
-filesystem implementation availability, stable release, universal platform/ABI,
-scene/corpus fidelity, Repair/Python/single/batch integration or MVP completion.
+base compatibility greens do not establish this module. Successful tests cover
+only their actual source and profile. This contract does not grant a stable
+release, universal platform/ABI, scene/corpus fidelity,
+Repair/Python/single/batch integration or MVP completion.

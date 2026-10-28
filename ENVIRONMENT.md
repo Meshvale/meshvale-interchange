@@ -175,6 +175,26 @@ absence of a native read call. OFF preserves the prior inventories.
 These are source/configuration gates. No completed native, installed, archive,
 sanitizer or platform qualification is asserted for this new module.
 
+## Optional verified surface files
+
+The selected [surface publication contract](docs/surface-files.md) and
+[receipt schema](docs/surface-publication.schema.json) describe the new optional
+`meshvale::surface_files` development module. Full platform and source-package
+qualification remains in progress. `MESHVALE_INTERCHANGE_SURFACE_FILES` defaults
+to `OFF` and requires
+`MESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON`; it has no dependency on the optional
+glTF file publisher. Match the producer's compiler, runtime and materialization
+profile when consuming the installed target.
+
+The native inventory checker accepts `--surface-files ON|OFF`, defaults to the
+producer cache and requires the installed consumer to match. Enabled profiles
+require the three actual entries `surface_files_semantics`,
+`surface_files_requests` and `surface_files_consumer`, plus
+`installed_surface_files_consumer`. A separate compile-only translation unit
+checks the installed header; it is not an additional CTest. Qualified and
+unsupported profiles retain their genuine nonempty/empty admission behavior.
+These configured requirements are not completed execution evidence.
+
 ## Explicit native materialization profiles
 
 The [repository workflow](.github/workflows/repository-checks.yml) selects explicit
@@ -197,11 +217,11 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; files/surface ON | Geometry 19; Interchange 49; installed 25 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; files/surface ON | Geometry 19; Interchange 49; installed 25 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; files/surface ON | Geometry 19; Interchange 49; installed 25 |
-| Linux GNU | Release, unsupported; files/surface ON | Geometry 14; Interchange 40; installed 19 |
-| macOS AppleClang | Release, unsupported; files/surface ON | Geometry 14; Interchange 40; installed 19 |
+| Windows x64 MSVC | Release, qualified; files/surface ON | Geometry 19; Interchange 52; installed 26 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; files/surface ON | Geometry 19; Interchange 52; installed 26 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; files/surface ON | Geometry 19; Interchange 52; installed 26 |
+| Linux GNU | Release, unsupported; files/surface ON | Geometry 14; Interchange 43; installed 20 |
+| macOS AppleClang | Release, unsupported; files/surface ON | Geometry 14; Interchange 43; installed 20 |
 | Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files/surface OFF | Geometry 16; Interchange 23; installed 12 |
 
 These inventories include STL, OFF and PLY codec/request tests and their installed
@@ -278,7 +298,7 @@ and vcpkg revisions matching the ordinary native job, without changing the Pytho
 cohort. The pinned Repair revision is the example producer described above.
 
 Each lane uses matching Debug compilation and sanitizer link/runtime flags for
-Geometry, Interchange, the standalone Repair producer, all twenty-five installed
+Geometry, Interchange, the standalone Repair producer, all twenty-six installed
 consumers and the separate OFF and PLY Repair examples. Geometry's owning
 allocation-profile contract admits only its observed compiler, libc/libstdc++,
 Eigen/alignment/SIMD and instrumentation tuple; a changed runner environment must
@@ -295,7 +315,8 @@ reuse is disabled. Build concurrency is bounded to two. Actual compiled-command
 inventories verify compiler, instrumentation and Meshvale warnings as errors.
 
 Both lanes enable JSON/GLB, OFF and PLY files plus supplied surface output and
-require Interchange's qualified 49 suites, twenty-five installed test entries and
+surface file publication. They require Interchange's qualified 52 suites,
+twenty-six installed test entries and
 the separate OFF and PLY Repair tests. Geometry requires 19 suites with allocation
 probes enabled under ASan/UBSan and 16 with them disabled under TSan. TSan retains the actual
 materialization worker/cancellation/partial-launch/shared-budget tests; an

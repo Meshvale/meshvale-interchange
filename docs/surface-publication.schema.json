@@ -124,8 +124,8 @@
   "additionalProperties": false,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:meshvale:surface-publication:1",
-  "title": "Meshvale surface publication receipt version 1 (contract draft)",
-  "description": "Implementation pending. Structural shape only: surface-files.md additionally requires exact native inventory, lengths/hashes/u64 ranges, cumulative counts, fresh physical inspection, UTF-8 report bytes and temporal truth. A schema pass cannot create a proof or certify commit. No own receipt hash or postcommit facts are represented.",
+  "title": "Meshvale surface publication receipt version 1",
+  "description": "Development native module. Structural shape only: surface-files.md additionally requires exact native inventory, lengths/hashes/u64 ranges, cumulative counts, fresh physical inspection, UTF-8 report bytes and temporal truth. A schema pass cannot create a proof or certify commit. No own receipt hash or postcommit facts are represented.",
   "$defs": {
     "u64": {
       "type": "string",
