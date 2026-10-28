@@ -2,7 +2,7 @@
 
 Asset import and export for polygon mesh workflows.
 
-**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, supplied-surface glTF/GLB/STL output and optional verified directory publication, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication and an optional OBJ Python interface. No stable release yet.
+**Status:** Development C++20 library with OBJ/MTL text and file adapters, supplied-byte STL, indexed ASCII OFF and typed PLY under qualification, GLB containers, native glTF retention/static primitive extraction, unchanged and checked topology-selection memory output, supplied-surface glTF/GLB/STL output and optional verified directory publication, optional native USD and FBX imports, resource snapshots, verified OBJ and glTF/GLB bundle publication, an optional OBJ Python interface and optional STL file APIs and Python commands. No stable release yet.
 
 The [source-version profile](docs/versioning.md) preserves one native identity
 for tagged checkouts, tagged archives and source packages named for this product.
@@ -25,8 +25,11 @@ refuses unsupported attributes or inexact binary32 export. Import gives each
 facet three distinct vertices; it does not infer shared connectivity. The
 [installed consumer](examples/stl-consumer/main.cpp) demonstrates inspection and
 physical reload. Qualification is in progress. The separate
-[STL-file walkthrough](docs/stl-file-walkthrough.md) demonstrates source-built
-Python/API/command read and verified rewrite, neutral receipts and ordered batches.
+[STL file interface](docs/stl-files.md) implements retained native capture and
+verified rewrites into new directories. Its development Python API, module and
+console commands, neutral receipts and ordered batches are demonstrated by the
+[STL-file walkthrough](docs/stl-file-walkthrough.md), which identifies the
+evaluated Windows development cohorts.
 
 ## Native indexed OFF polygons
 

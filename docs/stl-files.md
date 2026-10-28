@@ -4,16 +4,18 @@
 |---|---|
 | ID | STL-FILES-001 |
 | Version | 0.1.1 |
-| Status | Selected contract; implementation and qualification pending |
+| Status | Implemented development interface; evaluated configurations only; no supported release |
 | Native interface | `meshvale/interchange/stl_files.h`, optional `meshvale::stl_files` target |
 | Python/application owner | `meshvale_interchange.stl_files`; `meshvale-stl` |
 
-This contract selects capture, read and verified new-directory rewrite of one
-STL file. The [existing STL codec](stl.md) owns admitted syntax, numeric values,
-triangle-soup storage and serialization. Its complete admitted domain includes
-empty documents and finite degenerate facets. The selected interfaces below are
-not implemented by this document. Existing supplied-byte or supplied-surface
-success establishes no file/API/command qualification.
+This contract owns the implemented development interfaces for capture, read and
+verified new-directory rewrite of one STL file. The [existing STL codec](stl.md)
+owns admitted syntax, numeric values, triangle-soup storage and serialization.
+Its complete admitted domain includes
+empty documents and finite degenerate facets. The file/API/command development
+profiles have their own [evaluation workflow](../.github/workflows/stl-files-candidates.yml).
+Existing supplied-byte or supplied-surface success alone establishes no
+file/API/command qualification.
 
 The selected option `MESHVALE_INTERCHANGE_STL_FILES`, initially OFF, requires
 `meshvale::stl` and the matching installed Geometry execution/materialization
@@ -21,8 +23,10 @@ producer. Only an enabled implementation installs the new native header/target.
 No Surface, triangulation, glTF, Repair, additional STL SDK or public generic
 transaction dependency is selected. The native SDK/source identity is separate
 from the [existing Python owned-record dependency](python.md#build-installation-and-example).
-Implementing the Python feature must select and qualify a matching native and
-record-provider cohort before changing dependency pins; this contract changes none.
+The evaluated Python development cohort is described in the
+[walkthrough](stl-file-walkthrough.md). Changing dependency pins still requires
+selecting and qualifying matching native and record-provider inputs; this
+contract changes none.
 
 ## SFILE-FIDELITY-001: Explicit, codec-preserving choices
 
@@ -478,8 +482,9 @@ max_token_bytes. OS/runtime internals retain their existing exclusions.
 
 ## SFILE-PYTHON-001: Prepared, reusable operation and exact getters
 
-The selected module is `meshvale_interchange.stl_files`. It uses ordinary
-GIL-enabled CPython under the product's eventual qualified dependency cohort.
+The implemented development module is `meshvale_interchange.stl_files`. It uses
+ordinary GIL-enabled CPython with the evaluated development dependency cohort
+described in the [walkthrough](stl-file-walkthrough.md).
 No `Mesh` C++ instance crosses extensions. Native owners remain the authoritative
 source for rewrite; an explicitly requested `export_mesh()` returns an independent
 `meshvale_geometry.Mesh` through the existing owned-record protocol. Exporting
