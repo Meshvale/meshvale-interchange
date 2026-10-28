@@ -16,6 +16,7 @@
 #include <set>
 #include <span>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -518,31 +519,78 @@ void Run(a::Inventory& inventory, a::Tree& tree,
   });
   Case(inventory, "N08.1", context, [&] {
     a::Source source(tree.grand_long, "N08.1", f::Bytes(f::kAscii));
+    constexpr unsigned kShortParentLongLeafVariant = 2;
+    const auto input = source.Path(kShortParentLongLeafVariant);
     const auto before = context.ActiveTrackedPayload();
+    // Independent public limits, fixed before any result. The stopped control
+    // distinguishes cap-floor admission from planning-memory refusal; it does
+    // not claim that a request-owner seed was allocated.
+    constexpr std::uint64_t kPlanningRequestCapBytes = 4096;
+    constexpr std::uint64_t kPlanningNativeCapacityCodeUnits = 65536;
+    auto limits = f::FileLimits();
+    limits.max_file_new_requested_bytes = kPlanningRequestCapBytes;
+    limits.max_native_path_code_units = kPlanningNativeCapacityCodeUnits;
+    const auto work = f::FileWork();
+    const auto refusal = [&](const ic::StlFileCaptureResult& result,
+                             Status status, Phase phase, Code code,
+                             std::string_view message) {
+      Record("N08.1", result);
+      Require(result.status == status && result.phase == phase &&
+                  result.diagnostic.code == code,
+              message);
+      Require(!result.captured &&
+                  result.observations.capture.state != State::kSucceeded &&
+                  std::holds_alternative<std::monostate>(
+                      result.observations.capture.facts),
+              "refused capture has no owner or successful hash facts");
+      Require(result.cleanup == ic::StlFileCleanupOutcome::kNotRequired &&
+                  !result.cleanup_error,
+              "pre-capture guards create no stage requiring cleanup");
+      const auto& e = result.execution;
+      for (const auto* stats : {&e.capture, &e.writing_files, &e.staged_reread,
+                                &e.byte_verification, &e.value_verification,
+                                &e.receipt_verification, &e.inventory,
+                                &e.hashing, &e.provider_import})
+        Zero(*stats);
+      for (const auto* codec : {&e.read, &e.write, &e.fresh_read}) Zero(*codec);
+    };
+    const auto released = [&](std::size_t expected_payload) {
+      Require(context.ActiveTrackedPayload() == expected_payload &&
+                  context.ActiveWorkers() == 0,
+              "actual guard releases charges and workers to its baseline");
+      Require(
+          std::ranges::equal(f::Read(source.long_path), f::Bytes(f::kAscii)) &&
+              a::Observe(source.long_path) == source.identity,
+          "guard preserves independent physical source bytes and identity");
+    };
     auto held = geo::TryReservePayload(context, f::kContextBytes - before);
     Require(held.status == geo::ReservationStatus::kAccepted,
             "real remaining-ledger lease");
     {
-      const auto result = ic::CaptureStlFile(source.Path(2), f::FileLimits(),
-                                             f::FileWork(), context);
-      Record("N08.1", result);
-      Require(result.status == Status::kBudgetExceeded &&
-                  result.phase == Phase::kPathPlanning &&
-                  result.diagnostic.code == Code::kSharedBudget &&
-                  !result.captured,
-              "real shared-ledger path planning refusal");
-      Zero(result.execution.capture);
+      const auto result =
+          ic::CaptureStlFile(input, f::FileLimits(), f::FileWork(), context);
+      refusal(result, Status::kBudgetExceeded, Phase::kConfiguration,
+              Code::kSharedBudget, "real shared-ledger setup refusal");
     }
-    Require(
-        context.ActiveTrackedPayload() == f::kContextBytes,
-        "failed planning releases every new charge under genuine held lease");
+    released(f::kContextBytes);
     held.lease.Reset();
-    Require(context.ActiveTrackedPayload() == before,
-            "ledger lease release exact baseline");
-    Require(
-        std::ranges::equal(f::Read(source.long_path), f::Bytes(f::kAscii)) &&
-            a::Observe(source.long_path) == source.identity,
-        "shared-ledger refusal preserves source bytes and identity");
+    released(before);
+
+    std::stop_source stopped;
+    Require(stopped.request_stop(), "genuine pre-stopped admission control");
+    {
+      const auto result =
+          ic::CaptureStlFile(input, limits, work, context, stopped.get_token());
+      refusal(result, Status::kCanceled, Phase::kConfiguration,
+              Code::kStopRequested, "stopped control admits request-cap floor");
+    }
+    released(before);
+    {
+      const auto result = ic::CaptureStlFile(input, limits, work, context);
+      refusal(result, Status::kLimitExceeded, Phase::kPathPlanning,
+              Code::kRequestBudget, "real planning-memory request-cap refusal");
+    }
+    released(before);
   });
   Case(inventory, "N09.1", context, [&] {
     a::Source source(tree.grand_long, "N09.1", f::Bytes(f::kAscii));
