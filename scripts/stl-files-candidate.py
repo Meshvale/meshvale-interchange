@@ -6,6 +6,7 @@ Native Geometry and the unchanged Python owned-record producer stay separate.
 The native rows require MSVC qualified 26 or genuine GNU13 unsupported 25;
 Windows also checks default-OFF 23 and its negative installed footprint. Python
 rows build source/sdist wheels and test fresh ordinary CPython3.10/3.13 runtimes.
+Each installed runtime also runs the explicit four-case boundary/shutdown gate.
 No capability, version or dependency-pin override is accepted.
 """
 import argparse
@@ -287,6 +288,160 @@ def extract_source(archive_path):
     return one(parent, "meshvale_interchange-*")
 
 
+def boundary_gate(runner, python, source, product_build, selected_python, wheel):
+    """Build the CPython-only fixture for this exact installed candidate once."""
+    evidence = runner.evidence
+    record = {"status": "RUNNING", "selected_python": selected_python,
+              "source": str(source), "product_build": str(product_build),
+              "wheel": str(wheel), "wheel_sha256": sha256(wheel)}
+    output = evidence / "boundary-runtime"
+    try:
+        cpp = source / "tests/python/stl_boundary_fixture.cpp"
+        probe = source / "tests/python/stl_boundary_probe.py"
+        if not cpp.is_file() or not probe.is_file():
+            raise RuntimeError("Selected source lacks the reviewed public boundary fixtures")
+        # Query the *fresh runtime*, never borrow the build host's Python paths.
+        query = (
+            "import json,pathlib,struct,sys,sysconfig; "
+            "base=pathlib.Path(sys.base_prefix); "
+            "print(json.dumps({'runtime':sys.executable,'base_prefix':str(base),"
+            "'include':sysconfig.get_path('include'),"
+            "'library':str(base/'libs'/('python'+str(sys.version_info.major)"
+            "+str(sys.version_info.minor)+'.lib')),"
+            "'suffix':sysconfig.get_config_var('EXT_SUFFIX'),'version':sys.version,"
+            "'major_minor':list(sys.version_info[:2]),'implementation':sys.implementation.name,"
+            "'pointer_bytes':struct.calcsize('P'),"
+            "'gil_disabled':sysconfig.get_config_var('Py_GIL_DISABLED'),"
+            "'gil_enabled':sys._is_gil_enabled() if hasattr(sys,'_is_gil_enabled') else True}))")
+        selected = json.loads(runner.run(python, "-I", "-B", "-W", "error", "-c", query))
+        write_json(evidence / "boundary-python.json", selected)
+        expected_version = list(map(int, selected_python.split(".")))
+        if (selected["implementation"] != "cpython" or
+                selected["major_minor"] != expected_version or selected["pointer_bytes"] != 8 or
+                selected["gil_disabled"] or not selected["gil_enabled"] or
+                Path(selected["runtime"]).resolve() != python.resolve()):
+            raise RuntimeError("Boundary fixture requires this row's ordinary x64 runtime")
+        include = Path(selected["include"])
+        library = Path(selected["library"])
+        suffix = selected["suffix"]
+        if (not isinstance(suffix, str) or not suffix.startswith(".") or
+                not suffix.endswith(".pyd") or "/" in suffix or "\\" in suffix):
+            raise RuntimeError("Selected runtime lacks a Windows extension suffix")
+        compiler_record = one(product_build / "CMakeFiles", "*/CMakeCXXCompiler.cmake")
+        text = compiler_record.read_text(encoding="utf-8")
+
+        def compiler_field(name):
+            match = re.search(r'set\(' + name + r' "([^"\n]+)"\)', text)
+            if match is None:
+                raise RuntimeError("Missing actual compiler record field: " + name)
+            return match.group(1)
+
+        compiler = Path(compiler_field("CMAKE_CXX_COMPILER")).resolve(strict=True)
+        if (compiler_field("CMAKE_CXX_COMPILER_ID") != "MSVC" or
+                compiler_field("CMAKE_CXX_SIZEOF_DATA_PTR") != "8" or
+                compiler.name.lower() != "cl.exe"):
+            raise RuntimeError("Boundary fixture requires the product's actual x64 MSVC compiler")
+        database = product_build / "compile_commands.json"
+        entries = json.loads(database.read_text(encoding="utf-8"))
+        binding = (source / "python/stl_files_bindings.cpp").resolve()
+        matches = [entry for entry in entries if Path(entry["file"]).resolve() == binding]
+        if len(matches) != 1:
+            raise RuntimeError("Need one selected-source binding compilation record")
+        entry = matches[0]
+        if "arguments" in entry:
+            executable, options = entry["arguments"][0], " ".join(entry["arguments"][1:])
+        else:
+            first = re.match(r'^(?:"([^"]+)"|(\S+))\s+(.*)$', entry["command"].strip())
+            if first is None:
+                raise RuntimeError("Cannot read the actual product compiler command")
+            executable, options = first.group(1) or first.group(2), first.group(3)
+        actual = shutil.which(executable, path=runner.environment.get("PATH"))
+        if actual is None or Path(actual).resolve() != compiler:
+            raise RuntimeError("Product compiler command differs from its compiled identity")
+        for flag in ("MD", "std:c++20", "W4", "WX"):
+            if not re.search(r"(?<!\S)[-/]" + re.escape(flag) + r"(?=\s|$)", options):
+                raise RuntimeError("Missing actual product compiler option: " + flag)
+        inputs = {"runtime": python, "compiler": compiler, "compiler_record": compiler_record,
+                  "compile_commands": database, "binding_source": binding,
+                  "Python.h": include / "Python.h", "python_library": library,
+                  "fixture_source": cpp, "probe_source": probe}
+        record["inputs"] = {name: {"path": str(path), "bytes": path.stat().st_size,
+                                   "sha256": sha256(path)} for name, path in inputs.items()}
+        record["compiler_version"] = compiler_field("CMAKE_CXX_COMPILER_VERSION")
+        if any(runner.environment.get(name) for name in ("CL", "_CL_")):
+            raise RuntimeError("Hidden MSVC command-option environment overrides are not admitted")
+        # Only compiler environment paths are retained; do not copy credentials.
+        environment = {name: runner.environment.get(name, "") for name in
+                       ("PATH", "INCLUDE", "LIB", "LIBPATH", "WINDOWSSDKDIR", "WINDOWSSDKVERSION",
+                        "VCINSTALLDIR", "VCTOOLSINSTALLDIR", "UNIVERSALCRTSDKDIR", "UCRTVERSION")}
+        record["compiler_environment"] = environment
+        record["compiler_environment_sha256"] = hashlib.sha256(
+            json.dumps(environment, sort_keys=True).encode("utf-8")).hexdigest()
+        build = evidence / "boundary-build"
+        build.mkdir(exist_ok=False)
+        artifact = build / ("stl_boundary_fixture" + suffix)
+        record["artifact_path"] = str(artifact)
+        write_json(evidence / "boundary-gate.json", record)
+        build_runner = type(runner)(build, build, runner.environment)
+        build_runner.run(compiler, "/nologo", "/LD", "/MD", "/O2", "/EHsc", "/std:c++20",
+                         "/permissive-", "/W4", "/WX", "/I" + str(include), cpp,
+                         "/Fo" + str(build / "stl_boundary_fixture.obj"), "/link",
+                         "/LIBPATH:" + str(library.parent), library.name, "/OUT:" + str(artifact))
+        record["artifact"] = {"bytes": artifact.stat().st_size, "sha256": sha256(artifact)}
+        write_json(evidence / "boundary-gate.json", record)
+        runner.run(python, "-I", "-B", "-W", "error", probe,
+                   "--fixture", artifact, "--output", output)
+        outer_stderr = evidence / f"command-{runner.command_number:03}.stderr"
+        parent = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        child = json.loads((output / "child-result.json").read_text(encoding="utf-8"))
+        shutdown = output / "child.stderr.bin"
+        if (outer_stderr.read_bytes() or shutdown.read_bytes() or
+                parent["status"] != "PASS" or parent["exit_code"] != 0 or
+                child["status"] != "PASS" or parent["child"] != child or
+                parent["fixture_sha256"] != record["artifact"]["sha256"] or
+                Path(parent["argv"][0]).resolve() != python.resolve() or
+                child["python"] != selected["version"]):
+            raise RuntimeError("Actual boundary parent/child/shutdown identity gate failed")
+        for name in ("stdout", "stderr"):
+            if parent[name + "_sha256"] != sha256(output / ("child." + name + ".bin")):
+                raise RuntimeError("Boundary raw child log identity differs")
+        cases = child["cases"]
+        if set(cases) != {"normal", "provider", "single", "batch"} or any(
+                case["status"] != "PASS" or case["post_scope"] != {"workers": 0, "payload": 0}
+                for case in cases.values()):
+            raise RuntimeError("Boundary gate needs all four cases and zero post-GC charge/workers")
+        legacy = tuple(expected_version) < (3, 12)
+        if child["legacy_raw_triple_required"] != legacy:
+            raise RuntimeError("Boundary legacy raw-triple route differs from the actual interpreter")
+        provider = cases["provider"]["injection"]
+        if (provider["provider_calls"] != 1 or provider["provider_error_active"] != 1 or
+                provider["provider_arm_result"] != 0):
+            raise RuntimeError("Boundary provider did not attest the competing same-call errors")
+        for name, paths in (("single", ("exit_code", "export_json")),
+                            ("batch", ("exit_code", "export_json", "outcome"))):
+            rows = cases[name]["replays"]
+            expected = {(path, index) for path in paths for index in range(3)}
+            witness = cases[name]["injection"]
+            if (len(rows) != len(expected) or {(row["path"], row["index"]) for row in rows} != expected or
+                    not witness["armed"] or witness["witness_workers"] <= 0 or
+                    witness["witness_payload"] <= cases[name]["post_prepare_baseline"] or
+                    witness["signal_calls"] != 1 or not witness["signal_value_initially_without_traceback"] or
+                    not witness["signal_traceback_distinct"] or
+                    (legacy and witness["legacy_raw_triple_attested"] != 1)):
+                raise RuntimeError("Boundary replay/native witness/legacy attestation failed")
+        record["status"] = "PASS"
+    except BaseException as error:
+        record["status"] = "FAIL"
+        record["exception_type"] = type(error).__name__
+        record["exception"] = str(error)
+        raise
+    finally:
+        record["runtime_records"] = [{"path": str(path), "bytes": path.stat().st_size,
+                                      "sha256": sha256(path)} for path in sorted(output.glob("*"))
+                                     if path.is_file()]
+        write_json(evidence / "boundary-gate.json", record)
+
+
 def python_candidate(runner, root, work, output, parser, selected_python, checker):
     ordinary_python(selected_python)
     if not re.search(r'^requires-python\s*=\s*">=3\.10"\s*$',
@@ -354,6 +509,12 @@ def python_candidate(runner, root, work, output, parser, selected_python, checke
                            "runtime-tests", "--python", selected_python, "--source", source,
                            "--wheel", wheel, "--evidence", evidence)
         runtime_runner.run(python, "-m", "pip", "check")
+        product_build = output / ("source-wheel-build" if label == "source" else "sdist-wheel-build")
+        boundary_gate(runtime_runner, python, source, product_build, selected_python, wheel)
+        write_json(evidence / "runtime-gates.json", {"status": "PASS", "ordinary_tests": 34,
+                   "unittest_sha256": sha256(evidence / "unittest.json"),
+                   "boundary_sha256": sha256(evidence / "boundary-gate.json"),
+                   "boundary_cases": 4, "boundary_terminal_replays": 15})
 
 
 def flatten(suite):
@@ -432,6 +593,8 @@ def qualify(args):
               "native_expected": (26 if args.profile == "qualified" else 25)
                                  if args.mode == "native" else None,
               "runtime_tests_per_wheel": 34 if args.mode == "python" else None,
+              "boundary_cases_per_runtime": 4 if args.mode == "python" else None,
+              "boundary_replays_per_runtime": 15 if args.mode == "python" else None,
               "default_off_expected": 23 if args.mode == "native" and
                                       args.profile == "qualified" else None,
               "native_geometry": GEOMETRY_NATIVE_REVISION,

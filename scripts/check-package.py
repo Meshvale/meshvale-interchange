@@ -98,6 +98,8 @@ def inspect(path):
                          "tests/python/test_stl_files_api.py",
                          "tests/python/test_stl_files_admission.py",
                          "tests/python/test_stl_files_commands.py",
+                         "tests/python/stl_boundary_fixture.cpp",
+                         "tests/python/stl_boundary_probe.py",
                          "include/meshvale/interchange/off.h", "docs/off.md",
                          "src/off.cpp", "src/off_test_internal.h",
                          "tests/header_off.cpp", "tests/off.cpp", "tests/off_requests.cpp",
