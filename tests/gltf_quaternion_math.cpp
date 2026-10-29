@@ -585,7 +585,7 @@ void SourceCases(detail::QuaternionWorkspace& workspace,
   std::size_t predicates = 0, absences = 0, fallbacks = 0;
   for (const auto& value : kCases) {
     mv::GltfDeformationNumericObservation numeric{};
-    detail::QuaternionWork work{allocation, kWork};
+    detail::QuaternionWork work{allocation, kWork, 0, 0, std::nullopt, true};
     if (value.absent) {
       // Absence is a caller decision: do not invent an authored quaternion row.
       ++absences;
@@ -654,7 +654,7 @@ void SourceCases(detail::QuaternionWorkspace& workspace,
 void Roles(detail::QuaternionWorkspace& workspace,
            const detail::AllocationContext& allocation) {
   mv::GltfDeformationNumericObservation numeric{};
-  detail::QuaternionWork work{allocation, kWork};
+  detail::QuaternionWork work{allocation, kWork, 0, 0, std::nullopt, true};
   const auto evaluate = [&](const std::array<std::uint32_t, 4>& words,
                             Role role) {
     const auto before_i = work.integer_steps;
@@ -706,7 +706,7 @@ void DecimalEnvelope(detail::QuaternionWorkspace& workspace,
   const std::array<std::string_view, 4> tokens{"0.999999", "0.002", tiny, "0"};
   const std::array<std::uint32_t, 4> projected{0x3f7fffefU, 0x3b03126fU, 7, 0};
   mv::GltfDeformationNumericObservation numeric{};
-  detail::QuaternionWork work{allocation, kWork};
+  detail::QuaternionWork work{allocation, kWork, 0, 0, std::nullopt, true};
   const auto result = detail::EvaluateNodeQuaternion(
       NumberViews(tokens), projected, workspace, work, numeric);
   Require(result.decision == Decision::kNonunit &&
@@ -720,7 +720,7 @@ void DecimalEnvelope(detail::QuaternionWorkspace& workspace,
   const std::string too_many = "0." + std::string(257, '3');
   const std::array<std::string_view, 4> over{too_many, "0", "0", "1"};
   mv::GltfDeformationNumericObservation refused{};
-  detail::QuaternionWork other{allocation, kWork};
+  detail::QuaternionWork other{allocation, kWork, 0, 0, std::nullopt, true};
   const auto overflow = detail::EvaluateNodeQuaternion(
       NumberViews(over),
       std::array<std::uint32_t, 4>{0x3eaaaaabU, 0, 0, 0x3f800000U}, workspace,
@@ -769,7 +769,7 @@ void DivisionWitnesses(detail::QuaternionWorkspace& workspace,
             "actual RN64 division differs from cached reciprocal");
     const std::array<std::uint32_t, 4> words{witness.numerator, 0, 0,
                                              witness.denominator};
-    detail::QuaternionWork work{allocation, kWork};
+    detail::QuaternionWork work{allocation, kWork, 0, 0, std::nullopt, true};
     Require(detail::EvaluateQuaternionWords(words, witness.encoding,
                                             Role::kAnimationValue, workspace,
                                             work, numeric)
@@ -786,9 +786,9 @@ void Checkpoints(const geo::ExecutionContext& context) {
   std::stop_source stop;
   detail::AllocationContext stopped(context, stop.get_token());
   stop.request_stop();
-  detail::QuaternionWork integer{stopped, kWork};
+  detail::QuaternionWork integer{stopped, kWork, 0, 0, std::nullopt, true};
   integer.integer_steps = kWork.max_relationship_block - 1;
-  detail::QuaternionWork lexical{stopped, kWork};
+  detail::QuaternionWork lexical{stopped, kWork, 0, 0, std::nullopt, true};
   lexical.byte_visits = kWork.cancellation_block_bytes - 1;
   for (auto* value : {&integer, &lexical}) {
     bool canceled = false;
@@ -804,7 +804,7 @@ void Checkpoints(const geo::ExecutionContext& context) {
   }
 }
 void Overflow(const detail::AllocationContext& allocation) {
-  detail::QuaternionWork work{allocation, kWork};
+  detail::QuaternionWork work{allocation, kWork, 0, 0, std::nullopt, true};
   work.integer_steps = std::numeric_limits<std::uint64_t>::max();
   bool overflow = false;
   try {

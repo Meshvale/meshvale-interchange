@@ -88,7 +88,11 @@ void AdmitDeformationRotations(AssetState& state) {
   state.node_rotations.reserve(state.nodes.size());
   std::shared_ptr<QuaternionWorkspace> workspace;
   QuaternionWork work{state.deformation_descriptors,
-                      state.read_request.deformation.work};
+                      state.read_request.deformation.work,
+                      0,
+                      0,
+                      std::nullopt,
+                      true};
   for (const auto& node : state.nodes) {
     state.allocation.Checkpoint();
     const auto row = *ChildAt(doc, *table, node.table_index);
