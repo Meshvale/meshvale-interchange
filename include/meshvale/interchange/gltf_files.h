@@ -20,6 +20,8 @@
 #include <system_error>
 #include <vector>
 
+#include "meshvale/interchange/gltf_deformation.h"
+
 namespace meshvale::interchange {
 namespace gltf_files_detail {
 struct FileAssetState;
@@ -50,6 +52,7 @@ struct GltfFileReadOptions {
   // Portable relative paths, distinct from URI spellings. Borrow through
   // return.
   std::span<const std::string_view> opaque_source_files;
+  GltfReadRequest read_request{};
 };
 // Required positive, inclusive and host-representable. Unique physical files
 // include the entry and explicit opaque/supplemental files. Resource bindings
@@ -202,6 +205,9 @@ class GltfFileAsset {
   [[nodiscard]] GltfExtensionFilePolicy ExtensionFilesPolicy() const noexcept;
   [[nodiscard]] std::uint64_t NewRequestedBytes() const noexcept;
 
+  [[nodiscard]] const GltfDeformationObservation* DeformationReadFacts()
+      const noexcept;
+
  private:
   friend struct gltf_files_detail::Access;
   explicit GltfFileAsset(
@@ -212,6 +218,7 @@ struct GltfFileReadResult {
   std::optional<GltfFileAsset> asset;
   GltfFileDiagnostic diagnostic;
   GltfFileExecution execution;
+  std::optional<GltfDeformationObservation> deformation{};
 };
 
 struct GltfFilePublicationRequest {
@@ -252,6 +259,13 @@ struct GltfFileVerifiedContent {
   std::string_view entry_path;
   const GlbContainer* container;
   std::span<const GltfFileView> files;
+  // The publisher's own actual staged-deformation comparison, available only
+  // after physical capture and semantic verification. Null for legacy or
+  // unreached paths. This const borrow is stable only until the synchronous
+  // callback/provider returns; copy facts into charged owned report storage.
+  // It does not certify native commit. The inspection retains its separate
+  // generic output-comparison facts, without relabeling them as staged facts.
+  const GltfDeformationObservation* staged_deformation = nullptr;
 };
 // Optional borrowed producer for charged application-owned supplemental
 // storage. The state remains alive through publication return and every import
@@ -263,6 +277,12 @@ struct GltfFileVerifiedFilesProvider {
                                            void* state) = nullptr;
   void* state = nullptr;
 };
+// Independent staged producer configuration, inside existing complete parents.
+struct GltfDeformationPublicationPolicies {
+  GltfDeformationPolicy read;
+  GltfDeformationPolicy extraction;
+  GltfDeformationPolicy verification;
+};
 struct GltfFilePublicationOptions {
   // Views/functions are borrowed until return; the module never copies a
   // std::function or retains an unowned callback-produced view.
@@ -273,6 +293,7 @@ struct GltfFilePublicationOptions {
   // Disabled by default. A non-null provide function and on_verified are
   // mutually exclusive configuration. Null state is allowed.
   GltfFileVerifiedFilesProvider verified_files_provider{};
+  GltfDeformationPublicationPolicies deformation{};
 };
 // Published result only. Its inspection retains the actual staged reload;
 // GLB reload JSON is the proven writer-length prefix, excluding only newly
@@ -309,6 +330,10 @@ struct GltfFilePublicationResult {
   // selections keep these empty; successful proof owners remain with bundle.
   std::optional<GltfDirectTranslationObservation> translation_extraction = {};
   std::optional<GltfDirectTranslationObservation> translation_inspection = {};
+  // Actual returned staged helper facts; uncalled producers remain empty.
+  std::optional<GltfDeformationObservation> deformation_read{};
+  std::optional<GltfDeformationObservation> deformation_extraction{};
+  std::optional<GltfDeformationObservation> deformation_verification{};
 };
 
 // Magic/content detection; suffixes do not choose the format. Inputs/context

@@ -5,6 +5,7 @@
 #include <meshvale/geometry/attributes.h>
 #include <meshvale/geometry/materialization.h>
 #include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_deformation.h>
 #include <meshvale/interchange/gltf_materialization.h>
 #include <meshvale/interchange/gltf_write.h>
 
@@ -118,7 +119,9 @@ enum class GltfTopologyWriteDiagnosticCode {
   kIndexRepresentation,
   kOutputExtent,
   kRequestBudget,
-  kStopRequested
+  kStopRequested,
+  kDeformationPolicyRequired = 27,
+  kDeformation = 28
 };
 struct GltfTopologyWriteDiagnostic {
   GltfTopologyWriteStage stage = GltfTopologyWriteStage::kAdmission;
@@ -170,6 +173,9 @@ class GltfTopologyWriteBundle {
   [[nodiscard]] const GltfDirectTranslationObservation* DirectTranslationFacts()
       const noexcept;
 
+  [[nodiscard]] const GltfDeformationObservation* DeformationFacts()
+      const noexcept;
+
  private:
   friend struct gltf_topology_write_detail::Access;
   explicit GltfTopologyWriteBundle(
@@ -183,6 +189,7 @@ struct GltfTopologyWriteResult {
   GltfTopologyWriteDiagnostic diagnostic;
   GltfTopologyWriteExecution execution;
   std::optional<GltfDirectTranslationObservation> direct_translation = {};
+  std::optional<GltfDeformationObservation> deformation{};
 };
 
 // Checked ordered triangle subset, exact unchanged canonical vertices/channels.
@@ -194,6 +201,16 @@ struct GltfTopologyWriteResult {
     const GltfTopologyWriteRequest& request,
     const GltfTopologyWriteLimits& limits,
     const GltfTopologyWriteWorkPolicy& work, std::stop_token stop = {});
+
+// Retained deformation policy overload. All five arguments are required so
+// existing three/four-argument brace calls retain their original overload.
+// Policies/borrows remain valid through return and all joins. Expected typed
+// failures publish no owner; unexpected exceptions propagate after joins.
+[[nodiscard]] GltfTopologyWriteResult WriteGltfTopologySelection(
+    const GltfTopologyWriteRequest& request,
+    const GltfDeformationPolicy& deformation,
+    const GltfTopologyWriteLimits& limits,
+    const GltfTopologyWriteWorkPolicy& work, std::stop_token stop);
 
 }  // namespace meshvale::interchange
 #endif  // MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE_H_

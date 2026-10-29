@@ -323,6 +323,8 @@ struct Producer {
       const ic::GltfFileVerifiedContent& content, void* state) {
     auto& self = *static_cast<Producer*>(state);
     ++self.calls;
+    Require(content.staged_deformation == nullptr,
+            "legacy physical GLB providers have no deformation observation");
     Require(content.format == ic::GltfFileFormat::kGlb && content.container &&
                 content.entry_path == fixture::kEntry,
             "both producers receive actual staged GLB format and container");

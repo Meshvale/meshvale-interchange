@@ -538,8 +538,9 @@ bool VersionSpelling(std::string_view value) {
     if (i != dot && (value[i] < '0' || value[i] > '9')) return false;
   return true;
 }
-void CheckRule(const JsonSnapshot& document, std::size_t node,
-               const CoreRule& rule, std::uint32_t rule_id) {
+void CheckRule(AssetState& state, std::size_t node, const CoreRule& rule,
+               std::uint32_t rule_id) {
+  const auto& document = state.document;
   const auto kind = document.Kind(node);
   const auto reject = [&](GltfDiagnosticCode code) {
     Fail(GltfStatus::kMalformed, code, std::nullopt, rule_id);
@@ -625,7 +626,7 @@ void CheckRule(const JsonSnapshot& document, std::size_t node,
         }
       } else if (!rule.path.starts_with(kAccessorMinimumItemPath) &&
                  !rule.path.starts_with(kAccessorMaximumItemPath)) {
-        (void)ReadFloatBits(document, node);
+        (void)ProjectFloatBits(state, node);
       }
       break;
     }
@@ -693,7 +694,7 @@ void AdmitMetadata(AssetState& state) {
         document.Key(item.node).find('\0') != std::string_view::npos)
       Fail(GltfStatus::kUnsupportedProfile,
            GltfDiagnosticCode::kUnsupportedCoreString, std::nullopt, item.rule);
-    CheckRule(document, item.node, rule, item.rule);
+    CheckRule(state, item.node, rule, item.rule);
     constexpr std::string_view kAccessorCountPath = "/accessors/*/count";
     if (rule.path == kAccessorCountPath &&
         ReadExactUnsigned(document, item.node) >
@@ -742,7 +743,7 @@ void AdmitMetadata(AssetState& state) {
     Fail(GltfStatus::kUnsupportedProfile,
          GltfDiagnosticCode::kRequiredExtension);
 }
-OwnedVector<char> BuildCoreProjection(const AssetState& state) {
+OwnedVector<char> BuildCoreProjection(AssetState& state) {
   OwnedVector<char> bytes{Allocator<char>(state.allocation)};
   const auto& document = state.document;
   auto append = [&](std::string_view text) {
@@ -843,7 +844,7 @@ OwnedVector<char> BuildCoreProjection(const AssetState& state) {
         else
           result = std::to_chars(
               formatted, formatted + sizeof(formatted),
-              std::bit_cast<float>(ReadFloatBits(document, frame.node)),
+              std::bit_cast<float>(ProjectFloatBits(state, frame.node)),
               std::chars_format::general,
               std::numeric_limits<float>::max_digits10);
         if (result.ec != std::errc{})

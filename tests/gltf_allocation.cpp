@@ -3,10 +3,13 @@
 
 #include <meshvale/geometry/triangulation.h>
 
+#include <array>
 #include <atomic>
 #include <barrier>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <initializer_list>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -446,6 +449,204 @@ void OperationCaps() {
   Require(context.ActiveTrackedPayload() == 0,
           "concurrent operation budget leaked");
 }
+void AdditionalOperationCaps() {
+  constexpr std::size_t kCompleteBytes = 1048576;
+  constexpr std::size_t kPayloadBytes = 256;
+  constexpr std::size_t kPayloadAlignment = 64;
+  ExecutionContext context({2, 1, kCompleteBytes});
+  Counter counter{context};
+  AllocationContext root(context, {}, Backend(counter));
+  Reject(AdmissionCode::kInvalidObject,
+         [&] { (void)root.WithAdditionalRequestLimit(kCompleteBytes); });
+  const auto charge = AllocationRequestBytes(kPayloadBytes, kPayloadAlignment);
+  std::size_t owner_seed = 0;
+  {
+    const auto parent = root.WithRequestLimit(kCompleteBytes);
+    owner_seed = parent.OperationActiveBytes();
+    const auto requests = counter.requests.load();
+    Reject(AdmissionCode::kSizeLimit,
+           [&] { (void)parent.WithAdditionalRequestLimit(owner_seed - 1); });
+    Require(counter.requests == requests, "child seed refusal reached backend");
+    const auto child = parent.WithAdditionalRequestLimit(owner_seed);
+    Require(child.OperationActiveBytes() == owner_seed &&
+                parent.OperationActiveBytes() == 2 * owner_seed,
+            "child control seed not inside both actual caps");
+    Reject(AdmissionCode::kSizeLimit, [&] { (void)child.Allocate(1, 1); });
+    Require(counter.requests == requests + 1,
+            "seed-only child allowed payload backend");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && counter.live == 0,
+          "child seed scopes leaked");
+  for (const bool child_tight : {false, true}) {
+    const auto parent = root.WithRequestLimit(
+        child_tight ? kCompleteBytes : 2 * owner_seed + charge);
+    const auto child = parent.WithAdditionalRequestLimit(
+        child_tight ? owner_seed + charge : kCompleteBytes);
+    auto* payload = child.Allocate(kPayloadBytes, kPayloadAlignment);
+    const auto requests = counter.requests.load();
+    const auto parent_active = parent.OperationActiveBytes();
+    const auto child_active = child.OperationActiveBytes();
+    Reject(AdmissionCode::kSizeLimit, [&] { (void)child.Allocate(1, 1); });
+    Require(counter.requests == requests &&
+                parent.OperationActiveBytes() == parent_active &&
+                child.OperationActiveBytes() == child_active,
+            "child/parent refusal changed charges or reached backend");
+    counter.failure = true;
+    AllocationContext::Deallocate(payload);
+    try {
+      (void)child.Allocate(kPayloadBytes, kPayloadAlignment);
+      throw std::runtime_error("child backend failure lost");
+    } catch (const std::bad_alloc&) {
+    }
+    counter.failure = false;
+    Require(parent.OperationActiveBytes() == 2 * owner_seed &&
+                child.OperationActiveBytes() == owner_seed &&
+                context.ActiveTrackedPayload() == 2 * owner_seed,
+            "child backend exception failed coupled rollback");
+    Reject(AdmissionCode::kSizeLimit, [&] {
+      (void)child.Allocate(std::numeric_limits<std::size_t>::max(), 1);
+    });
+  }
+  Require(context.ActiveTrackedPayload() == 0 && counter.live == 0,
+          "coupled owner scopes leaked");
+  std::shared_ptr<Wide> retained;
+  {
+    const auto parent = root.WithRequestLimit(kCompleteBytes);
+    const auto child = parent.WithAdditionalRequestLimit(kCompleteBytes);
+    const auto descriptors = child.WithAdditionalRequestLimit(kCompleteBytes);
+    retained = std::allocate_shared<Wide>(Allocator<Wide>(descriptors));
+  }
+  Require(
+      retained->value == 7 && context.ActiveTrackedPayload() == counter.live,
+      "returned child allocation lost real parent lifetime");
+  auto copy = retained;
+  retained.reset();
+  Require(context.ActiveTrackedPayload() != 0,
+          "copied child owner released parent early");
+  copy.reset();
+  Require(context.ActiveTrackedPayload() == 0 && counter.live == 0,
+          "final child copy did not release all real owners");
+  {
+    std::stop_source stop;
+    const AllocationContext stopped_root(context, stop.get_token(),
+                                         Backend(counter));
+    const auto parent = stopped_root.WithRequestLimit(kCompleteBytes);
+    const auto child = parent.WithAdditionalRequestLimit(kCompleteBytes);
+    const auto active = context.ActiveTrackedPayload();
+    const auto requests = counter.requests.load();
+    stop.request_stop();
+    Reject(AdmissionCode::kCanceled, [&] { (void)child.Allocate(32, 8); });
+    Reject(AdmissionCode::kCanceled,
+           [&] { (void)child.WithAdditionalRequestLimit(kCompleteBytes); });
+    Require(context.ActiveTrackedPayload() == active &&
+                counter.requests == requests &&
+                parent.OperationActiveBytes() == active,
+            "child canceled admission reached backend or leaked counters");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && counter.live == 0 &&
+              !counter.ordering_failure,
+          "child cleanup lost original ledger/backend ordering");
+  std::cout
+      << "additional-budget actual-owner-seed=" << owner_seed
+      << " child/parent-beforealloc/rollback/overflow/cancel/lifetime PASS\n";
+}
+void SiblingOperationCaps() {
+  constexpr std::size_t kWorkers = 2;
+  constexpr std::size_t kBudgetBytes = 1048576;
+  constexpr std::size_t kPayloadBytes = 256;
+  constexpr std::size_t kPayloadAlignment = 64;
+  ExecutionContext context({kWorkers, 1, kBudgetBytes});
+  Counter counter{context};
+  AllocationContext root(context, {}, Backend(counter));
+  std::size_t seed = 0;
+  {
+    const auto probe = root.WithRequestLimit(kBudgetBytes);
+    seed = probe.OperationActiveBytes();
+  }
+  const auto charge = AllocationRequestBytes(kPayloadBytes, kPayloadAlignment);
+  {
+    const auto parent = root.WithRequestLimit((1 + kWorkers) * seed + charge);
+    const std::array<AllocationContext, kWorkers> children{
+        parent.WithAdditionalRequestLimit(seed + charge),
+        parent.WithAdditionalRequestLimit(seed + charge)};
+    auto lease = meshvale::geometry::TryReserveWorkers(context, kWorkers);
+    Require(lease.Count() == kWorkers, "real sibling worker lease");
+    std::barrier phases(static_cast<std::ptrdiff_t>(1 + kWorkers));
+    std::array<void*, kWorkers> payloads{};
+    std::array<bool, kWorkers> first_admitted{};
+    std::array<std::exception_ptr, kWorkers> errors{};
+    std::array<std::jthread, kWorkers> workers;
+    const auto before = counter.requests.load();
+    for (std::size_t worker = 0; worker < kWorkers; ++worker) {
+      workers[worker] = std::jthread([&, worker] {
+        phases.arrive_and_wait();
+        try {
+          payloads[worker] =
+              children[worker].Allocate(kPayloadBytes, kPayloadAlignment);
+          first_admitted[worker] = true;
+        } catch (const AdmissionFailure& failure) {
+          if (failure.Code() != AdmissionCode::kSizeLimit)
+            errors[worker] = std::current_exception();
+        } catch (...) {
+          errors[worker] = std::current_exception();
+        }
+        phases.arrive_and_wait();
+        phases.arrive_and_wait();
+        AllocationContext::Deallocate(payloads[worker]);
+        payloads[worker] = nullptr;
+        phases.arrive_and_wait();
+        if (!first_admitted[worker]) {
+          try {
+            payloads[worker] =
+                children[worker].Allocate(kPayloadBytes, kPayloadAlignment);
+          } catch (...) {
+            errors[worker] = std::current_exception();
+          }
+        }
+        phases.arrive_and_wait();
+        phases.arrive_and_wait();
+        AllocationContext::Deallocate(payloads[worker]);
+      });
+    }
+    phases.arrive_and_wait();
+    phases.arrive_and_wait();
+    const auto admitted = static_cast<unsigned>(first_admitted[0]) +
+                          static_cast<unsigned>(first_admitted[1]);
+    bool correct =
+        admitted == 1 && counter.requests == before + 1 &&
+        parent.OperationActiveBytes() == (1 + kWorkers) * seed + charge &&
+        context.ActiveTrackedPayload() == (1 + kWorkers) * seed + charge;
+    for (std::size_t worker = 0; worker < kWorkers; ++worker)
+      correct = correct && children[worker].OperationActiveBytes() ==
+                               seed + (first_admitted[worker] ? charge : 0);
+    phases.arrive_and_wait();
+    phases.arrive_and_wait();
+    // The next barrier lets the losing sibling retry. Inspect only after all
+    // threads reach it; no success assertion may strand a worker at a barrier.
+    phases.arrive_and_wait();
+    correct = correct && counter.requests == before + 2 &&
+              parent.OperationActiveBytes() == (1 + kWorkers) * seed + charge;
+    for (std::size_t worker = 0; worker < kWorkers; ++worker)
+      correct = correct && children[worker].OperationActiveBytes() ==
+                               seed + (first_admitted[worker] ? 0 : charge);
+    phases.arrive_and_wait();
+    for (auto& worker : workers) worker.join();
+    const bool held_through_join = context.ActiveWorkers() == kWorkers;
+    lease.Reset();
+    for (const auto& error : errors)
+      if (error) std::rethrow_exception(error);
+    Require(correct && held_through_join &&
+                parent.OperationActiveBytes() == (1 + kWorkers) * seed &&
+                children[0].OperationActiveBytes() == seed &&
+                children[1].OperationActiveBytes() == seed,
+            "sibling child rollback/shared-parent retry or worker lifetime");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0 &&
+              counter.live == 0 && !counter.ordering_failure,
+          "sibling child/parent/root final counters did not release");
+  std::cout << "sibling-child coordinated shared-parent refusal/retry PASS; "
+               "payload=0 workers=0\n";
+}
 }  // namespace
 int main() {
   try {
@@ -458,6 +659,8 @@ int main() {
     Concurrent();
     MixedGeometry();
     OperationCaps();
+    AdditionalOperationCaps();
+    SiblingOperationCaps();
     std::cout << "allocation/parser foundation passed\n";
     return 0;
   } catch (const std::exception& error) {

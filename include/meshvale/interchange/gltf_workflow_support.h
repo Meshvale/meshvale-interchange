@@ -6,6 +6,7 @@
 #include <meshvale/geometry/editable_mesh.h>
 #include <meshvale/geometry/materialization.h>
 #include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_deformation.h>
 #include <meshvale/interchange/gltf_materialization.h>
 #include <meshvale/interchange/gltf_topology_write.h>
 
@@ -150,7 +151,9 @@ enum class GltfTopologyOutputInspectionDiagnosticCode {
   kSelectedTopology,
   kSourceProvenance,
   kRequestBudget,
-  kStopRequested
+  kStopRequested,
+  kDeformationPolicyRequired = 32,
+  kDeformation = 33
 };
 struct GltfTopologyOutputInspectionDiagnostic {
   GltfTopologyOutputInspectionStage stage =
@@ -196,6 +199,9 @@ class GltfTopologyOutputInspection {
   [[nodiscard]] const GltfDirectTranslationObservation* DirectTranslationFacts()
       const noexcept;
 
+  [[nodiscard]] const GltfDeformationObservation* DeformationFacts()
+      const noexcept;
+
  private:
   friend struct gltf_workflow_support_detail::Access;
   explicit GltfTopologyOutputInspection(
@@ -211,6 +217,7 @@ struct GltfTopologyOutputInspectionResult {
   GltfTopologyOutputCoverage coverage;
   GltfTopologyOutputInspectionExecution execution;
   std::optional<GltfDirectTranslationObservation> direct_translation = {};
+  std::optional<GltfDeformationObservation> deformation{};
 };
 // Fresh token, source ledger, one complete inspection request cap. No read,
 // extraction, Geometry inspection or filesystem publication occurs here.
@@ -221,6 +228,16 @@ struct GltfTopologyOutputInspectionResult {
     const GltfTopologyOutputInspectionLimits& limits,
     const GltfTopologyOutputInspectionWorkPolicy& work,
     std::stop_token stop = {});
+
+// Retained deformation policy overload. All five arguments are required so
+// existing three/four-argument brace calls retain their original overload.
+// Policies/borrows remain valid through return and all joins. Expected typed
+// failures publish no owner; unexpected exceptions propagate after joins.
+[[nodiscard]] GltfTopologyOutputInspectionResult InspectGltfTopologyOutput(
+    const GltfTopologyOutputInspectionRequest& request,
+    const GltfDeformationPolicy& deformation,
+    const GltfTopologyOutputInspectionLimits& limits,
+    const GltfTopologyOutputInspectionWorkPolicy& work, std::stop_token stop);
 
 }  // namespace meshvale::interchange
 #endif  // MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT_H_

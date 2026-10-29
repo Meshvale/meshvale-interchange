@@ -145,6 +145,8 @@ struct Provider {
       const ic::GltfFileVerifiedContent& content, void* state) {
     auto& self = *static_cast<Provider*>(state);
     ++self.calls;
+    Require(content.staged_deformation == nullptr,
+            "legacy physical JSON provider has no deformation observation");
     Require(content.format == ic::GltfFileFormat::kGltfJson &&
                 content.entry_path == fixture::kEntry && !content.container,
             "borrowed provider sees actual verified JSON scope");

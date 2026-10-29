@@ -19,9 +19,16 @@ namespace meshvale::interchange::gltf_detail {
 // that promise that profile; this declaration does not change reader behavior.
 [[nodiscard]] std::uint32_t ReadFloatBits(const JsonSnapshot& document,
                                           std::size_t node);
+// Source range/representation checks precede this operation's actual-thread
+// gate. Only then may the existing lexical floating delegate execute.
+[[nodiscard]] std::uint32_t ReadFloatBitsObserved(
+    const JsonSnapshot& document, std::size_t node,
+    GltfDeformationNumericObservation* observation);
+[[nodiscard]] std::uint32_t ProjectFloatBits(AssetState& state,
+                                             std::size_t node);
 void AdmitMetadata(AssetState& state);
 void CheckMetadataRelationships(AssetState& state);
-[[nodiscard]] OwnedVector<char> BuildCoreProjection(const AssetState& state);
+[[nodiscard]] OwnedVector<char> BuildCoreProjection(AssetState& state);
 [[nodiscard]] std::string_view GuardPath(std::uint32_t rule);
 void BuildGraph(AssetState& state);
 void CheckDeclaredGraphRelationships(const AssetState& state);

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-WORKFLOW-SUPPORT-001 |
-| Version | 0.1.5 |
+| Version | 0.2.0 |
 | Status | Draft native implementation under qualification |
 | Interfaces | Reader/extractor owners: [gltf.h](../include/meshvale/interchange/gltf.h); optional output inspection: [gltf_workflow_support.h](../include/meshvale/interchange/gltf_workflow_support.h) |
 
@@ -293,3 +293,13 @@ inspector implementations are under qualification. The inspector uses its own
 bounded lexical index, source/candidate comparison and directed index expectation;
 it does not use the writer's construction helpers as its oracle. No complete
 support qualification is claimed.
+
+## GDEF-INSPECT-PROJECTION-001: Retained deformation selection
+
+The [retained deformation contract](gltf-deformation.md) selects the opt-in
+deformation-retained-v1 extension for independent output inspection and called returns.
+Development implementation is present; full workflow and dependency-cohort
+qualification and release availability remain pending. Existing static/direct-translation clauses, defaults and
+unchanged-request wire keep their current meaning. The new contract owns the
+additional source/read/processing authority, policies, roles and called facts.
+There is no implicit source upgrade or widening of a legacy schema/preset.

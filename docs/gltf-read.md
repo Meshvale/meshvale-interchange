@@ -144,3 +144,13 @@ propagate after cleanup. An accepted asset's capture token does not become the
 cancellation token of a later extraction. Native and installed tests cover those
 lifetime and worker boundaries; full edited asset writing, Geometry transfer and
 filesystem publication require their own interfaces and qualification.
+
+## GDEF-READ-PROJECTION-001: Retained deformation selection
+
+The [retained deformation contract](gltf-deformation.md) selects the opt-in
+deformation-retained-v1 extension for read/source selection.
+Development implementation is present; full workflow and dependency-cohort
+qualification and release availability remain pending. Existing static/direct-translation clauses, defaults and
+unchanged-request wire keep their current meaning. The new contract owns the
+additional source/read/processing authority, policies, roles and called facts.
+There is no implicit source upgrade or widening of a legacy schema/preset.

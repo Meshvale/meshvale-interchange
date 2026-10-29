@@ -16,7 +16,9 @@
 
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_read.h"
 #include "gltf_direct_translation.h"
+#include "gltf_numerical_profile.h"
 #include "gltf_workflow_support_internal.h"
 #include "gltf_workflow_support_test_internal.h"
 
@@ -219,8 +221,10 @@ void Identity(const GltfTopologyOutputInspectionRequest& request,
   }
 }
 }  // namespace
-void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
-               void* state, Stats& stats, std::size_t unit_bytes) {
+namespace {
+void RunRangesImpl(const Operation& operation, std::size_t bytes,
+                   RangeCheck check, void* state, Stats& stats,
+                   std::size_t unit_bytes) {
   if (bytes == 0) return;
   const auto desired = std::min<std::size_t>(
       operation.work.max_jobs,
@@ -279,9 +283,41 @@ void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
   if (canceled || operation.stop.stop_requested())
     throw gltf_detail::AdmissionFailure(gltf_detail::AdmissionCode::kCanceled);
 }
+}  // namespace
+void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
+               void* state, Stats& stats, std::size_t unit_bytes) {
+  const auto before = stats;
+  auto observe = [&] {
+    if (!operation.deformation) return;
+    auto& target = operation.deformation->execution;
+    target.planned_jobs =
+        Add(target.planned_jobs, stats.planned_jobs - before.planned_jobs);
+    target.caller_jobs =
+        Add(target.caller_jobs, stats.caller_jobs - before.caller_jobs);
+    target.launched_workers =
+        Add(target.launched_workers,
+            stats.launched_workers - before.launched_workers);
+    target.joined_workers = Add(target.joined_workers,
+                                stats.joined_workers - before.joined_workers);
+  };
+  try {
+    RunRangesImpl(operation, bytes, check, state, stats, unit_bytes);
+  } catch (...) {
+    observe();
+    throw;
+  }
+  observe();
+}
 BytePlan::BytePlan(const Operation& operation)
     : operation_(operation),
       checks_(gltf_detail::Allocator<ByteCheck>(operation.allocation)) {}
+void BytePlan::Reset() {
+  checks_.clear();
+  bytes_ = 0;
+  known_failure_.reset();
+  known_prefix_ = 0;
+  known_pending_.reset();
+}
 void BytePlan::Compare(std::span<const std::byte> expected,
                        std::span<const std::byte> actual, Diagnostic diagnostic,
                        std::size_t scalar_bytes) {
@@ -389,11 +425,36 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     const GltfTopologyOutputInspectionRequest& request,
     const GltfTopologyOutputInspectionLimits& limits,
     const GltfTopologyOutputInspectionWorkPolicy& work, std::stop_token stop,
-    const InspectionTestOptions& options) {
+    const InspectionTestOptions& options,
+    const GltfDeformationPolicy* deformation,
+    const gltf_detail::AllocationContext* complete_parent) {
   GltfTopologyOutputInspectionResult result;
   Stage stage = Stage::kAdmission;
   try {
     Configuration(limits, work);
+    const auto* deformation_proof =
+        request.source.SourceExtraction().Deformation();
+    if ((deformation_proof != nullptr) != (deformation != nullptr))
+      Fail(Status::kInvalidConfiguration, Stage::kAdmission,
+           Code::kDeformationPolicyRequired);
+    if (deformation) {
+      gltf_detail::ValidateDeformationConfiguration(*deformation);
+      result.deformation.emplace();
+      result.deformation->work = deformation->work;
+      result.deformation->phase = GltfDeformationPhase::kNumericGate;
+      result.deformation->numeric.emplace();
+      if (!gltf_detail::EstablishGltfNumericalProfile(
+              *result.deformation->numeric, {}, true))
+        gltf_detail::Fail(GltfStatus::kUnsupportedProfile,
+                          GltfDiagnosticCode::kNumericalProfile);
+      result.deformation->phase = GltfDeformationPhase::kCompare;
+      result.deformation->predicates.output_reload = false;
+      if (!request.reloaded_extraction.Deformation() ||
+          !request.output.DeformationFacts() ||
+          !request.output.DeformationFacts()->complete)
+        Fail(Status::kSourceContractFailure, Stage::kAdmission,
+             Code::kSourceIdentity);
+    }
     const bool translated =
         request.source.SourceExtraction().ProcessingProfile() ==
         GltfProcessingProfile::kDirectTranslationTrianglesV1;
@@ -413,14 +474,44 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     Identity(request, context);
     const gltf_detail::AllocationContext root(context, stop,
                                               options.allocation_backend);
-    auto allocation = root.WithRequestLimit(limits.max_new_requested_bytes);
+    if (complete_parent && (!complete_parent->HasRequestLimit() ||
+                            !complete_parent->SharesExecutionBudget(root)))
+      Fail(Status::kForeignBudget, Stage::kAdmission, Code::kForeignBudget);
+    auto allocation =
+        complete_parent ? *complete_parent
+                        : root.WithRequestLimit(limits.max_new_requested_bytes);
+    const auto complete_allocation = allocation;
+    std::optional<gltf_detail::AllocationContext> deformation_scope;
+    if (deformation) {
+      const auto live = allocation.OperationActiveBytes();
+      if (live >= limits.max_new_requested_bytes)
+        throw gltf_detail::AdmissionFailure(
+            gltf_detail::AdmissionCode::kSizeLimit);
+      result.deformation->effective_request_cap =
+          std::min(deformation->limits.max_new_requested_bytes,
+                   limits.max_new_requested_bytes - live);
+      allocation = allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(result.deformation->effective_request_cap));
+      deformation_scope = allocation;
+      allocation = allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(deformation->limits.max_descriptor_bytes));
+    }
+    auto comparison_work = work;
+    if (deformation) {
+      comparison_work.parallel_min_bytes = deformation->work.parallel_min_bytes;
+      comparison_work.partition_bytes = deformation->work.partition_bytes;
+      comparison_work.cancellation_block_bytes =
+          deformation->work.cancellation_block_bytes;
+      comparison_work.max_jobs = deformation->work.max_jobs;
+    }
     Operation operation{request,
                         limits,
-                        work,
+                        comparison_work,
                         context,
                         allocation,
                         stop,
-                        {options.worker_backend, options.observer}};
+                        {options.worker_backend, options.observer},
+                        result.deformation ? &*result.deformation : nullptr};
     const auto* proof = gltf_detail::Access::ExtractionTranslation(
         request.source.SourceExtraction());
     const auto* reload_proof =
@@ -436,19 +527,25 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
              GltfProcessingProfile::kDirectTranslationTrianglesV1))
       Fail(Status::kSourceContractFailure, Stage::kAdmission,
            Code::kSourceIdentity);
-    if (!translated && request.reloaded_extraction.ProcessingProfile() !=
-                           GltfProcessingProfile::kStaticLocalTrianglesV1)
+    if (!translated && !deformation &&
+        request.reloaded_extraction.ProcessingProfile() !=
+            GltfProcessingProfile::kStaticLocalTrianglesV1)
       Fail(Status::kSourceContractFailure, Stage::kAdmission,
            Code::kReloadIdentity);
     auto state = std::allocate_shared<InspectionState>(
         gltf_detail::Allocator<InspectionState>(allocation), allocation,
         request);
+    state->allocation = complete_allocation;
     stage = Stage::kSourceCandidate;
+    if (result.deformation)
+      result.deformation->predicates.canonical_association = false;
     VerifyGeometry(operation, result.execution.source_candidate);
     result.coverage.source_candidate =
         GltfTopologyOutputCheckCoverage::kComplete;
     stage = Stage::kCorrespondence;
     VerifyCorrespondence(operation, result.execution.correspondence);
+    if (result.deformation)
+      result.deformation->predicates.canonical_association = true;
     result.coverage.correspondence = GltfTopologyOutputCheckCoverage::kComplete;
     stage = Stage::kLexical;
     VerifyLexical(operation, result.execution.lexical);
@@ -458,6 +555,9 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     result.coverage.resources = GltfTopologyOutputCheckCoverage::kComplete;
     stage = Stage::kReloadedPrimitive;
     VerifyReload(operation, result.execution.reloaded_primitive);
+    if (deformation)
+      VerifyDeformationReload(operation, result.execution.reloaded_primitive,
+                              *deformation, *result.deformation);
     if (translated) {
       const auto cap = static_cast<std::size_t>(limits.max_new_requested_bytes);
       const auto live = allocation.OperationActiveBytes();
@@ -478,6 +578,16 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     result.coverage.provenance = GltfTopologyOutputCheckCoverage::kComplete;
     stage = Stage::kPublication;
     allocation.Checkpoint();
+    if (result.deformation) {
+      result.deformation->predicates.output_reload = true;
+      result.deformation->new_requested_bytes =
+          deformation_scope->OperationActiveBytes();
+      result.deformation->status = GltfStatus::kAccepted;
+      result.deformation->diagnostic = gltf_detail::AcceptedDiagnostic();
+      result.deformation->phase = GltfDeformationPhase::kComplete;
+      result.deformation->complete = true;
+      state->deformation = result.deformation;
+    }
     state->coverage = result.coverage;
     state->direct_translation = result.direct_translation;
     result.inspection = Access::Make(std::move(state));
@@ -486,6 +596,15 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
   } catch (const Failure& failure) {
     result.status = failure.status;
     result.diagnostic = failure.diagnostic;
+  } catch (const gltf_detail::GltfFailure& failure) {
+    result.status = failure.Diagnostic().status == GltfStatus::kInvalidLimits
+                        ? Status::kInvalidConfiguration
+                        : Status::kUnsupportedSelection;
+    result.diagnostic = Location(stage, Code::kDeformation);
+    if (result.deformation) {
+      result.deformation->status = failure.Diagnostic().status;
+      result.deformation->diagnostic = failure.Diagnostic();
+    }
   } catch (const gltf_detail::AdmissionFailure& failure) {
     auto code = Code::kInspectionRequestLimit;
     auto status = Status::kLimitExceeded;
@@ -505,6 +624,26 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
     }
     result.status = status;
     result.diagnostic = Location(stage, code);
+  }
+  if (result.deformation && result.status != Status::kSuccess) {
+    result.deformation->complete = false;
+    if (result.diagnostic.code != Code::kDeformation) {
+      result.deformation->status =
+          result.status == Status::kCanceled ? GltfStatus::kCanceled
+          : result.status == Status::kBudgetExceeded
+              ? GltfStatus::kBudgetExceeded
+          : result.status == Status::kInvalidConfiguration
+              ? GltfStatus::kInvalidLimits
+              : GltfStatus::kResourceBindingMismatch;
+      result.deformation->diagnostic.status = result.deformation->status;
+      result.deformation->diagnostic.code =
+          result.status == Status::kCanceled ? GltfDiagnosticCode::kCanceled
+          : result.status == Status::kBudgetExceeded
+              ? GltfDiagnosticCode::kPayloadBudget
+          : result.status == Status::kLimitExceeded
+              ? GltfDiagnosticCode::kLimitExceeded
+              : GltfDiagnosticCode::kInvalidSelection;
+    }
   }
   return result;
 }
@@ -560,6 +699,10 @@ const GltfDirectTranslationObservation*
 GltfTopologyOutputInspection::DirectTranslationFacts() const noexcept {
   return owner_->direct_translation ? &*owner_->direct_translation : nullptr;
 }
+const GltfDeformationObservation*
+GltfTopologyOutputInspection::DeformationFacts() const noexcept {
+  return owner_->deformation ? &*owner_->deformation : nullptr;
+}
 std::uint64_t GltfTopologyOutputInspection::NewRequestedBytes() const noexcept {
   return owner_->allocation.OperationActiveBytes();
 }
@@ -569,5 +712,13 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutput(
     const GltfTopologyOutputInspectionWorkPolicy& work, std::stop_token stop) {
   return gltf_workflow_support_detail::InspectGltfTopologyOutputForTest(
       request, limits, work, stop, {});
+}
+GltfTopologyOutputInspectionResult InspectGltfTopologyOutput(
+    const GltfTopologyOutputInspectionRequest& request,
+    const GltfDeformationPolicy& deformation,
+    const GltfTopologyOutputInspectionLimits& limits,
+    const GltfTopologyOutputInspectionWorkPolicy& work, std::stop_token stop) {
+  return gltf_workflow_support_detail::InspectGltfTopologyOutputForTest(
+      request, limits, work, stop, {}, &deformation);
 }
 }  // namespace meshvale::interchange

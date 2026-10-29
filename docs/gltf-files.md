@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-FILES-001 |
-| Version | 0.2.0 |
+| Version | 0.3.0 |
 | Status | JSON/GLB capture and same-format verified publication implementation under qualification |
 | Interface | [gltf_files.h](../include/meshvale/interchange/gltf_files.h) |
 | Selected target | Optional `meshvale::gltf_files`, requiring `meshvale::gltf_workflow_support`; build/export qualification pending |
@@ -384,3 +384,24 @@ callback/supplement failures, each cancellation phase, existing/racing destinati
 and cleanup failure. Re-run OBJ publication tests if shared machinery changes.
 Installed examples, exact matching sanitizer/source-package and hosted evidence
 must qualify actual operations; declaration, staging or wire-only success does not.
+
+## GDEF-FILE-PROJECTION-001: Retained deformation selection
+
+The [retained deformation contract](gltf-deformation.md) selects the opt-in
+deformation-retained-v1 extension for retained JSON/GLB capture and staged publication.
+Development implementation is present; full workflow and dependency-cohort
+qualification and release availability remain pending. Existing static/direct-translation clauses, defaults and
+unchanged-request wire keep their current meaning. The new contract owns the
+additional source/read/processing authority, policies, roles and called facts.
+There is no implicit source upgrade or widening of a legacy schema/preset.
+
+The appended `GltfFileVerifiedContent::staged_deformation` pointer supplies the
+publisher's own actual staged-deformation facts before a verified callback or
+provider constructs a receipt. It is null on legacy or unreached paths and is a
+stable const borrow only through the synchronous callback/provider return.
+Copy it into charged owned storage when a report must outlive that call. Its
+presence follows actual physical and semantic verification; it certifies no
+native commit. The generic `inspection` retains its own output-comparison facts
+and cannot substitute for this staged observation. Existing five-field aggregate
+construction remains valid, with the appended pointer defaulting to null. The
+full new-profile runtime and precommit receipt path still require qualification.

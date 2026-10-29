@@ -217,12 +217,21 @@ Eigen discovery so Geometry acquires its pinned official source dependency.
 
 | Native row | Configuration and declared profile | Required inventory |
 |---|---|---|
-| Windows x64 MSVC | Release, qualified; files/surface ON | Geometry 19; Interchange 52; installed 26 |
-| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; files/surface ON | Geometry 19; Interchange 52; installed 26 |
-| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; files/surface ON | Geometry 19; Interchange 52; installed 26 |
-| Linux GNU | Release, unsupported; files/surface ON | Geometry 14; Interchange 43; installed 20 |
-| macOS AppleClang | Release, unsupported; files/surface ON | Geometry 14; Interchange 43; installed 20 |
-| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files/surface OFF | Geometry 16; Interchange 23; installed 12 |
+| Windows x64 MSVC | Release, qualified; files/surface ON | Geometry 19; Interchange 56; installed 26 |
+| Windows x64 MSVC AddressSanitizer | Matching Release, qualified; files/surface ON | Geometry 19; Interchange 56; installed 26 |
+| Linux x64 Clang 18.1.3 on Ubuntu 24.04 | Debug, qualified; files/surface ON | Geometry 19; Interchange 56; installed 26 |
+| Linux GNU | Release, unsupported; files/surface ON | Geometry 14; Interchange 47; installed 20 |
+| macOS AppleClang | Release, unsupported; files/surface ON | Geometry 14; Interchange 47; installed 20 |
+| Windows x64 MSVC optional modules OFF | Release, qualified; writer/support/files/surface OFF | Geometry 16; Interchange 27; installed 12 |
+
+The additional `gltf_quaternion_math` and `gltf_deformation_read` entries query
+the actual compiled deformation numerical profile. The exact admitted MSVC
+candidate runs the arithmetic and focused reader controls; other tuples verify
+a real compiled-unsupported refusal and explicitly report that those controls
+were not exercised. A supported-candidate qualification must additionally invoke
+the math executable with `--expect-supported`. These entries do not qualify the
+full deformation workflow, installed API, ABI or Python interface. The table's
+materialization profile does not imply deformation numerical support.
 
 These inventories include STL, OFF and PLY codec/request tests and their installed
 consumers. Each row additionally builds the separate

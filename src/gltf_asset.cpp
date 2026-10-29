@@ -12,6 +12,7 @@
 
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_read.h"
 #include "meshvale/interchange/gltf.h"
 
 namespace meshvale::interchange::gltf_detail {
@@ -33,6 +34,12 @@ AssetState::AssetState(const AllocationContext& operation,
       resource_storage(Allocator<OwnedVector<std::byte>>(allocation)),
       resources(Allocator<GltfResourceView>(allocation)),
       raw_numbers(Allocator<GltfRawNumberView>(allocation)),
+      node_rotation_storage(
+          Allocator<
+              std::array<GltfRawNumberView,
+                         GltfNodeRotationSourceView::kQuaternionComponents>>(
+              allocation)),
+      node_rotations(Allocator<GltfNodeRotationSourceView>(allocation)),
       children(Allocator<OwnedVector<std::uint64_t>>(allocation)),
       nodes(Allocator<GltfNodeView>(allocation)),
       roots(Allocator<OwnedVector<std::uint64_t>>(allocation)),
@@ -138,7 +145,28 @@ bool GltfAsset::SharesExecutionBudget(
   return geometry::SharesExecutionBudget(owner_->context, context);
 }
 GltfAdmissionProfile GltfAsset::AdmissionProfile() const noexcept {
-  return GltfAdmissionProfile::kRetainedCoreMetadataV1;
+  return owner_->read_request.admission_profile;
+}
+const GltfDeformationPolicy* GltfAsset::DeformationReadPolicy() const noexcept {
+  return owner_->deformation_read ? &owner_->read_request.deformation : nullptr;
+}
+std::optional<std::string_view> GltfAsset::QuaternionPolicy() const noexcept {
+  return owner_->deformation_read
+             ? std::optional(gltf_detail::kDeformationQuaternionPolicy)
+             : std::nullopt;
+}
+std::span<const GltfNodeRotationSourceView> GltfAsset::NodeRotationSources()
+    const noexcept {
+  return owner_->node_rotations;
+}
+const GltfDeformationObservation* GltfAsset::DeformationReadFacts()
+    const noexcept {
+  return owner_->deformation_read ? &*owner_->deformation_read : nullptr;
+}
+std::optional<GltfNormativeRevision> GltfAsset::DeformationRevision()
+    const noexcept {
+  if (!owner_->deformation_read) return std::nullopt;
+  return gltf_detail::kDeformationRevision;
 }
 const GltfDirectTranslationWorkPolicy& GltfAsset::DirectTranslationWork()
     const noexcept {
@@ -189,6 +217,35 @@ GltfPrimitiveCapability GltfAsset::Capability(
     return {kProfile, failure.Diagnostic().status == GltfStatus::kForeignOwner
                           ? GltfCapabilityReason::kForeignOwner
                           : GltfCapabilityReason::kInvalidSelection};
+  }
+}
+GltfPrimitiveCapability GltfAsset::Capability(
+    const GltfPrimitiveHandle& primitive, GltfProcessingProfile profile) const {
+  const bool deformation =
+      profile == GltfProcessingProfile::kDeformationRetainedTrianglesV1;
+  const bool legacy =
+      profile == GltfProcessingProfile::kStaticLocalTrianglesV1 ||
+      profile == GltfProcessingProfile::kDirectTranslationTrianglesV1;
+  if ((!deformation && !legacy) ||
+      deformation != (AdmissionProfile() ==
+                      GltfAdmissionProfile::kRetainedCoreDeformationV1))
+    return {profile, GltfCapabilityReason::kAdmissionProfileMismatch};
+  if (!deformation) {
+    auto result = Capability(primitive);
+    result.profile = profile;
+    return result;
+  }
+  try {
+    const auto* record =
+        gltf_detail::Access::PrimitiveRecordFor(*this, primitive);
+    // This is deliberately only a preview: actual role/payload admission is
+    // owned by extraction, including optional extension effects.
+    return {profile, record ? GltfCapabilityReason::kBinaryAdmissionPending
+                            : GltfCapabilityReason::kInvalidSelection};
+  } catch (const gltf_detail::GltfFailure& failure) {
+    return {profile, failure.Diagnostic().status == GltfStatus::kForeignOwner
+                         ? GltfCapabilityReason::kForeignOwner
+                         : GltfCapabilityReason::kInvalidSelection};
   }
 }
 GltfPrimitiveHandle::GltfPrimitiveHandle(

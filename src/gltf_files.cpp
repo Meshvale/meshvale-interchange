@@ -24,6 +24,7 @@
 #include "glb_detail.h"
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_read.h"
 #include "gltf_file_read_provider.h"
 #include "gltf_files_internal.h"
 #include "gltf_files_test_internal.h"
@@ -136,6 +137,10 @@ GltfExtensionFilePolicy GltfFileAsset::ExtensionFilesPolicy() const noexcept {
 }
 std::uint64_t GltfFileAsset::NewRequestedBytes() const noexcept {
   return owner_->allocation.OperationActiveBytes();
+}
+const GltfDeformationObservation* GltfFileAsset::DeformationReadFacts()
+    const noexcept {
+  return owner_->asset ? owner_->asset->DeformationReadFacts() : nullptr;
 }
 GltfPublishedBundle::GltfPublishedBundle(
     std::shared_ptr<const gltf_files_detail::PublishedBundleState>
@@ -713,10 +718,14 @@ struct Capture {
     return operation.bindings;
   }
 };
-GltfFileDiagnostic FinishCapture(Capture& operation) {
+GltfFileDiagnostic FinishCapture(
+    Capture& operation,
+    std::optional<GltfDeformationObservation>* deformation = nullptr) {
   auto read = allocation::ReadGltfAssetFromFiles(
       operation.Json(), operation.limits.asset, operation.work.asset,
-      operation.context, operation.stop, Capture::Provide, &operation);
+      operation.context, operation.stop, Capture::Provide, &operation,
+      &operation.options.read_request);
+  if (deformation) *deformation = read.deformation;
   GltfFileDiagnostic diagnostic;
   if (!read.asset) {
     diagnostic.status =
@@ -816,16 +825,19 @@ GltfFileDiagnostic detail::CaptureFiles(
     const geometry::ExecutionContext& context, std::stop_token stop,
     const GltfFileTestOptions& testing, GltfFileExecution& execution,
     std::optional<std::span<const std::byte>> expected_json_prefix,
-    const allocation::NativeExecutionOptions& verification_execution) {
+    const allocation::NativeExecutionOptions& verification_execution,
+    const GltfReadRequest* read_request,
+    std::optional<GltfDeformationObservation>* deformation) {
   GltfFileReadOptions options;
   options.extensions = state.extensions;
   options.opaque_source_files = opaque_files;
+  if (read_request) options.read_request = *read_request;
   Capture operation(state, options, limits, work, context, stop, testing,
                     execution);
   operation.expected_json_prefix = expected_json_prefix;
   operation.verification_execution = &verification_execution;
   operation.InitializeNative(root, entry);
-  return FinishCapture(operation);
+  return FinishCapture(operation, deformation);
 }
 void detail::CapturePhysicalFiles(
     FileAssetState& state, NativeView root, std::string_view entry,
@@ -859,6 +871,24 @@ GltfFileReadResult detail::TestReadGltfFileAsset(
   try {
     Validate(limits.files, work.files, limits.container, work.container);
     ReadConfiguration(limits.asset, work.asset);
+    if (options.read_request.admission_profile !=
+            GltfAdmissionProfile::kRetainedCoreMetadataV1 &&
+        options.read_request.admission_profile !=
+            GltfAdmissionProfile::kRetainedCoreDeformationV1)
+      detail::Fail(Status::kInvalidRequest, Stage::kConfiguration,
+                   Code::kInvalidRequest);
+    if (options.read_request.admission_profile ==
+        GltfAdmissionProfile::kRetainedCoreDeformationV1) {
+      try {
+        allocation::ValidateDeformationConfiguration(
+            options.read_request.deformation);
+      } catch (const allocation::GltfFailure& failure) {
+        detail::Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
+                     failure.Diagnostic().code == GltfDiagnosticCode::kZeroLimit
+                         ? Code::kRequiredFieldZero
+                         : Code::kConfigurationExtent);
+      }
+    }
     if ((options.extensions !=
              GltfExtensionFilePolicy::kRejectOpaqueExtensions &&
          options.extensions !=
@@ -883,7 +913,7 @@ GltfFileReadResult detail::TestReadGltfFileAsset(
     Capture operation(*state, options, limits, work, context, stop, testing,
                       result.execution);
     operation.Initialize(input);
-    result.diagnostic = FinishCapture(operation);
+    result.diagnostic = FinishCapture(operation, &result.deformation);
     if (result.diagnostic.status == Status::kSuccess)
       result.asset = detail::Access::Make(state);
   } catch (const detail::Failure& failure) {

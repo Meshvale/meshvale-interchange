@@ -10,6 +10,7 @@
 #include <stop_token>
 
 #include "gltf_allocation.h"
+#include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_materialization_detail {
 // Per-call, nonallocating observation/fault seam. The allocation backend state
@@ -22,11 +23,14 @@ struct TestHooks {
   void (*after_descriptor)(std::uint64_t channel,
                            void* state) noexcept = nullptr;
   void* descriptor_state = nullptr;
+  // Actual comparison workers only; Geometry delegates keep their own public
+  // scheduling seam. Borrow through all synchronous comparison joins.
+  const gltf_detail::NativeExecutionOptions* comparison_execution = nullptr;
 };
 [[nodiscard]] GltfMaterializationResult TestMaterializeGltfPrimitive(
     const GltfPrimitiveExtraction& extraction,
     const GltfMaterializationLimits& limits,
     const geometry::MeshMaterializationWorkPolicy& work, std::stop_token stop,
-    const TestHooks& hooks);
+    const TestHooks& hooks, const GltfDeformationPolicy* deformation = nullptr);
 }  // namespace meshvale::interchange::gltf_materialization_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_MATERIALIZATION_TEST_INTERNAL_H_

@@ -1,0 +1,49 @@
+{
+  "spec_commit": "1c84b58ba3338be4731ea546fa4138dcbb93d42d",
+  "spec_blob": "aeaab65b1291d722ee610db247ae43c575ed63e1",
+  "encoding": "lowercase hexadecimal literal wire bytes; no product writer generated these inputs",
+  "inputs": [
+    {
+      "case": "weights-linear",
+      "literal": "weights-linear.glb.hex",
+      "wire_bytes": 1076,
+      "wire_sha256": "dd466d12ce84bdb62df7c438d9707dbf87f92e408308645b0738b6d51ca8d8fa",
+      "literal_sha256": "69a9933c8c926f429fb2509e33abe8878a89054369aa3ccce4d3ca4315c89244"
+    },
+    {
+      "case": "weights-step",
+      "literal": "weights-step.glb.hex",
+      "wire_bytes": 1076,
+      "wire_sha256": "b6112b4e2a6e137abcc202df02a3a9744b52646aea33a243d074dcb8396d12bd",
+      "literal_sha256": "232c34d670c4383de15dd39e76aac0f1c6836888098874e25e507d8bc25c42f6"
+    },
+    {
+      "case": "weights-cubic",
+      "literal": "weights-cubic.glb.hex",
+      "wire_bytes": 1100,
+      "wire_sha256": "254b9307728b6b72fa9ebeae289a36d1ceaf6c9ac96551a49fa2d907bc0004da",
+      "literal_sha256": "4543bf4e12292fa363f8aeb5178c645dd4e2d9c6f37a75f1ee14d6ce8351aae1"
+    },
+    {
+      "case": "matrix-translation",
+      "literal": "matrix-translation.glb.hex",
+      "wire_bytes": 1096,
+      "wire_sha256": "82c247fd35cbfdee34e549084f63fae46eca52100e4a46c6bf00d75de65a33d4",
+      "literal_sha256": "1cbd47edd84cf2b0da65d862474ef4f297b531a29551ae8ba14d9f9144bc2cf6"
+    },
+    {
+      "case": "matrix-rotation",
+      "literal": "matrix-rotation.glb.hex",
+      "wire_bytes": 1104,
+      "wire_sha256": "e26ccfde7e499f8f1b2fb7b202479ce70457f299dfe2fd157feeefedecd0e169",
+      "literal_sha256": "7552e681547d5f615577115a917372ccac10a245686f5ca0840e0e7315e7a042"
+    },
+    {
+      "case": "matrix-scale",
+      "literal": "matrix-scale.glb.hex",
+      "wire_bytes": 1092,
+      "wire_sha256": "49cc8fdaa2d69d5a820f5e47e915f9f6c824ce178ca65368e896988ec32dc6b9",
+      "literal_sha256": "56eed35ca592ec83140d03f0f5f3b2abd2fdbc5fec3025ddf49d6cf07d501b30"
+    }
+  ]
+}

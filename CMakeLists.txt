@@ -131,12 +131,20 @@ if(NOT TARGET tinyobjloader::tinyobjloader_double)
   message(FATAL_ERROR "tinyobjloader must be built with double precision")
 endif()
 add_library(meshvale_interchange STATIC src/obj_read.cpp src/obj_write.cpp src/obj_file_read.cpp src/obj_file_publish.cpp src/obj_file_detail.cpp src/file_publication_native.cpp
-  src/gltf_write.cpp src/gltf_accessor.cpp src/gltf_extract.cpp src/gltf_direct_translation.cpp src/gltf_admission.cpp src/gltf_read.cpp src/gltf_resources.cpp src/gltf_operation_workers.cpp src/gltf_graph.cpp src/gltf_graph_declarations.cpp src/gltf_asset.cpp src/gltf_metadata.cpp src/gltf_allocation.cpp src/gltf_parser.cpp src/gltf_json_snapshot.cpp src/cgltf_reader.cpp src/glb.cpp)
+  src/gltf_write.cpp src/gltf_accessor.cpp src/gltf_accessor_source.cpp src/gltf_extract.cpp src/gltf_direct_translation.cpp src/gltf_quaternion.cpp src/gltf_numerical_profile.cpp src/gltf_deformation_read.cpp src/gltf_deformation.cpp src/gltf_deformation_validate.cpp src/gltf_admission.cpp src/gltf_read.cpp src/gltf_resources.cpp src/gltf_operation_workers.cpp src/gltf_graph.cpp src/gltf_graph_declarations.cpp src/gltf_asset.cpp src/gltf_metadata.cpp src/gltf_allocation.cpp src/gltf_parser.cpp src/gltf_json_snapshot.cpp src/cgltf_reader.cpp src/glb.cpp)
 add_library(meshvale::interchange ALIAS meshvale_interchange)
 if(MSVC)
   # The compiled cgltf C-linkage entrypoint propagates allocation callbacks'
   # C++ exceptions. Disable /EHc's no-throw assumption for this owning TU.
   set_source_files_properties(src/cgltf_reader.cpp PROPERTIES COMPILE_OPTIONS /EHsc-)
+  # The deformation arithmetic/gate units require real strict compilation. The
+  # compiled numeric gate checks actual predefined state; no macro override.
+  set_property(SOURCE src/gltf_quaternion.cpp src/gltf_numerical_profile.cpp
+    src/gltf_deformation_read.cpp src/gltf_deformation.cpp
+    src/gltf_deformation_validate.cpp src/gltf_metadata.cpp src/gltf_admission.cpp
+    src/gltf_graph.cpp src/gltf_read.cpp src/gltf_materialization.cpp src/gltf_topology_write.cpp
+    src/gltf_workflow_support.cpp src/gltf_workflow_support_reload.cpp src/cgltf_reader.cpp
+    APPEND PROPERTY COMPILE_OPTIONS /fp:strict)
 endif()
 set_target_properties(meshvale_interchange PROPERTIES EXPORT_NAME interchange POSITION_INDEPENDENT_CODE ON)
 target_compile_features(meshvale_interchange PUBLIC cxx_std_20)
@@ -213,7 +221,7 @@ include(cmake/SurfaceOutput.cmake)
 include(cmake/SurfaceFiles.cmake)
 install(TARGETS meshvale_interchange meshvale_interchange_gltf_materialization meshvale_interchange_stl meshvale_interchange_off meshvale_interchange_ply
   EXPORT MeshvaleInterchangeTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h include/meshvale/interchange/stl.h include/meshvale/interchange/off.h include/meshvale/interchange/ply.h
+install(FILES include/meshvale/interchange/obj.h include/meshvale/interchange/obj_files.h include/meshvale/interchange/gltf.h include/meshvale/interchange/gltf_deformation.h include/meshvale/interchange/gltf_write.h include/meshvale/interchange/glb.h include/meshvale/interchange/gltf_materialization.h include/meshvale/interchange/stl.h include/meshvale/interchange/off.h include/meshvale/interchange/ply.h
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/meshvale/interchange")
 install(EXPORT MeshvaleInterchangeTargets NAMESPACE meshvale::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MeshvaleInterchange")
@@ -259,6 +267,8 @@ if(BUILD_TESTING)
   add_library(meshvale_interchange_header_checks OBJECT
     tests/headers/gltf_write_h.cpp
     tests/headers/gltf_h.cpp
+    tests/headers/gltf_deformation_h.cpp
+    tests/gltf_deformation_call_forms.cpp
     tests/headers/obj_h.cpp
     tests/headers/obj_files_h.cpp tests/headers/glb_h.cpp
     tests/headers/gltf_materialization_h.cpp tests/header_stl.cpp tests/header_off.cpp tests/header_ply.cpp)
@@ -339,10 +349,52 @@ if(BUILD_TESTING)
   target_link_libraries(meshvale_gltf_allocation_tests PRIVATE meshvale::interchange meshvale::triangulation)
   meshvale_warnings(meshvale_gltf_allocation_tests)
   add_test(NAME gltf_allocation COMMAND meshvale_gltf_allocation_tests)
+  add_executable(meshvale_gltf_quaternion_math_tests tests/gltf_quaternion_math.cpp)
+  target_include_directories(meshvale_gltf_quaternion_math_tests PRIVATE src)
+  target_link_libraries(meshvale_gltf_quaternion_math_tests PRIVATE meshvale::interchange meshvale::editing)
+  if(MSVC)
+    target_compile_options(meshvale_gltf_quaternion_math_tests PRIVATE /fp:strict)
+  endif()
+  meshvale_warnings(meshvale_gltf_quaternion_math_tests)
+  add_test(NAME gltf_quaternion_math COMMAND meshvale_gltf_quaternion_math_tests)
   add_executable(meshvale_gltf_read_tests tests/gltf_read.cpp)
   target_link_libraries(meshvale_gltf_read_tests PRIVATE meshvale::interchange meshvale::editing)
   meshvale_warnings(meshvale_gltf_read_tests)
   add_test(NAME gltf_read COMMAND meshvale_gltf_read_tests)
+  add_executable(meshvale_gltf_deformation_catalog_tests tests/gltf_deformation_catalog.cpp)
+  target_link_libraries(meshvale_gltf_deformation_catalog_tests PRIVATE meshvale::interchange meshvale::editing)
+  target_include_directories(meshvale_gltf_deformation_catalog_tests PRIVATE src)
+  if(MSVC)
+    target_compile_options(meshvale_gltf_deformation_catalog_tests PRIVATE /fp:strict)
+  endif()
+  meshvale_warnings(meshvale_gltf_deformation_catalog_tests)
+  add_test(NAME gltf_deformation_catalog COMMAND meshvale_gltf_deformation_catalog_tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gltf-deformation-catalog")
+  add_executable(meshvale_gltf_deformation_extract_tests tests/gltf_deformation_extract.cpp)
+  target_link_libraries(meshvale_gltf_deformation_extract_tests PRIVATE meshvale::gltf_materialization meshvale::editing)
+  target_include_directories(meshvale_gltf_deformation_extract_tests PRIVATE src)
+  if(MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE AND MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT)
+    target_link_libraries(meshvale_gltf_deformation_extract_tests PRIVATE meshvale::gltf_workflow_support)
+    target_compile_definitions(meshvale_gltf_deformation_extract_tests PRIVATE MESHVALE_TEST_DEFORMATION_OUTPUT=1)
+  endif()
+  if(MESHVALE_INTERCHANGE_GLTF_FILES)
+    target_link_libraries(meshvale_gltf_deformation_extract_tests PRIVATE meshvale::gltf_files)
+    target_compile_definitions(meshvale_gltf_deformation_extract_tests PRIVATE MESHVALE_TEST_DEFORMATION_FILES=1)
+  endif()
+  if(MSVC)
+    target_compile_options(meshvale_gltf_deformation_extract_tests PRIVATE /fp:strict)
+  endif()
+  meshvale_warnings(meshvale_gltf_deformation_extract_tests)
+  add_test(NAME gltf_deformation_extract COMMAND meshvale_gltf_deformation_extract_tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gltf-deformation-catalog")
+  add_executable(meshvale_gltf_deformation_read_tests tests/gltf_deformation_read.cpp)
+  target_link_libraries(meshvale_gltf_deformation_read_tests PRIVATE meshvale::interchange meshvale::editing)
+  if(MSVC)
+    target_compile_options(meshvale_gltf_deformation_read_tests PRIVATE /fp:strict)
+  endif()
+  meshvale_warnings(meshvale_gltf_deformation_read_tests)
+  add_test(NAME gltf_deformation_read COMMAND meshvale_gltf_deformation_read_tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gltf-deformation/matrix-weights")
   add_executable(meshvale_gltf_execution_budget_tests tests/gltf_execution_budget.cpp)
   target_include_directories(meshvale_gltf_execution_budget_tests PRIVATE src)
   target_link_libraries(meshvale_gltf_execution_budget_tests PRIVATE meshvale::interchange meshvale::editing)

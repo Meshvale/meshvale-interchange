@@ -25,12 +25,16 @@
 #include "glb_detail.h"
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_read.h"
 #include "gltf_direct_translation.h"
 #include "gltf_file_publish_internal.h"
 #include "gltf_files_internal.h"
 #include "gltf_files_test_internal.h"
 #include "gltf_json_snapshot.h"
+#include "gltf_numerical_profile.h"
 #include "gltf_operation_workers.h"
+#include "gltf_workflow_support_internal.h"
+#include "gltf_workflow_support_test_internal.h"
 
 namespace meshvale::interchange {
 namespace {
@@ -191,6 +195,9 @@ class Publication {
   void Run(const std::filesystem::path& destination) {
     Phase(GltfFilePublicationPhase::kPreflight);
     const bool glb = request_.source.Format() == GltfFileFormat::kGlb;
+    const bool deformation =
+        request_.inspected_output.Source().SourceExtraction().Deformation() !=
+        nullptr;
     if (glb) {
       planned_entry_bytes_ = PlanGlbEntry();
       for (const auto& file : request_.source.Files())
@@ -234,10 +241,15 @@ class Publication {
     capture_testing.container = testing_.container;
     std::optional<std::span<const std::byte>> prefix;
     if (glb) prefix = request_.inspected_output.Output().Json();
+    const GltfReadRequest read_request{
+        deformation ? GltfAdmissionProfile::kRetainedCoreDeformationV1
+                    : GltfAdmissionProfile::kRetainedCoreMetadataV1,
+        options_.deformation.read};
     const auto read = detail::CaptureFiles(
         initial, transaction_.Stage(), request_.source.EntryPath(), opaque_,
         read_limits, read_work, context_, stop_, capture_testing,
-        result_.execution, prefix, testing_.verification_execution);
+        result_.execution, prefix, testing_.verification_execution,
+        &read_request, &result_.deformation_read);
     if (read.status != Status::kSuccess) throw detail::Failure{read};
     VerifyContainer(initial);
     const auto& original = request_.inspected_output.Source();
@@ -259,6 +271,11 @@ class Publication {
     const auto& source_extraction = original.SourceExtraction();
     extraction_request.processing_profile =
         source_extraction.ProcessingProfile();
+    if (deformation) {
+      extraction_request.deformation = options_.deformation.extraction;
+      extraction_request.deformation_row_local =
+          source_extraction.Deformation()->RowLocalDeclarations();
+    }
     const auto mode = source_extraction.SourceMode();
     extraction_request.triangles =
         !request_.inspected_output.Output().ChangedBinding() &&
@@ -273,6 +290,7 @@ class Publication {
                                                 extraction_request,
                                                 limits_.extraction, stop_);
     result_.translation_extraction = extracted.direct_translation;
+    result_.deformation_extraction = extracted.deformation;
     if (!extracted.extraction) {
       GltfFileDiagnostic diagnostic;
       diagnostic.status = DelegatedStatus(extracted.diagnostic.status);
@@ -287,8 +305,25 @@ class Publication {
         inspected.SourceFaces(), inspected.SourceCorners(),
         inspected.Output(),      *initial.asset,
         *extracted.extraction};
-    auto inspection = InspectGltfTopologyOutput(
-        inspection_request, limits_.inspection, work_.inspection, stop_);
+    std::optional<allocation::AllocationContext> verification_parent;
+    if (deformation)
+      verification_parent.emplace(
+          allocation::AllocationContext(context_, stop_,
+                                        testing_.allocation_backend)
+              .WithRequestLimit(static_cast<std::size_t>(
+                  limits_.inspection.max_new_requested_bytes)));
+    gltf_workflow_support_detail::InspectionTestOptions inspection_testing;
+    inspection_testing.allocation_backend = testing_.allocation_backend;
+    inspection_testing.worker_backend = testing_.verification_execution.backend;
+    inspection_testing.observer = testing_.verification_execution.observer;
+    auto inspection =
+        deformation
+            ? gltf_workflow_support_detail::InspectGltfTopologyOutputForTest(
+                  inspection_request, limits_.inspection, work_.inspection,
+                  stop_, inspection_testing, &options_.deformation.verification,
+                  &*verification_parent)
+            : InspectGltfTopologyOutput(inspection_request, limits_.inspection,
+                                        work_.inspection, stop_);
     result_.translation_inspection = inspection.direct_translation;
     if (!inspection.inspection) {
       GltfFileDiagnostic diagnostic;
@@ -299,14 +334,23 @@ class Publication {
       diagnostic.inspection_diagnostic = inspection.diagnostic;
       throw detail::Failure{diagnostic};
     }
-    Verify(initial);
-    Inventory();
+    if (deformation)
+      VerifyStagedDeformation(inspection_request, initial,
+                              *verification_parent);
+    else {
+      Verify(initial);
+      Inventory();
+    }
     const auto initial_size = expected_.size();
     if (options_.on_verified || options_.verified_files_provider.provide) {
       const GltfFileVerifiedContent verified{
-          *inspection.inspection, request_.source.Format(),
+          *inspection.inspection,
+          request_.source.Format(),
           request_.source.EntryPath(),
-          initial.container ? &*initial.container : nullptr, initial.views};
+          initial.container ? &*initial.container : nullptr,
+          initial.views,
+          result_.deformation_verification ? &*result_.deformation_verification
+                                           : nullptr};
       if (options_.on_verified) {
         auto supplements = [&] {
           try {
@@ -380,6 +424,144 @@ class Publication {
   }
 
  private:
+  // The publication owns this observation. It performs its own comparisons
+  // against the physically captured stage and expected source/candidate, then
+  // the existing exact-file and inventory checks. The generic inspection's
+  // independent output_reload facts remain on its own strong owner.
+  void VerifyStagedDeformation(
+      const GltfTopologyOutputInspectionRequest& request,
+      detail::FileAssetState& physical,
+      const allocation::AllocationContext& complete_parent) {
+    namespace inspection = gltf_workflow_support_detail;
+    auto& facts = result_.deformation_verification.emplace();
+    const auto initial_parent_bytes = complete_parent.OperationActiveBytes();
+    const auto& policy = options_.deformation.verification;
+    facts.work = policy.work;
+    facts.phase = GltfDeformationPhase::kNumericGate;
+    facts.numeric.emplace();
+    try {
+      const auto live = complete_parent.OperationActiveBytes();
+      if (live >= limits_.inspection.max_new_requested_bytes)
+        throw allocation::AdmissionFailure(
+            allocation::AdmissionCode::kSizeLimit);
+      facts.effective_request_cap =
+          std::min(policy.limits.max_new_requested_bytes,
+                   limits_.inspection.max_new_requested_bytes - live);
+      auto phase = complete_parent.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(facts.effective_request_cap));
+      auto descriptors = phase.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(policy.limits.max_descriptor_bytes));
+      if (!allocation::EstablishGltfNumericalProfile(*facts.numeric, {}, true))
+        allocation::Fail(GltfStatus::kUnsupportedProfile,
+                         GltfDiagnosticCode::kNumericalProfile);
+      facts.phase = GltfDeformationPhase::kCompare;
+      facts.predicates.staged_reload = false;
+      auto work = work_.inspection;
+      work.parallel_min_bytes = policy.work.parallel_min_bytes;
+      work.partition_bytes = policy.work.partition_bytes;
+      work.cancellation_block_bytes = policy.work.cancellation_block_bytes;
+      work.max_jobs = policy.work.max_jobs;
+      inspection::Operation operation{request,
+                                      limits_.inspection,
+                                      work,
+                                      context_,
+                                      descriptors,
+                                      stop_,
+                                      testing_.verification_execution};
+      inspection::Stats stats;
+      auto observe = [&] {
+        facts.execution = {stats.planned_jobs, stats.launched_workers,
+                           stats.joined_workers, stats.caller_jobs};
+      };
+      try {
+        facts.predicates.canonical_association = false;
+        inspection::VerifyGeometry(operation, stats);
+        inspection::VerifyCorrespondence(operation, stats);
+        facts.predicates.canonical_association = true;
+        inspection::VerifyReload(operation, stats);
+        inspection::VerifyDeformationReload(operation, stats, policy, facts);
+      } catch (...) {
+        observe();
+        throw;
+      }
+      observe();
+      Verify(physical);
+      Inventory();
+      descriptors.Checkpoint();
+      facts.predicates.staged_reload = true;
+      facts.status = GltfStatus::kAccepted;
+      facts.diagnostic = allocation::AcceptedDiagnostic();
+      facts.phase = GltfDeformationPhase::kComplete;
+      facts.complete = true;
+    } catch (const inspection::Failure& failure) {
+      facts.status = failure.status == inspection::Status::kCanceled
+                         ? GltfStatus::kCanceled
+                     : failure.status == inspection::Status::kBudgetExceeded
+                         ? GltfStatus::kBudgetExceeded
+                         : GltfStatus::kResourceBindingMismatch;
+      facts.diagnostic = {facts.status,
+                          GltfDiagnosticCode::kInvalidSelection,
+                          {},
+                          {},
+                          {},
+                          {},
+                          0};
+      GltfFileDiagnostic diagnostic;
+      diagnostic.status = InspectionStatus(failure.status);
+      diagnostic.stage = Stage::kInspection;
+      diagnostic.code = Code::kDelegatedInspection;
+      diagnostic.inspection_status = failure.status;
+      diagnostic.inspection_diagnostic = failure.diagnostic;
+      throw detail::Failure{diagnostic};
+    } catch (const allocation::GltfFailure& failure) {
+      facts.status = failure.Diagnostic().status;
+      facts.diagnostic = failure.Diagnostic();
+      GltfFileDiagnostic diagnostic;
+      diagnostic.status = DelegatedStatus(facts.status);
+      diagnostic.stage = Stage::kInspection;
+      diagnostic.code = Code::kDelegatedInspection;
+      diagnostic.gltf_diagnostic = failure.Diagnostic();
+      throw detail::Failure{diagnostic};
+    } catch (const allocation::AdmissionFailure& failure) {
+      facts.status =
+          failure.Code() == allocation::AdmissionCode::kCanceled
+              ? GltfStatus::kCanceled
+          : failure.Code() == allocation::AdmissionCode::kBudgetExceeded
+              ? GltfStatus::kBudgetExceeded
+              : GltfStatus::kUnsupportedProfile;
+      facts.diagnostic = {
+          facts.status,
+          failure.Code() == allocation::AdmissionCode::kCanceled
+              ? GltfDiagnosticCode::kCanceled
+          : failure.Code() == allocation::AdmissionCode::kBudgetExceeded
+              ? GltfDiagnosticCode::kPayloadBudget
+              : GltfDiagnosticCode::kLimitExceeded,
+          {},
+          {},
+          {},
+          {},
+          0};
+      throw;
+    } catch (const detail::Failure&) {
+      facts.status = GltfStatus::kResourceBindingMismatch;
+      facts.diagnostic = {facts.status,
+                          GltfDiagnosticCode::kInvalidSelection,
+                          {},
+                          {},
+                          {},
+                          {},
+                          0};
+      throw;
+    }
+    // The wrapper returns only inline observations. Its phase controls, plans
+    // and workers have actually died/joined here; do not label their earlier
+    // transient requests as retained bytes or force an accounting counter.
+    const auto remaining_parent_bytes = complete_parent.OperationActiveBytes();
+    if (remaining_parent_bytes < initial_parent_bytes)
+      throw allocation::AdmissionFailure(
+          allocation::AdmissionCode::kInvalidObject);
+    facts.new_requested_bytes = remaining_parent_bytes - initial_parent_bytes;
+  }
   void Phase(GltfFilePublicationPhase phase) {
     result_.phase = phase;
     allocation_.Checkpoint();
@@ -777,6 +959,21 @@ GltfFilePublicationResult detail::TestPublishGltfTopologyBundle(
   GltfFilePublicationResult result;
   try {
     ValidatePublicationConfiguration(limits, work);
+    if (request.inspected_output.Source().SourceExtraction().Deformation()) {
+      for (const auto* policy :
+           {&options.deformation.read, &options.deformation.extraction,
+            &options.deformation.verification}) {
+        try {
+          allocation::ValidateDeformationConfiguration(*policy);
+        } catch (const allocation::GltfFailure& failure) {
+          detail::Fail(
+              Status::kInvalidConfiguration, Stage::kConfiguration,
+              failure.Diagnostic().code == GltfDiagnosticCode::kZeroLimit
+                  ? Code::kRequiredFieldZero
+                  : Code::kConfigurationExtent);
+        }
+      }
+    }
     if (request.inspected_output.Source()
             .SourceExtraction()
             .ProcessingProfile() ==

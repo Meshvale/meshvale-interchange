@@ -138,7 +138,9 @@ enum class GltfDiagnosticCode {
   kCanceled,
   kPayloadBudget,
   kInvalidSelection,
-  kForeignOwner
+  kForeignOwner,
+  kAdmissionProfileMismatch = 35,
+  kNumericalProfile = 36
 };
 struct GltfSourceSpan {
   std::uint64_t offset;
@@ -177,13 +179,237 @@ struct GltfDirectTranslationObservation {
   GltfDirectTranslationWorkPolicy work;
   GltfDirectTranslationExecutionObservation execution;
 };
-enum class GltfAdmissionProfile { kRetainedCoreMetadataV1 };
+enum class GltfAdmissionProfile {
+  kRetainedCoreMetadataV1,
+  kRetainedCoreDeformationV1 = 1
+};
 enum class GltfJsonNumberKind { kIntegerSpelling, kDecimalSpelling };
 struct GltfRawNumberView {
   GltfSourceSpan source;
   GltfJsonNumberKind kind;
   std::string_view lexeme;
 };
+
+// Opt-in retained deformation declarations. Policies initialize invalid/zero;
+// legacy read/processing ignores them. The product contract owns admission,
+// original-ledger accounting and actual called-failure observations.
+class GltfDeformationProof;
+struct GltfReadResult;
+struct GltfReadOperationLimits;
+struct GltfDeformationRowLocalDeclaration {
+  std::string_view
+      name;  // Exact source-qualified name; vertex-row-local assertion.
+};
+struct GltfDeformationLimits {
+  std::uint64_t max_node_rows = 0;
+  std::uint64_t max_mesh_users = 0;
+  std::uint64_t max_skin_rows = 0;
+  std::uint64_t max_joint_references = 0;
+  std::uint64_t max_influence_sets = 0;  // Paired sets PER primitive.
+  std::uint64_t max_lanes_per_vertex = 0;
+  std::uint64_t max_morph_targets = 0;
+  std::uint64_t max_morph_channels = 0;
+  std::uint64_t max_animation_channels = 0;
+  std::uint64_t max_samplers = 0;
+  std::uint64_t max_keys = 0;
+  std::uint64_t max_scalar_values = 0;
+  std::uint64_t max_sparse_writes = 0;
+  std::uint64_t max_role_edges = 0;
+  std::uint64_t max_relationship_steps = 0;
+  std::uint64_t max_descriptor_bytes = 0;
+  std::uint64_t max_decoded_bytes = 0;
+  std::uint64_t max_new_requested_bytes = 0;
+};
+struct GltfDeformationWorkPolicy {
+  std::uint64_t parallel_min_scalars = 0;
+  std::uint64_t partition_scalars = 0;
+  std::uint64_t cancellation_block_scalars = 0;
+  std::uint64_t parallel_min_bytes = 0;
+  std::uint64_t partition_bytes = 0;
+  std::uint64_t cancellation_block_bytes = 0;
+  // Maximum jobs in each genuine dependency-phase plan. Catalog decoding uses
+  // one collection-wide plan followed by one dependent role/fold plan. Actual
+  // cumulative execution observations may exceed this per-plan maximum.
+  std::uint64_t max_jobs = 0;
+  std::uint64_t max_relationship_block = 0;
+};
+struct GltfDeformationPolicy {
+  GltfDeformationLimits limits;
+  GltfDeformationWorkPolicy work;
+};
+struct GltfNormativeRevision {
+  std::string_view commit;
+  std::string_view blob;
+};
+enum class GltfDeformationPhase {
+  kConfiguration = 0,
+  kNumericGate = 1,
+  kDeclarations = 2,
+  kRoles = 3,
+  kWeightSums = 4,
+  kBindings = 5,
+  kMorphs = 6,
+  kAnimations = 7,
+  kAssociation = 8,
+  kCompare = 9,
+  kComplete = 10
+};
+enum class GltfDeformationNumericProfile { kRneGradualV1 = 0 };
+enum class GltfDeformationNumericRefusalReason {
+  kCompiledUnsupported = 0,
+  kUnqueryable = 1,
+  kRounding = 2,
+  kFlush = 3,
+  kExceptions = 4
+};
+enum class GltfDeformationFloatingUnit { kSse2 = 0, kX87 = 1 };
+struct GltfDeformationExceptionMasks {
+  std::optional<std::uint32_t> required_units;
+  std::optional<std::uint32_t> sse2_mask;
+  std::optional<std::uint32_t> x87_mask;
+  std::optional<std::uint64_t> sample_partition;
+  std::optional<bool> sample_caller;
+};
+struct GltfDeformationNumericRefusal {
+  GltfDeformationNumericRefusalReason reason;
+  std::optional<std::uint64_t> partition;
+  bool caller = false;
+  std::optional<bool> nearest_even;
+  std::optional<bool> ftz_disabled;
+  std::optional<bool> daz_disabled;
+  std::optional<GltfDeformationFloatingUnit> unit;
+  GltfDeformationExceptionMasks exception_masks;
+};
+struct GltfDeformationNumericObservation {
+  GltfDeformationNumericProfile profile =
+      GltfDeformationNumericProfile::kRneGradualV1;
+  std::optional<std::string_view> compiled_profile;  // Static compiled text.
+  std::uint64_t guard_calls = 0;
+  std::uint64_t established_calls = 0;
+  std::uint64_t exact_blocks = 0;
+  GltfDeformationExceptionMasks exception_masks;
+  std::optional<GltfDeformationNumericRefusal> refusal;
+};
+enum class GltfWeightSumScope { kAssetCoreInfluenceRows = 0 };
+struct GltfWeightSumSample {
+  std::uint64_t mesh = 0, primitive = 0, vertex = 0, set_count = 0;
+  std::uint64_t nonzero_weights = 0;
+  std::uint64_t sum_bits = 0, deviation_bits = 0, epsilon_bits = 0;
+  bool advisory = false, all_zero = false;
+};
+struct GltfWeightSumSummary {
+  GltfWeightSumScope scope = GltfWeightSumScope::kAssetCoreInfluenceRows;
+  bool complete = false;
+  std::uint64_t floating_rows_expected = 0, rows_evaluated = 0;
+  std::uint64_t advisory_rows = 0, all_zero_rows = 0;
+  std::optional<GltfWeightSumSample> first_evaluated;
+  std::optional<GltfWeightSumSample> first_advisory;
+};
+enum class GltfQuaternionRole {
+  kNodeRotation = 0,
+  kAnimationValue = 1,
+  kCubicTangent = 2
+};
+enum class GltfQuaternionEncoding {
+  kJsonDecimal = 0,
+  kFloat32 = 1,
+  kSnorm8 = 2,
+  kUnorm8 = 3,
+  kSnorm16 = 4,
+  kUnorm16 = 5
+};
+enum class GltfQuaternionSourceRefusalReason {
+  kRange = 0,
+  kNonfinite = 1,
+  kNonunit = 2,
+  kRepresentation = 3
+};
+enum class GltfQuaternionDiagnosticRule : std::uint32_t {
+  kNodeExactRange = 0x00010001,
+  kAnimationNonfinite = 0x00010002,
+  kFloatMagnitudeNonunit = 0x00010003,
+  kExactBandNonunit = 0x00010004,
+  kFilterBandNonunit = 0x00010005,
+  kRepresentationEnvelope = 0x00010006
+};
+struct GltfQuaternionSourceRefusal {
+  GltfQuaternionRole role;
+  GltfQuaternionEncoding encoding;
+  std::optional<std::uint64_t> node;
+  std::optional<std::uint64_t> animation;
+  std::optional<std::uint64_t> sampler;
+  std::optional<std::uint64_t> key;
+  std::optional<std::uint64_t> accessor;
+  std::optional<std::uint64_t> row;
+  GltfQuaternionSourceRefusalReason reason;
+};
+struct GltfQuaternionUnitSummary {
+  std::string_view policy;
+  bool complete = false;
+  std::uint64_t node_values_checked = 0;
+  std::uint64_t animation_values_checked = 0;
+  std::uint64_t tangent_rows_checked = 0;
+  std::uint64_t rows_admitted = 0;
+  std::optional<GltfQuaternionSourceRefusal> first_refusal;
+};
+struct GltfNodeRotationSourceView {
+  static constexpr std::size_t kQuaternionComponents = 4;
+  std::uint64_t node = 0;
+  bool authored = false;
+  std::span<const GltfRawNumberView> authored_components;
+  std::optional<std::span<const std::uint32_t, kQuaternionComponents>>
+      projected_components;
+};
+struct GltfDeformationLocation {
+  std::optional<std::uint64_t> user, skin, target, set, sampler, channel;
+  std::optional<std::uint64_t> vertex, component;
+};
+struct GltfDeformationCounts {
+  std::uint64_t node_rows = 0, mesh_users = 0, skin_rows = 0;
+  std::uint64_t joint_references = 0, influence_sets = 0, lane_checks = 0;
+  std::uint64_t morph_targets = 0, morph_channels = 0, animation_channels = 0;
+  std::uint64_t distinct_samplers = 0, keys_checked = 0, scalar_checks = 0;
+  std::uint64_t sparse_writes = 0, relationship_steps = 0;
+  std::uint64_t decoded_bytes_checked = 0;
+};
+struct GltfDeformationPredicates {
+  std::optional<bool> source_admission, influences, bindings, morphs;
+  std::optional<bool> affecting_animation, canonical_association;
+  std::optional<bool> output_reload, staged_reload;
+};
+struct GltfDeformationExecution {
+  // Actual totals across admitted/executed sequential dependency phases;
+  // caller jobs are observed dispatches, never inferred from worker counts.
+  std::uint64_t planned_jobs = 0, launched_workers = 0;
+  std::uint64_t joined_workers = 0, caller_jobs = 0;
+};
+struct GltfDeformationObservation {
+  GltfStatus status = GltfStatus::kInvalidRequest;
+  GltfDiagnostic diagnostic{GltfStatus::kInvalidRequest,
+                            GltfDiagnosticCode::kInvalidRequest,
+                            {},
+                            {},
+                            {},
+                            {},
+                            0};
+  GltfDeformationPhase phase = GltfDeformationPhase::kConfiguration;
+  bool complete = false;
+  GltfDeformationLocation location;
+  GltfDeformationCounts counts;
+  GltfDeformationPredicates predicates;
+  std::uint64_t new_requested_bytes = 0, effective_request_cap = 0;
+  GltfDeformationWorkPolicy work;
+  GltfDeformationExecution execution;
+  std::optional<GltfDeformationNumericObservation> numeric;
+  std::optional<GltfWeightSumSummary> weight_sums;
+  std::optional<GltfQuaternionUnitSummary> quaternions;
+};
+struct GltfReadRequest {
+  GltfAdmissionProfile admission_profile =
+      GltfAdmissionProfile::kRetainedCoreMetadataV1;
+  GltfDeformationPolicy deformation;
+};
+
 enum class GltfTransformKind { kDefaultTrs, kTrs, kMatrix };
 // Slot and authored-mask owners for GltfNodeView::local_transform_bits.
 struct GltfLocalTransformLayout {
@@ -257,7 +483,8 @@ class GltfInstanceHandle {
 };
 enum class GltfProcessingProfile {
   kStaticLocalTrianglesV1 = 0,
-  kDirectTranslationTrianglesV1 = 1
+  kDirectTranslationTrianglesV1 = 1,
+  kDeformationRetainedTrianglesV1 = 2
 };
 enum class GltfDirectTranslationInterpolation { kLinear = 0, kStep = 1 };
 struct GltfDirectTranslationTrackView {
@@ -289,7 +516,8 @@ enum class GltfCapabilityReason {
   kUnknownCoreRole,
   kUnsupportedEnum,
   kInvalidSelection,
-  kForeignOwner
+  kForeignOwner,
+  kAdmissionProfileMismatch = 12
 };
 struct GltfPrimitiveCapability {
   GltfProcessingProfile profile;
@@ -327,6 +555,23 @@ class GltfAsset {
   [[nodiscard]] GltfPrimitiveCapability Capability(
       const GltfPrimitiveHandle& primitive) const;
 
+  // Immutable configuration/source observations. Legacy owners return null;
+  // returned borrows require this visible owner alive and unreassigned.
+  [[nodiscard]] const GltfDeformationPolicy* DeformationReadPolicy()
+      const noexcept;
+  [[nodiscard]] std::optional<std::string_view> QuaternionPolicy()
+      const noexcept;
+  [[nodiscard]] std::span<const GltfNodeRotationSourceView>
+  NodeRotationSources() const noexcept;
+  [[nodiscard]] const GltfDeformationObservation* DeformationReadFacts()
+      const noexcept;
+  [[nodiscard]] std::optional<GltfNormativeRevision> DeformationRevision()
+      const noexcept;
+  // Metadata preview only; this cannot establish binary or numerical admission.
+  [[nodiscard]] GltfPrimitiveCapability Capability(
+      const GltfPrimitiveHandle& primitive,
+      GltfProcessingProfile profile) const;
+
  private:
   friend struct gltf_detail::Access;
   explicit GltfAsset(std::shared_ptr<const gltf_detail::AssetState>);
@@ -335,6 +580,7 @@ class GltfAsset {
 struct GltfReadResult {
   std::optional<GltfAsset> asset;
   GltfDiagnostic diagnostic;
+  std::optional<GltfDeformationObservation> deformation{};
 };
 // Caller spans remain alive and unmodified until this synchronous call returns.
 // All worker threads join before return; the result owns captured bytes.
@@ -357,6 +603,14 @@ struct GltfReadOperationLimits {
     std::span<const std::byte> json,
     std::span<const SuppliedGltfResource> supplied_resources,
     const GltfReadOperationLimits& limits, const GltfWorkPolicy& work_policy,
+    const geometry::ExecutionContext& context, std::stop_token stop = {});
+
+// Explicit read interpretation; the existing overload/defaults are unchanged.
+[[nodiscard]] GltfReadResult ReadGltfAssetCapped(
+    std::span<const std::byte> json,
+    std::span<const SuppliedGltfResource> supplied_resources,
+    const GltfReadRequest& request, const GltfReadOperationLimits& limits,
+    const GltfWorkPolicy& work_policy,
     const geometry::ExecutionContext& context, std::stop_token stop = {});
 
 enum class GltfComponentType {
@@ -421,6 +675,10 @@ struct GltfExtractionRequest {
   GltfValueRequest values = GltfValueRequest::kInvalid;
   GltfProcessingProfile processing_profile =
       GltfProcessingProfile::kStaticLocalTrianglesV1;
+  GltfDeformationPolicy deformation{};
+  // Exact source-qualified vertex-row-local declarations, borrowed until
+  // return.
+  std::span<const GltfDeformationRowLocalDeclaration> deformation_row_local{};
 };
 class GltfPrimitiveExtraction {
  public:
@@ -443,6 +701,13 @@ class GltfPrimitiveExtraction {
   [[nodiscard]] std::optional<GltfChannelView> SourceIndices() const noexcept;
   [[nodiscard]] std::optional<std::uint64_t> MaterialIndex() const noexcept;
 
+  // Genuine source-bound proof/facts; null for legacy selections. Borrows
+  // follow this visible owner's lifetime and external synchronization
+  // requirements.
+  [[nodiscard]] const GltfDeformationProof* Deformation() const noexcept;
+  [[nodiscard]] const GltfDeformationObservation* DeformationFacts()
+      const noexcept;
+
  private:
   friend struct gltf_detail::Access;
   explicit GltfPrimitiveExtraction(
@@ -453,6 +718,7 @@ struct GltfExtractionResult {
   std::optional<GltfPrimitiveExtraction> extraction;
   GltfDiagnostic diagnostic;
   std::optional<GltfDirectTranslationObservation> direct_translation = {};
+  std::optional<GltfDeformationObservation> deformation{};
 };
 [[nodiscard]] GltfExtractionResult ExtractGltfPrimitive(
     const GltfAsset& asset, const GltfPrimitiveHandle& primitive,

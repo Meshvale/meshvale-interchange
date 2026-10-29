@@ -15,6 +15,7 @@
 #include <span>
 #include <stdexcept>
 #include <stop_token>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -118,6 +119,222 @@ void RawAndNormalized() {
       std::get<detail::ChargedValues<float>>(floats.values->raw);
   Require(std::bit_cast<std::uint32_t>(raw_float[0]) == 0x80000000U);
   Require(std::bit_cast<std::uint32_t>(raw_float[1]) == 1);
+}
+void DeformationRawWords() {
+  constexpr std::size_t kRequestBytes = 100000;
+  constexpr std::size_t kWorkers = 4;
+  meshvale::geometry::ExecutionContext context({kWorkers, 1, kRequestBytes});
+  {
+    const detail::AllocationContext root(context, {});
+    const auto parent = root.WithRequestLimit(kRequestBytes);
+    const auto allocation = parent.WithAdditionalRequestLimit(kRequestBytes);
+    // Independent wire inputs: -0, minimum subnormal, signaling NaN and an
+    // arbitrary quiet-NaN payload. No float lvalue/arithmetic reads these
+    // words.
+    const std::array<std::byte, 16> bytes{
+        std::byte{0},    std::byte{0},    std::byte{0},    std::byte{128},
+        std::byte{1},    std::byte{0},    std::byte{0},    std::byte{0},
+        std::byte{1},    std::byte{0},    std::byte{128},  std::byte{127},
+        std::byte{0x45}, std::byte{0x23}, std::byte{0xc1}, std::byte{0x7f}};
+    constexpr std::array<std::uint32_t, 4> kExpected{0x80000000U, 1,
+                                                     0x7f800001U, 0x7fc12345U};
+    detail::AccessorSource source;
+    source.component_type = mv::GltfComponentType::kFloat32;
+    source.count = kExpected.size();
+    source.base = detail::AccessorByteView{0, 0, 0, bytes};
+    const auto ordinary = detail::DecodeAccessor(
+        source, false, Limits(), Policy(), context, allocation, {});
+    Require(!ordinary.values &&
+            ordinary.diagnostic.status == mv::GltfStatus::kMalformed &&
+            ordinary.diagnostic.code == mv::GltfDiagnosticCode::kBinaryValue);
+    source.retain_float_words = true;
+    detail::AccessorExecutionStats stats;
+    auto raw = detail::DecodeAccessor(source, false, Limits(), Policy(),
+                                      context, allocation, {}, &stats);
+    Require(raw.values && raw.values->float_words &&
+            raw.values->normalized.empty() && stats.launched == kWorkers &&
+            stats.joined == kWorkers);
+    const auto& words =
+        std::get<detail::ChargedValues<std::uint32_t>>(raw.values->raw);
+    Require(words.size() == kExpected.size());
+    for (std::size_t i = 0; i < kExpected.size(); ++i)
+      Require(words[i] == kExpected[i]);
+    Require(detail::DecodeAccessor(source, true, Limits(), Policy(), context,
+                                   allocation, {})
+                .diagnostic.status == mv::GltfStatus::kInvalidRequest);
+    const std::array<std::byte, 1> selector{std::byte{0}};
+    const std::array<std::byte, 4> replacement{std::byte{0}, std::byte{0},
+                                               std::byte{128}, std::byte{63}};
+    source.sparse = detail::AccessorSparseSource{1,
+                                                 {1, 0, 0, selector},
+                                                 0,
+                                                 mv::GltfComponentType::kUint8,
+                                                 {2, 0, 0, replacement},
+                                                 0};
+    auto sparse = detail::DecodeAccessor(source, false, Limits(), Policy(),
+                                         context, allocation, {});
+    Require(sparse.values && sparse.values->float_words &&
+            sparse.values->sparse_destinations.size() == 1 &&
+            sparse.values->sparse_destinations[0] == 0);
+    const auto& sparse_words =
+        std::get<detail::ChargedValues<std::uint32_t>>(sparse.values->raw);
+    Require(sparse_words[0] == 0x3f800000U && sparse_words[2] == kExpected[2] &&
+            sparse_words[3] == kExpected[3]);
+    source.component_type = mv::GltfComponentType::kUint8;
+    Require(detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                   allocation, {})
+                .diagnostic.status == mv::GltfStatus::kInvalidRequest);
+    source.retain_float_words = false;
+    source.component_type = mv::GltfComponentType::kUint32;
+    source.count = 2;
+    source.sparse.reset();
+    source.base->stride = 8;
+    source.base->target = detail::ViewTarget::kVertex;
+    source.role = detail::AccessorRole::kVertex;
+    Require(!detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                    allocation, {})
+                 .values);
+    source.role = detail::AccessorRole::kGeneric;
+    Require(!detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                    allocation, {})
+                 .values);
+    source.role = detail::AccessorRole::kDeformationVertex;
+    const auto custom = detail::DecodeAccessor(
+        source, false, Limits(), Policy(), context, allocation, {});
+    Require(custom.values && !custom.values->float_words);
+    const auto& custom_words =
+        std::get<detail::ChargedValues<std::uint32_t>>(custom.values->raw);
+    Require(custom_words.size() == 2 && custom_words[0] == kExpected[0] &&
+            custom_words[1] == kExpected[2]);
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0);
+  std::cout << "deformation raw FLOAT words/sparse/legacy refusal PASS; "
+               "role admission remains separate; payload=0 workers=0\n";
+}
+void DeformationVertexAlignment() {
+  meshvale::geometry::ExecutionContext context({4, 1, 100000});
+  {
+    const detail::AllocationContext allocation(context, {});
+    const std::array<std::byte, 20> wire{};
+    for (const auto type :
+         {mv::GltfComponentType::kUint8, mv::GltfComponentType::kUint16}) {
+      detail::AccessorSource source;
+      source.component_type = type;
+      source.shape = mv::GltfAccessorShape::kVec4;
+      source.count = 2;
+      source.base = detail::AccessorByteView{0, 0, 0, wire};
+      source.role = detail::AccessorRole::kVertex;
+      Require(detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                     allocation, {})
+                  .values.has_value());
+      source.role = detail::AccessorRole::kDeformationVertex;
+      const auto absent_stride = detail::DecodeAccessor(
+          source, false, Limits(), Policy(), context, allocation, {});
+      Require(!absent_stride.values &&
+              absent_stride.diagnostic.status == mv::GltfStatus::kMalformed &&
+              absent_stride.diagnostic.code ==
+                  mv::GltfDiagnosticCode::kBinaryLayout);
+      source.base->stride = type == mv::GltfComponentType::kUint8 ? 4 : 8;
+      Require(detail::DecodeAccessor(source, false, Limits(), Policy(), context,
+                                     allocation, {})
+                  .values.has_value());
+      source.base_offset = 2;
+      Require(!detail::DecodeAccessor(source, false, Limits(), Policy(),
+                                      context, allocation, {})
+                   .values);
+    }
+    // No base vertex stream exists here. Sparse replacement data remains
+    // tightly packed; the new base-stride condition cannot invent a stride.
+    const std::array<std::byte, 1> selector{std::byte{1}};
+    const std::array<std::byte, 4> replacement{std::byte{1}, std::byte{2},
+                                               std::byte{3}, std::byte{4}};
+    detail::AccessorSource sparse;
+    sparse.component_type = mv::GltfComponentType::kUint8;
+    sparse.shape = mv::GltfAccessorShape::kVec4;
+    sparse.count = 2;
+    sparse.role = detail::AccessorRole::kDeformationVertex;
+    sparse.sparse = detail::AccessorSparseSource{1,
+                                                 {0, 0, 0, selector},
+                                                 0,
+                                                 mv::GltfComponentType::kUint8,
+                                                 {1, 0, 0, replacement},
+                                                 0};
+    Require(detail::DecodeAccessor(sparse, false, Limits(), Policy(), context,
+                                   allocation, {})
+                .values.has_value());
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0);
+}
+void PreparedRawRows() {
+  meshvale::geometry::ExecutionContext context({4, 1, 100000});
+  {
+    std::stop_source stop;
+    const detail::AllocationContext allocation(context, stop.get_token());
+    const std::array<std::byte, 16> bytes{
+        std::byte{1},  std::byte{2},  std::byte{3},  std::byte{4},
+        std::byte{5},  std::byte{6},  std::byte{7},  std::byte{8},
+        std::byte{9},  std::byte{10}, std::byte{11}, std::byte{12},
+        std::byte{13}, std::byte{14}, std::byte{15}, std::byte{16}};
+    detail::AccessorSource source;
+    source.component_type = mv::GltfComponentType::kUint16;
+    source.shape = mv::GltfAccessorShape::kVec2;
+    source.count = 4;
+    source.role = detail::AccessorRole::kDeformationVertex;
+    source.base = detail::AccessorByteView{0, 0, 0, bytes, 4};
+    struct Visits {
+      std::size_t scalars = 0, references = 0, bytes = 0;
+      std::stop_source* cancel = nullptr;
+    } visits;
+    detail::AccessorCopyWork work{
+        [](void* state) {
+          auto& v = *static_cast<Visits*>(state);
+          ++v.scalars;
+          if (v.cancel && v.scalars == 2) v.cancel->request_stop();
+        },
+        [](void* state) { ++static_cast<Visits*>(state)->references; },
+        [](std::size_t count, void* state) {
+          static_cast<Visits*>(state)->bytes += count;
+        },
+        &visits};
+    auto prepared = detail::PrepareAccessorDecode(source, false, Limits(),
+                                                  allocation, &work);
+    Require(prepared.values && visits.scalars == 0 && visits.bytes == 0);
+    const auto& values =
+        std::get<detail::ChargedValues<std::uint16_t>>(prepared.values->raw);
+    for (const auto value : values) Require(value == 0);
+    Require(detail::CopyPreparedAccessorRows(source, *prepared.values, 0, 2,
+                                             allocation, stop.get_token(),
+                                             &work)
+                .status == mv::GltfStatus::kAccepted);
+    Require(detail::CopyPreparedAccessorRows(source, *prepared.values, 2, 4,
+                                             allocation, stop.get_token(),
+                                             &work)
+                .status == mv::GltfStatus::kAccepted);
+    constexpr std::array<std::uint16_t, 8> kExpected{
+        0x0201, 0x0403, 0x0605, 0x0807, 0x0a09, 0x0c0b, 0x0e0d, 0x100f};
+    for (std::size_t i = 0; i < values.size(); ++i)
+      Require(values[i] == kExpected[i]);
+    Require(visits.scalars == 8 && visits.references == 4 &&
+            visits.bytes == 16);
+    Require(detail::CopyPreparedAccessorRows(source, *prepared.values, 0, 5,
+                                             allocation, stop.get_token(),
+                                             &work)
+                .status == mv::GltfStatus::kInvalidRequest);
+    auto partial =
+        detail::PrepareAccessorDecode(source, false, Limits(), allocation);
+    Require(partial.values.has_value());
+    visits = {};
+    visits.cancel = &stop;
+    const auto canceled = detail::CopyPreparedAccessorRows(
+        source, *partial.values, 0, 4, allocation, stop.get_token(), &work);
+    Require(canceled.status == mv::GltfStatus::kCanceled &&
+            visits.scalars == 2 && visits.bytes == 4);
+    const auto& partial_values =
+        std::get<detail::ChargedValues<std::uint16_t>>(partial.values->raw);
+    Require(partial_values[0] == 0x0201 && partial_values[1] == 0x0403 &&
+            partial_values[2] == 0);
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0);
 }
 void NormalizedRoundingEnvironment() {
   struct EnvironmentRestore {
@@ -401,10 +618,20 @@ void AllocationFaults() {
   Require(accepted && rejected >= 4);
 }
 }  // namespace
-int main() {
+int main(int argc, char** argv) {
   try {
+    if (argc == 2 && std::string_view(argv[1]) == "--deformation-raw-words") {
+      DeformationRawWords();
+      DeformationVertexAlignment();
+      PreparedRawRows();
+      return 0;
+    }
+    Require(argc == 1);
     LayoutAndSparse();
     RawAndNormalized();
+    DeformationRawWords();
+    DeformationVertexAlignment();
+    PreparedRawRows();
     NormalizedRoundingEnvironment();
     OtherMatrixLayouts();
     FailureAndLifetime();

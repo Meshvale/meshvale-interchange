@@ -5,6 +5,7 @@
 #include <meshvale/geometry/attributes.h>
 #include <meshvale/geometry/materialization.h>
 #include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_deformation.h>
 
 #include <cstdint>
 #include <memory>
@@ -75,7 +76,9 @@ enum class GltfMaterializationDiagnosticCode {
   kRequestBudget,
   kStopRequested,
   kGeometry,
-  kStorageIssues
+  kStorageIssues,
+  kDeformationPolicyRequired = 11,
+  kDeformation = 12
 };
 struct GltfMaterializationDiagnostic {
   GltfMaterializationStage stage = GltfMaterializationStage::kBridge;
@@ -112,6 +115,11 @@ class GltfMaterializedPrimitive {
   [[nodiscard]] GltfMaterializationRequestedBytes NewRequestedBytes()
       const noexcept;
 
+  [[nodiscard]] std::span<const GltfDeformationAssociationView>
+  DeformationAssociations() const noexcept;
+  [[nodiscard]] const GltfDeformationObservation* DeformationFacts()
+      const noexcept;
+
  private:
   friend struct gltf_materialization_detail::Access;
   explicit GltfMaterializedPrimitive(
@@ -125,6 +133,7 @@ struct GltfMaterializationResult {
   std::optional<GltfMaterializedPrimitive> primitive;
   GltfMaterializationDiagnostic diagnostic;
   GltfMaterializationExecution execution;
+  std::optional<GltfDeformationObservation> deformation{};
 };
 
 // Synchronous raw transfer using the extraction's retained context and a fresh
@@ -135,6 +144,16 @@ struct GltfMaterializationResult {
     const GltfMaterializationLimits& limits,
     const geometry::MeshMaterializationWorkPolicy& work,
     std::stop_token stop = {});
+
+// Retained deformation policy overload. All five arguments are required so
+// existing three/four-argument brace calls retain their original overload.
+// Policies/borrows remain valid through return and all joins. Expected typed
+// failures publish no owner; unexpected exceptions propagate after joins.
+[[nodiscard]] GltfMaterializationResult MaterializeGltfPrimitive(
+    const GltfPrimitiveExtraction& extraction,
+    const GltfDeformationPolicy& deformation,
+    const GltfMaterializationLimits& limits,
+    const geometry::MeshMaterializationWorkPolicy& work, std::stop_token stop);
 
 }  // namespace meshvale::interchange
 #endif  // MESHVALE_INTERCHANGE_GLTF_MATERIALIZATION_H_

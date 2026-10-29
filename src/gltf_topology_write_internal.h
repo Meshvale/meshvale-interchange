@@ -60,6 +60,7 @@ struct LexicalSpan {
     const GltfTopologyWriteLimits& limits,
     const GltfTopologyWriteWorkPolicy& work, std::stop_token stop,
     const gltf_detail::AllocationBackend& allocation_backend,
-    const NativeWorkerBackend& worker_backend);
+    const NativeWorkerBackend& worker_backend,
+    const GltfDeformationPolicy* deformation = nullptr);
 }  // namespace meshvale::interchange::gltf_topology_write_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_TOPOLOGY_WRITE_INTERNAL_H_

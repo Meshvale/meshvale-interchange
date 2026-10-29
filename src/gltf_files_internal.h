@@ -100,7 +100,9 @@ GltfFileDiagnostic CaptureFiles(
     const geometry::ExecutionContext& context, std::stop_token stop,
     const GltfFileTestOptions& testing, GltfFileExecution& execution,
     std::optional<std::span<const std::byte>> expected_json_prefix = {},
-    const gltf_detail::NativeExecutionOptions& verification_execution = {});
+    const gltf_detail::NativeExecutionOptions& verification_execution = {},
+    const GltfReadRequest* read_request = nullptr,
+    std::optional<GltfDeformationObservation>* deformation = nullptr);
 // Equal-length borrowed spans survive every job and join. Returns the first
 // differing byte, with known mismatch finalized before cooperative
 // cancellation.

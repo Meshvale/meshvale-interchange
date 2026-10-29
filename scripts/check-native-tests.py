@@ -32,8 +32,8 @@ COMMON_TESTS = frozenset({
     "ply_interchange", "ply_requests",
     "stl_interchange", "stl_requests",
     "off_interchange", "off_requests",
-    "glb_container", "obj_interchange", "obj_files", "gltf_allocation",
-    "gltf_read", "gltf_execution_budget", "gltf_resources", "gltf_write", "gltf_metadata",
+    "glb_container", "obj_interchange", "obj_files", "gltf_allocation", "gltf_quaternion_math",
+    "gltf_read", "gltf_deformation_read", "gltf_deformation_catalog", "gltf_deformation_extract", "gltf_execution_budget", "gltf_resources", "gltf_write", "gltf_metadata",
     "gltf_accessor", "gltf_extract", "gltf_direct_translation", "gltf_json_snapshot",
     "gltf_workflow_read", "gltf_workflow_read_large_index",
 })

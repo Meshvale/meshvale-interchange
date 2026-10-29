@@ -2,6 +2,7 @@
 #include <meshvale/geometry/editable_mesh.h>
 #include <meshvale/interchange/gltf.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -13,8 +14,10 @@
 #include <string_view>
 #include <utility>
 
+#include "gltf_deformation_read.h"
 #include "gltf_file_read_provider.h"
 #include "gltf_metadata.h"
+#include "gltf_numerical_profile.h"
 #include "gltf_operation_workers.h"
 #include "gltf_parser.h"
 #include "gltf_resources.h"
@@ -98,10 +101,37 @@ GltfReadResult ReadAsset(
     gltf_detail::AllocationBackend backend,
     const gltf_detail::NativeExecutionOptions* execution,
     gltf_detail::FileResourceProvider provider = nullptr,
-    void* provider_state = nullptr) {
+    void* provider_state = nullptr, const GltfReadRequest* request = nullptr) {
   using namespace gltf_detail;
+  std::shared_ptr<AssetState> state;
+  std::optional<GltfDeformationObservation> deformation;
+  if (request && request->admission_profile ==
+                     GltfAdmissionProfile::kRetainedCoreDeformationV1) {
+    deformation.emplace();
+    deformation->work = request->deformation.work;
+  }
+  const auto refused = [&](GltfDiagnostic diagnostic) {
+    auto facts = state ? state->deformation_read : deformation;
+    if (facts) {
+      facts->status = diagnostic.status;
+      facts->diagnostic = diagnostic;
+      if (state)
+        facts->new_requested_bytes =
+            state->deformation_allocation.OperationActiveBytes();
+      if (diagnostic.code == GltfDiagnosticCode::kNumericalProfile)
+        facts->phase = GltfDeformationPhase::kNumericGate;
+    }
+    return GltfReadResult{std::nullopt, diagnostic, facts};
+  };
   try {
     Configuration(limits, policy);
+    if (request &&
+        request->admission_profile !=
+            GltfAdmissionProfile::kRetainedCoreMetadataV1 &&
+        request->admission_profile !=
+            GltfAdmissionProfile::kRetainedCoreDeformationV1)
+      Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest);
+    if (deformation) ValidateDeformationConfiguration(request->deformation);
     if (request_cap) {
       if (*request_cap == 0)
         Fail(GltfStatus::kInvalidLimits, GltfDiagnosticCode::kZeroLimit);
@@ -148,58 +178,101 @@ GltfReadResult ReadAsset(
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kJsonSyntax);
       }
     }
-    auto state =
-        request_cap
-            ? std::allocate_shared<AssetState>(
-                  Allocator<AssetState>(allocation), allocation, context,
-                  limits, policy, std::move(*captured.snapshot))
-            : std::allocate_shared<AssetState>(
-                  Allocator<AssetState>(allocation), context, stop, limits,
-                  policy, std::move(*captured.snapshot));
+    AllocationContext deformation_allocation;
+    AllocationContext descriptors;
+    if (deformation) {
+      const auto parent_active = allocation.OperationActiveBytes();
+      const auto remaining = *request_cap - parent_active;
+      deformation->effective_request_cap = std::min(
+          request->deformation.limits.max_new_requested_bytes, remaining);
+      deformation_allocation = allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(deformation->effective_request_cap));
+      const auto descriptor_cap =
+          std::min(request->deformation.limits.max_descriptor_bytes,
+                   deformation->effective_request_cap -
+                       deformation_allocation.OperationActiveBytes());
+      descriptors = deformation_allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(descriptor_cap));
+    }
+    state = deformation
+                ? std::allocate_shared<AssetState>(
+                      Allocator<AssetState>(descriptors), allocation, context,
+                      limits, policy, std::move(*captured.snapshot))
+            : request_cap
+                ? std::allocate_shared<AssetState>(
+                      Allocator<AssetState>(allocation), allocation, context,
+                      limits, policy, std::move(*captured.snapshot))
+                : std::allocate_shared<AssetState>(
+                      Allocator<AssetState>(allocation), context, stop, limits,
+                      policy, std::move(*captured.snapshot));
+    if (request) state->read_request = *request;
+    state->deformation_allocation = deformation_allocation;
+    state->deformation_descriptors = descriptors;
+    state->deformation_read = deformation;
+    if (state->deformation_read) {
+      state->deformation_read->phase = GltfDeformationPhase::kDeclarations;
+    }
     RawNumbers(*state);
     AdmitMetadata(*state);
     BuildGraph(*state);
     CheckDeclaredGraphRelationships(*state);
+    if (state->deformation_read) AdmitDeformationRotations(*state);
     if (provider) supplied_resources = provider(*state, provider_state);
     AdmitResources(*state, supplied_resources, nullptr, nullptr, execution);
     const auto projection = BuildCoreProjection(*state);
+    if (state->deformation_read) {
+      auto& numeric = state->deformation_read->numeric;
+      if (!numeric) numeric.emplace();
+      if (!EstablishGltfNumericalProfile(*numeric, std::nullopt, true))
+        Fail(GltfStatus::kUnsupportedProfile,
+             GltfDiagnosticCode::kNumericalProfile);
+    }
     const auto parsed = InspectCoreProjection(
         {projection.data(), projection.size()}, allocation);
     if (!parsed.accepted)
       Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreReference);
     allocation.Checkpoint();
-    return {Access::MakeAsset(std::move(state)), AcceptedDiagnostic()};
+    if (state->deformation_read) {
+      auto& facts = *state->deformation_read;
+      facts.status = GltfStatus::kAccepted;
+      facts.diagnostic = AcceptedDiagnostic();
+      facts.phase = GltfDeformationPhase::kComplete;
+      facts.complete = true;
+      facts.predicates.source_admission = true;
+      facts.new_requested_bytes =
+          state->deformation_allocation.OperationActiveBytes();
+      deformation = facts;
+    }
+    return {Access::MakeAsset(std::move(state)), AcceptedDiagnostic(),
+            deformation};
   } catch (const GltfFailure& failure) {
-    return {std::nullopt, failure.Diagnostic()};
+    return refused(failure.Diagnostic());
   } catch (const AdmissionFailure& failure) {
     switch (failure.Code()) {
       case AdmissionCode::kSizeLimit:
-        return {std::nullopt,
-                {GltfStatus::kUnsupportedProfile,
-                 GltfDiagnosticCode::kLimitExceeded,
-                 {},
-                 {},
-                 {},
-                 {},
-                 0}};
+        return refused({GltfStatus::kUnsupportedProfile,
+                        GltfDiagnosticCode::kLimitExceeded,
+                        {},
+                        {},
+                        {},
+                        {},
+                        0});
       case AdmissionCode::kBudgetExceeded:
-        return {std::nullopt,
-                {GltfStatus::kBudgetExceeded,
-                 GltfDiagnosticCode::kPayloadBudget,
-                 {},
-                 {},
-                 {},
-                 {},
-                 0}};
+        return refused({GltfStatus::kBudgetExceeded,
+                        GltfDiagnosticCode::kPayloadBudget,
+                        {},
+                        {},
+                        {},
+                        {},
+                        0});
       case AdmissionCode::kCanceled:
-        return {std::nullopt,
-                {GltfStatus::kCanceled,
-                 GltfDiagnosticCode::kCanceled,
-                 {},
-                 {},
-                 {},
-                 {},
-                 0}};
+        return refused({GltfStatus::kCanceled,
+                        GltfDiagnosticCode::kCanceled,
+                        {},
+                        {},
+                        {},
+                        {},
+                        0});
       case AdmissionCode::kInvalidObject:
         throw;
     }
@@ -220,11 +293,12 @@ void gltf_detail::ValidateFileReadConfiguration(
 GltfReadResult gltf_detail::ReadGltfAssetFromFiles(
     std::span<const std::byte> json, const GltfReadOperationLimits& limits,
     const GltfWorkPolicy& policy, const geometry::ExecutionContext& context,
-    std::stop_token stop, FileResourceProvider provider, void* provider_state) {
+    std::stop_token stop, FileResourceProvider provider, void* provider_state,
+    const GltfReadRequest* request) {
   const NativeExecutionOptions execution;
   return ReadAsset(json, {}, limits.source, policy, context, stop,
                    limits.max_new_requested_bytes, DefaultAllocationBackend(),
-                   &execution, provider, provider_state);
+                   &execution, provider, provider_state, request);
 }
 GltfReadResult ReadGltfAsset(
     std::span<const std::byte> json,
@@ -244,6 +318,18 @@ GltfReadResult ReadGltfAssetCapped(
   return ReadAsset(json, supplied_resources, limits.source, policy, context,
                    stop, limits.max_new_requested_bytes,
                    gltf_detail::DefaultAllocationBackend(), &execution);
+}
+GltfReadResult ReadGltfAssetCapped(
+    std::span<const std::byte> json,
+    std::span<const SuppliedGltfResource> supplied_resources,
+    const GltfReadRequest& request, const GltfReadOperationLimits& limits,
+    const GltfWorkPolicy& policy, const geometry::ExecutionContext& context,
+    std::stop_token stop) {
+  const gltf_detail::NativeExecutionOptions execution;
+  return ReadAsset(json, supplied_resources, limits.source, policy, context,
+                   stop, limits.max_new_requested_bytes,
+                   gltf_detail::DefaultAllocationBackend(), &execution, nullptr,
+                   nullptr, &request);
 }
 namespace gltf_detail {
 GltfReadResult TestReadGltfAssetCapped(

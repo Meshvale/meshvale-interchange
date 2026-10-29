@@ -17,8 +17,10 @@ struct OperationBudget {
   std::atomic<std::size_t> references{1};
   std::atomic<std::size_t> active;
   std::size_t maximum;
-  OperationBudget(std::size_t seed, std::size_t limit)
-      : active(seed), maximum(limit) {}
+  OperationOwner parent;
+  OperationBudget(std::size_t seed, std::size_t limit,
+                  OperationOwner parent_owner = {})
+      : active(seed), maximum(limit), parent(std::move(parent_owner)) {}
 };
 namespace {
 struct Header {
@@ -207,10 +209,17 @@ bool OperationOwner::Reserve(std::size_t bytes) const noexcept {
       return false;
   } while (!budget_->active.compare_exchange_weak(current, current + bytes,
                                                   std::memory_order_relaxed));
+  if (!budget_->parent.Reserve(bytes)) {
+    budget_->active.fetch_sub(bytes, std::memory_order_relaxed);
+    return false;
+  }
   return true;
 }
 void OperationOwner::Release(std::size_t bytes) const noexcept {
-  if (budget_) budget_->active.fetch_sub(bytes, std::memory_order_relaxed);
+  if (budget_) {
+    budget_->active.fetch_sub(bytes, std::memory_order_relaxed);
+    budget_->parent.Release(bytes);
+  }
 }
 std::size_t OperationOwner::ActiveBytes() const noexcept {
   return budget_ ? budget_->active.load(std::memory_order_relaxed) : 0;
@@ -228,6 +237,23 @@ AllocationContext AllocationContext::WithRequestLimit(std::size_t bytes) const {
   AllocationContext result(*this);
   auto* storage = Allocate(sizeof(OperationBudget), alignof(OperationBudget));
   auto* budget = new (storage) OperationBudget(seed, bytes);
+  result.operation_ = OperationOwner(budget);
+  return result;
+}
+AllocationContext AllocationContext::WithAdditionalRequestLimit(
+    std::size_t bytes) const {
+  if (!operation_.budget_)
+    throw AdmissionFailure(AdmissionCode::kInvalidObject);
+  const auto seed =
+      AllocationRequestBytes(sizeof(OperationBudget), alignof(OperationBudget));
+  // The new owner's seed is admitted before calling the real parent/backend.
+  // Its Header retains only the parent, avoiding a self-ownership cycle.
+  if (bytes < seed)
+    throw AdmissionFailure(AdmissionCode::kSizeLimit,
+                           AdmissionProvenance::kOperationRequestLimit);
+  auto* storage = Allocate(sizeof(OperationBudget), alignof(OperationBudget));
+  auto* budget = new (storage) OperationBudget(seed, bytes, operation_);
+  AllocationContext result(*this);
   result.operation_ = OperationOwner(budget);
   return result;
 }

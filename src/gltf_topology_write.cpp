@@ -30,8 +30,10 @@
 
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_read.h"
 #include "gltf_direct_translation.h"
 #include "gltf_json_snapshot.h"
+#include "gltf_numerical_profile.h"
 #include "gltf_topology_write_internal.h"
 #include "gltf_topology_write_workers.h"
 #if defined(MESHVALE_INTERCHANGE_TESTING)
@@ -92,6 +94,12 @@ constexpr std::string_view kTrianglesToken = "4";
 constexpr std::size_t kUnsignedDecimalCapacity =
     std::numeric_limits<std::uint64_t>::digits10 + 1;
 constexpr std::size_t kNoDifference = std::numeric_limits<std::size_t>::max();
+constexpr std::string_view kPositionSemantic = "POSITION";
+constexpr std::string_view kJointsSemanticPrefix = "JOINTS_";
+constexpr std::string_view kWeightsSemanticPrefix = "WEIGHTS_";
+constexpr std::string_view kJointIndicesSemantic = "joint_indices";
+constexpr std::string_view kJointWeightsSemantic = "joint_weights";
+constexpr std::string_view kMorphDeltaSemantic = "gltf.morph.delta";
 
 void Configuration(const GltfTopologyWriteLimits& limits,
                    const GltfTopologyWriteWorkPolicy& work) {
@@ -263,15 +271,40 @@ struct Session {
   std::stop_token stop;
   const NativeWorkerBackend& backend;
   GltfTopologyWriteExecution& execution;
+  GltfDeformationObservation* deformation = nullptr;
   template <class Function>
   void Run(std::size_t count, std::size_t width, Function& operation,
            GltfTopologyWriteExecutionStats& stats) {
-    RunRange(
-        context, allocation, work, count, width,
-        [](void* state, std::size_t begin, std::size_t end) {
-          (*static_cast<Function*>(state))(begin, end);
-        },
-        &operation, stop, stats, backend);
+    const auto before = stats;
+    auto observe = [&] {
+      if (!deformation) return;
+      auto& target = deformation->execution;
+      target.planned_jobs =
+          Add(target.planned_jobs, stats.planned_jobs - before.planned_jobs,
+              Stage::kVerification);
+      target.caller_jobs =
+          Add(target.caller_jobs, stats.caller_jobs - before.caller_jobs,
+              Stage::kVerification);
+      target.launched_workers =
+          Add(target.launched_workers,
+              stats.launched_workers - before.launched_workers,
+              Stage::kVerification);
+      target.joined_workers = Add(target.joined_workers,
+                                  stats.joined_workers - before.joined_workers,
+                                  Stage::kVerification);
+    };
+    try {
+      RunRange(
+          context, allocation, work, count, width,
+          [](void* state, std::size_t begin, std::size_t end) {
+            (*static_cast<Function*>(state))(begin, end);
+          },
+          &operation, stop, stats, backend);
+    } catch (...) {
+      observe();
+      throw;
+    }
+    observe();
   }
   void Check(std::size_t processed, std::size_t width = 1) const {
     const auto block =
@@ -474,13 +507,16 @@ std::size_t Multiply(std::size_t left, std::size_t right, Stage stage) {
 }
 struct BundleState {
   BundleState(const GltfMaterializedPrimitive& input,
-              const AllocationContext& operation)
+              const AllocationContext& operation,
+              const AllocationContext* descriptors = nullptr)
       : source(input),
         allocation(operation),
-        faces(Allocator<index_t>(operation)),
-        corners(Allocator<index_t>(operation)),
-        original_corners(Allocator<GltfSourceCorner>(operation)),
-        resources(Allocator<GltfResourceView>(operation))
+        faces(Allocator<index_t>(descriptors ? *descriptors : operation)),
+        corners(Allocator<index_t>(descriptors ? *descriptors : operation)),
+        original_corners(Allocator<GltfSourceCorner>(descriptors ? *descriptors
+                                                                 : operation)),
+        resources(
+            Allocator<GltfResourceView>(descriptors ? *descriptors : operation))
 #if defined(MESHVALE_INTERCHANGE_TESTING)
         ,
         test_resource_storage(Allocator<ByteBlock>(operation))
@@ -498,6 +534,7 @@ struct BundleState {
   ByteBlock json;
   std::optional<GltfTopologyBindingChange> change;
   std::optional<GltfDirectTranslationObservation> direct_translation;
+  std::optional<GltfDeformationObservation> deformation;
 #if defined(MESHVALE_INTERCHANGE_TESTING)
   std::optional<GltfTopologyWriteBundle> test_parent;
   Vector<ByteBlock> test_resource_storage;
@@ -871,6 +908,138 @@ void CopyMaps(const GltfTopologyWriteRequest& request, BundleState& output,
 }
 }  // namespace
 
+namespace {
+// The admitted typed source and checked canonical rows are prerequisites. Only
+// the selected index/mode and appended index tables change. Inspect this call's
+// actual emitted segments, retained resource bytes and full associations before
+// certifying any preservation domain; never copy the source's predicates or
+// invent a new weight/quaternion evaluation.
+void VerifyDeformationWrite(const GltfTopologyWriteRequest& request,
+                            const Plan& plan, const BundleState& output,
+                            Session& session,
+                            const GltfDeformationPolicy& policy,
+                            GltfDeformationObservation& observation) {
+  auto& predicates = observation.predicates;
+  predicates.influences = false;
+  predicates.bindings = false;
+  predicates.morphs = false;
+  predicates.affecting_animation = false;
+  const auto* proof = request.source.SourceExtraction().Deformation();
+  if (!proof)
+    Reject(Status::kSourceContractFailure, Stage::kVerification,
+           Code::kDeformation);
+  auto reference = [&] {
+    session.allocation.Checkpoint();
+    if (observation.counts.relationship_steps ==
+        policy.limits.max_relationship_steps)
+      Reject(Status::kLimitExceeded, Stage::kVerification, Code::kCountLimit);
+    ++observation.counts.relationship_steps;
+  };
+  const auto candidate = request.candidate.Source().View();
+  const auto associations = request.source.DeformationAssociations();
+  std::size_t ordinal = 0;
+  auto association = [&](std::uint64_t accessor, std::string_view semantic,
+                         std::optional<std::uint64_t> target,
+                         std::optional<std::uint64_t> set) {
+    reference();
+    Bound(Add(ordinal, 1, Stage::kVerification), policy.limits.max_role_edges,
+          Stage::kVerification);
+    if (ordinal >= associations.size())
+      Reject(Status::kSourceContractFailure, Stage::kVerification,
+             Code::kDeformation);
+    const auto& actual = associations[ordinal++];
+    if (actual.mesh != proof->Primitive().MeshIndex() ||
+        actual.primitive != proof->Primitive().PrimitiveIndex() ||
+        actual.accessor != accessor || actual.target != target ||
+        actual.set != set)
+      Reject(Status::kSourceContractFailure, Stage::kVerification,
+             Code::kDeformation);
+    session.SameText(semantic, actual.semantic, {});
+    if (!target && semantic == kPositionSemantic) {
+      if (actual.destination !=
+              GltfDeformationDestination::kCanonicalPositions ||
+          actual.canonical_attribute ||
+          actual.encoding !=
+              GltfDeformationTransferEncoding::kFloatPositionWidened)
+        Reject(Status::kSourceContractFailure, Stage::kVerification,
+               Code::kDeformation);
+    } else {
+      if (actual.destination !=
+              GltfDeformationDestination::kCanonicalVertexAttribute ||
+          !actual.canonical_attribute ||
+          *actual.canonical_attribute >= candidate.attributes.size())
+        Reject(Status::kSourceContractFailure, Stage::kVerification,
+               Code::kDeformation);
+      const auto& channel = candidate.attributes[static_cast<std::size_t>(
+          *actual.canonical_attribute)];
+      session.SameText(actual.declaration_name, channel.name,
+                       actual.canonical_attribute);
+      const auto expected_semantic =
+          target                                         ? kMorphDeltaSemantic
+          : semantic.starts_with(kJointsSemanticPrefix)  ? kJointIndicesSemantic
+          : semantic.starts_with(kWeightsSemanticPrefix) ? kJointWeightsSemantic
+                                                         : semantic;
+      session.SameText(expected_semantic, channel.semantic,
+                       actual.canonical_attribute);
+    }
+  };
+  for (const auto& channel : request.source.SourceExtraction().Channels())
+    association(channel.accessor_index, channel.semantic, {},
+                channel.set_index);
+  for (const auto& primitive : proof->MorphPrimitives()) {
+    reference();
+    if (primitive.mesh != proof->Primitive().MeshIndex() ||
+        primitive.primitive != proof->Primitive().PrimitiveIndex())
+      continue;
+    for (const auto& channel : primitive.channels)
+      association(channel.delta_accessor, channel.semantic, channel.target,
+                  channel.set);
+  }
+  if (ordinal != associations.size())
+    Reject(Status::kSourceContractFailure, Stage::kVerification,
+           Code::kDeformation);
+  std::size_t cursor = 0;
+  for (const auto& segment : plan.segments) {
+    reference();
+    if (cursor > output.json.size || segment.output_begin != cursor ||
+        segment.bytes.size() > output.json.size - cursor)
+      Reject(Status::kPreservationMismatch, Stage::kVerification,
+             Code::kDeformation);
+    session.SameBytes(segment.bytes,
+                      output.json.View().subspan(cursor, segment.bytes.size()),
+                      Code::kDeformation);
+    cursor = Add(cursor, segment.bytes.size(), Stage::kVerification);
+  }
+  if (cursor != output.json.size)
+    Reject(Status::kPreservationMismatch, Stage::kVerification,
+           Code::kDeformation);
+  const auto resources = request.source.SourceAsset().Resources();
+  if (output.resources.size() !=
+      Add(resources.size(), output.change ? 1 : 0, Stage::kVerification))
+    Reject(Status::kPreservationMismatch, Stage::kVerification,
+           Code::kDeformation);
+  for (std::size_t i = 0; i < resources.size(); ++i) {
+    reference();
+    const auto& source = resources[i];
+    const auto& actual = output.resources[i];
+    if (source.kind != actual.kind ||
+        source.table_index != actual.table_index ||
+        source.origin != actual.origin ||
+        source.logical_bytes != actual.logical_bytes ||
+        source.buffer_index != actual.buffer_index ||
+        source.buffer_view_index != actual.buffer_view_index)
+      Reject(Status::kPreservationMismatch, Stage::kVerification,
+             Code::kDeformation);
+    session.SameText(source.authored_uri, actual.authored_uri, {});
+    session.SameBytes(source.bytes, actual.bytes, Code::kDeformation);
+  }
+  predicates.influences = true;
+  predicates.bindings = true;
+  predicates.morphs = true;
+  predicates.affecting_animation = true;
+}
+}  // namespace
+
 // Per-call allocation/backend seam stays in the private owner, with no change
 // to the public reader or unchanged writer. Production always uses defaults.
 GltfTopologyWriteResult WriteWithBackend(
@@ -878,11 +1047,43 @@ GltfTopologyWriteResult WriteWithBackend(
     const GltfTopologyWriteLimits& limits,
     const GltfTopologyWriteWorkPolicy& work, std::stop_token stop,
     const gltf_detail::AllocationBackend& allocation_backend,
-    const NativeWorkerBackend& worker_backend) {
+    const NativeWorkerBackend& worker_backend,
+    const GltfDeformationPolicy* deformation) {
   GltfTopologyWriteResult result;
   auto stage = Stage::kAdmission;
   try {
     Configuration(limits, work);
+    const auto* deformation_proof =
+        request.source.SourceExtraction().Deformation();
+    if ((deformation_proof != nullptr) != (deformation != nullptr))
+      Reject(Status::kInvalidConfiguration, Stage::kAdmission,
+             Code::kDeformationPolicyRequired);
+    if (deformation) {
+      gltf_detail::ValidateDeformationConfiguration(*deformation);
+      result.deformation.emplace();
+      result.deformation->work = deformation->work;
+      result.deformation->effective_request_cap =
+          std::min(deformation->limits.max_new_requested_bytes,
+                   limits.output.max_output_requested_bytes);
+      result.deformation->phase = GltfDeformationPhase::kNumericGate;
+      result.deformation->numeric.emplace();
+      if (!gltf_detail::EstablishGltfNumericalProfile(
+              *result.deformation->numeric, {}, true))
+        gltf_detail::Fail(GltfStatus::kUnsupportedProfile,
+                          GltfDiagnosticCode::kNumericalProfile);
+      result.deformation->phase = GltfDeformationPhase::kAssociation;
+      result.deformation->predicates.canonical_association = false;
+      const auto* facts = request.source.DeformationFacts();
+      if (!facts || !facts->complete ||
+          facts->predicates.canonical_association != true ||
+          gltf_detail::Access::Owner(deformation_proof->Asset()) !=
+              gltf_detail::Access::Owner(request.source.SourceAsset()) ||
+          deformation_proof->Primitive().MeshIndex() !=
+              request.source.SourcePrimitive().MeshIndex() ||
+          deformation_proof->Primitive().PrimitiveIndex() !=
+              request.source.SourcePrimitive().PrimitiveIndex())
+        Reject(Status::kSourceContractFailure, stage, Code::kSourceProvenance);
+    }
     const bool translated =
         request.source.SourceExtraction().ProcessingProfile() ==
         GltfProcessingProfile::kDirectTranslationTrianglesV1;
@@ -918,7 +1119,8 @@ GltfTopologyWriteResult WriteWithBackend(
     const auto capability = request.source.SourceAsset()
                                 .Capability(request.source.SourcePrimitive())
                                 .reason;
-    if (!translated && capability != GltfCapabilityReason::kReady &&
+    if (!translated && !deformation_proof &&
+        capability != GltfCapabilityReason::kReady &&
         capability != GltfCapabilityReason::kBinaryAdmissionPending)
       Reject(Status::kUnsupportedProfile, stage, Code::kSourceCapability);
     const auto* proof = gltf_detail::Access::ExtractionTranslation(
@@ -944,8 +1146,38 @@ GltfTopologyWriteResult WriteWithBackend(
     root.Checkpoint();
     auto allocation = root.WithRequestLimit(
         static_cast<std::size_t>(limits.output.max_output_requested_bytes));
-    Session session{context, allocation,     work,
-                    stop,    worker_backend, result.execution};
+    const auto complete_allocation = allocation;
+    auto descriptors = allocation;
+    auto bytes = allocation;
+    if (deformation) {
+      const auto live = complete_allocation.OperationActiveBytes();
+      if (live >= limits.output.max_output_requested_bytes)
+        throw AdmissionFailure(AdmissionCode::kSizeLimit);
+      result.deformation->effective_request_cap =
+          std::min(deformation->limits.max_new_requested_bytes,
+                   limits.output.max_output_requested_bytes - live);
+      allocation = allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(result.deformation->effective_request_cap));
+      descriptors = allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(deformation->limits.max_descriptor_bytes));
+      bytes = allocation.WithAdditionalRequestLimit(
+          static_cast<std::size_t>(deformation->limits.max_decoded_bytes));
+    }
+    auto selected_work = work;
+    if (deformation) {
+      selected_work.parallel_min_bytes = deformation->work.parallel_min_bytes;
+      selected_work.partition_bytes = deformation->work.partition_bytes;
+      selected_work.cancellation_block_bytes =
+          deformation->work.cancellation_block_bytes;
+      selected_work.max_jobs = deformation->work.max_jobs;
+    }
+    Session session{context,
+                    descriptors,
+                    selected_work,
+                    stop,
+                    worker_backend,
+                    result.execution,
+                    result.deformation ? &*result.deformation : nullptr};
     stage = Stage::kVerification;
     const auto bad_face = session.Find(
         request.source_faces.size(), sizeof(index_t), [&](std::size_t i) {
@@ -960,6 +1192,8 @@ GltfTopologyWriteResult WriteWithBackend(
              {}, static_cast<index_t>(*bad_face));
     VerifyAttributes(source, candidate, session);
     VerifyTopology(request, source, candidate, session);
+    if (result.deformation)
+      result.deformation->predicates.canonical_association = true;
     const bool changed = candidate_faces != source_faces;
     if (changed && candidate_faces == 0)
       Reject(Status::kUnsupportedSelection, stage,
@@ -992,37 +1226,60 @@ GltfTopologyWriteResult WriteWithBackend(
                 : 0;
     // Lexical ownership is independent even for exact no-op output.
     const auto spans =
-        BuildLexicalIndex(asset.document, allocation, limits, work);
+        BuildLexicalIndex(asset.document, descriptors, limits, selected_work);
     auto output = std::allocate_shared<BundleState>(
-        Allocator<BundleState>(allocation), request.source, allocation);
+        Allocator<BundleState>(descriptors), request.source,
+        complete_allocation, &descriptors);
     output->direct_translation = result.direct_translation;
     output->resources.assign(asset.resources.begin(), asset.resources.end());
-    Plan plan(allocation);
+    Plan plan(descriptors);
     if (changed) {
-      output->indices.Allocate(index_bytes, allocation);
-      output->uri.Allocate(uri_bytes, allocation);
+      output->indices.Allocate(index_bytes, bytes);
+      output->uri.Allocate(uri_bytes, bytes);
       stage = Stage::kIndexEncoding;
       EncodeIndices(request, *output, session);
       stage = Stage::kBase64Encoding;
       EncodeBase64(*output, session);
       stage = Stage::kLexicalPlanning;
-      MakePlan(plan, request, asset, spans, *output, allocation);
+      MakePlan(plan, request, asset, spans, *output, descriptors);
     } else {
-      Segments(plan, asset.document.Original(), allocation);
+      Segments(plan, asset.document.Original(), descriptors);
     }
     Bound(plan.output_size, limits.output.max_json_bytes, stage);
-    output->json.Allocate(plan.output_size, allocation);
+    output->json.Allocate(plan.output_size, bytes);
     stage = Stage::kOutputCopy;
     CopyMaps(request, *output, session);
     CopyOutput(plan, *output, session);
+    if (result.deformation)
+      VerifyDeformationWrite(request, plan, *output, session, *deformation,
+                             *result.deformation);
     stage = Stage::kPublication;
     allocation.Checkpoint();
+    if (result.deformation) {
+      result.deformation->status = GltfStatus::kAccepted;
+      result.deformation->diagnostic = gltf_detail::AcceptedDiagnostic();
+      result.deformation->phase = GltfDeformationPhase::kComplete;
+      result.deformation->complete = true;
+      result.deformation->new_requested_bytes =
+          allocation.OperationActiveBytes();
+      output->deformation = result.deformation;
+    }
     result.status = Status::kSuccess;
     result.diagnostic.stage = stage;
     result.bundle = Access::Make(std::move(output));
   } catch (const Failure& failure) {
     result.status = failure.Status();
     result.diagnostic = failure.Diagnostic();
+  } catch (const gltf_detail::GltfFailure& failure) {
+    result.status = failure.Diagnostic().status == GltfStatus::kInvalidLimits
+                        ? Status::kInvalidConfiguration
+                        : Status::kUnsupportedProfile;
+    result.diagnostic.stage = stage;
+    result.diagnostic.code = Code::kDeformation;
+    if (result.deformation) {
+      result.deformation->status = failure.Diagnostic().status;
+      result.deformation->diagnostic = failure.Diagnostic();
+    }
   } catch (const AdmissionFailure& failure) {
     result.diagnostic.stage = stage;
     switch (failure.Code()) {
@@ -1040,6 +1297,26 @@ GltfTopologyWriteResult WriteWithBackend(
         break;
       case AdmissionCode::kInvalidObject:
         throw;
+    }
+  }
+  if (result.deformation && result.status != Status::kSuccess) {
+    result.deformation->complete = false;
+    if (result.diagnostic.code != Code::kDeformation) {
+      result.deformation->status =
+          result.status == Status::kCanceled ? GltfStatus::kCanceled
+          : result.status == Status::kBudgetExceeded
+              ? GltfStatus::kBudgetExceeded
+          : result.status == Status::kInvalidConfiguration
+              ? GltfStatus::kInvalidLimits
+              : GltfStatus::kUnsupportedProfile;
+      result.deformation->diagnostic.status = result.deformation->status;
+      result.deformation->diagnostic.code =
+          result.status == Status::kCanceled ? GltfDiagnosticCode::kCanceled
+          : result.status == Status::kBudgetExceeded
+              ? GltfDiagnosticCode::kPayloadBudget
+          : result.status == Status::kLimitExceeded
+              ? GltfDiagnosticCode::kLimitExceeded
+              : GltfDiagnosticCode::kInvalidSelection;
     }
   }
   return result;
@@ -1095,8 +1372,21 @@ const GltfDirectTranslationObservation*
 GltfTopologyWriteBundle::DirectTranslationFacts() const noexcept {
   return owner_->direct_translation ? &*owner_->direct_translation : nullptr;
 }
+const GltfDeformationObservation* GltfTopologyWriteBundle::DeformationFacts()
+    const noexcept {
+  return owner_->deformation ? &*owner_->deformation : nullptr;
+}
 std::uint64_t GltfTopologyWriteBundle::NewRequestedBytes() const noexcept {
   return owner_->allocation.OperationActiveBytes();
+}
+GltfTopologyWriteResult WriteGltfTopologySelection(
+    const GltfTopologyWriteRequest& request,
+    const GltfDeformationPolicy& deformation,
+    const GltfTopologyWriteLimits& limits,
+    const GltfTopologyWriteWorkPolicy& work, std::stop_token stop) {
+  return gltf_topology_write_detail::WriteWithBackend(
+      request, limits, work, stop, gltf_detail::DefaultAllocationBackend(),
+      gltf_topology_write_detail::DefaultNativeWorkerBackend(), &deformation);
 }
 GltfTopologyWriteResult WriteGltfTopologySelection(
     const GltfTopologyWriteRequest& request,
