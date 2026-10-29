@@ -388,7 +388,7 @@ def native(runner, root, output, profile, common, dependency, checker, compiler,
                "--configuration", CONFIGURATION, "--materialization-profile", profile,
                "--compiler-id", compiler, "--topology-write", "OFF", "--stl-files", "ON")
     expected = checker["expected_inventory"](profile, topology_write=False, stl_files=True)
-    if len(expected) != (26 if profile == "qualified" else 25):
+    if len(expected) != (30 if profile == "qualified" else 29):
         raise RuntimeError("Candidate native contract inventory changed")
     tests(runner, build, expected, "native", profile == "unsupported")
     before = sdk_manifest(sdk)
@@ -412,13 +412,15 @@ def native(runner, root, output, profile, common, dependency, checker, compiler,
                "--configuration", CONFIGURATION, "--materialization-profile", profile,
                "--compiler-id", compiler, "--topology-write", "OFF", "--stl-files", "OFF")
     expected = checker["expected_inventory"](profile, topology_write=False)
-    if len(expected) != 23:
+    if len(expected) != 27:
         raise RuntimeError("Default-OFF native inventory changed")
     tests(runner, off, expected, "default-off")
     manifest = sdk_manifest(off_sdk)
     write_json(runner.evidence / "default-off-sdk.json", manifest)
-    if len(manifest) != 30 or any("stl_files" in item["path"] for item in manifest):
-        raise RuntimeError("Default-OFF SDK must retain 30 files and no STL-files artifact")
+    if (len(manifest) != 31 or any("stl_files" in item["path"] for item in manifest) or
+            not any(item["path"] == "include/meshvale/interchange/gltf_deformation.h"
+                    for item in manifest)):
+        raise RuntimeError("Default-OFF SDK must retain 31 files, the deformation header and no STL-files artifact")
     for path in off_sdk.rglob("*.cmake"):
         if "meshvale::stl_files" in path.read_text(encoding="utf-8"):
             raise RuntimeError("Default-OFF export unexpectedly contains the optional target")
@@ -793,13 +795,13 @@ def qualify(args):
     checker = run_path(str(root / "scripts/check-native-tests.py"))
     result = {"candidate_only": True, "passed": False, "mode": args.mode,
               "materialization_profile": args.profile, "python": args.python,
-              "native_expected": (26 if args.profile == "qualified" else 25)
+              "native_expected": (30 if args.profile == "qualified" else 29)
                                  if args.mode == "native" else None,
               "runtime_tests_per_wheel": 34 if args.mode == "python" else None,
               "boundary_cases_per_runtime": 4 if args.mode == "python" else None,
               "boundary_replays_per_runtime": 15 if args.mode == "python" else None,
               "windows_alias_gate_required": args.require_windows_aliases,
-              "default_off_expected": 23 if args.mode == "native" and
+              "default_off_expected": 27 if args.mode == "native" and
                                       args.profile == "qualified" else None,
               "native_geometry": GEOMETRY_NATIVE_REVISION,
               "python_geometry": GEOMETRY_PYTHON_REVISION,
