@@ -73,9 +73,6 @@ constexpr mv::GltfExtractionRequest kExtract{
 void Require(bool condition, std::string_view message) {
   if (!condition) throw std::runtime_error(std::string(message));
 }
-std::span<const std::byte> Bytes(std::string_view text) {
-  return std::as_bytes(std::span(text));
-}
 std::vector<char> File(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   Require(bool(file), "literal input open");
@@ -485,17 +482,19 @@ void IndependentRegression(std::string_view name, bool binary,
     auto users = extracted.extraction->Deformation()->Users();
     Require(users.size() == 6, "three authored users of each actual primitive");
     for (const auto& user : users) {
-      const auto expected_skin = user.node < 2
-                                     ? std::optional<std::uint64_t>(user.node)
-                                     : std::nullopt;
       std::cout << "skin-user=" << user.node << '/' << user.primitive
                 << " authored="
                 << (user.skin ? std::to_string(*user.skin) : "null")
                 << " instantiated=" << user.instantiated_as_skinned
                 << std::endl;
-      Require(user.skin == expected_skin &&
-                  user.instantiated_as_skinned ==
-                      (user.node < 2 && user.primitive == 0),
+      Require(user.skin.has_value() == (user.node < 2),
+              "authored skin reference presence retained");
+      if (user.skin) {
+        Require(*user.skin == user.node,
+                "authored skin reference value retained");
+      }
+      Require(user.instantiated_as_skinned ==
+                  (user.node < 2 && user.primitive == 0),
               "authored skin reference retained, POSITION-only sibling not "
               "instantiated as skinned");
     }
