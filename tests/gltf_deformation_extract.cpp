@@ -81,11 +81,13 @@ constexpr geo::MeshMaterializationWorkPolicy kMaterializationWork{1, 64, 64,
 void Require(bool value, std::string_view message) {
   if (!value) throw std::runtime_error(std::string(message));
 }
+#if defined(MESHVALE_TEST_DEFORMATION_OUTPUT)
 bool PreservedDomains(const mv::GltfDeformationObservation& facts) {
   return facts.predicates.influences == true &&
          facts.predicates.bindings == true && facts.predicates.morphs == true &&
          facts.predicates.affecting_animation == true;
 }
+#endif
 std::vector<char> File(const std::filesystem::path& path, bool hexadecimal) {
   std::ifstream input(path, std::ios::binary);
   Require(bool(input), "literal input open");
