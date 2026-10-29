@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-MATERIALIZATION-001 |
-| Version | 0.2.0 |
+| Version | 0.3.0 |
 | Status | Development interface |
 | Owner | Interchange |
 
@@ -177,3 +177,13 @@ Unqualified numerical producers must retain explicit unsupported outcomes.
 Direct charged Repair, broader skin/weight/morph/animation/material/image
 processing, edited primitive re-embedding, filesystem publication, Python and
 batch workflows require separate implementations. This static adapter does not establish those capabilities or a stable release.
+
+## GDEF-TRANSFER-PROJECTION-001: Retained deformation selection
+
+The [retained deformation contract](gltf-deformation.md) selects the opt-in
+deformation-retained-v1 extension for raw canonical transfer and source authority.
+Development implementation is present; full workflow and dependency-cohort
+qualification and release availability remain pending. Existing static/direct-translation clauses, defaults and
+unchanged-request wire keep their current meaning. The new contract owns the
+additional source/read/processing authority, policies, roles and called facts.
+There is no implicit source upgrade or widening of a legacy schema/preset.

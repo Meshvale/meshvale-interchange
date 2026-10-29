@@ -247,6 +247,7 @@ struct Probe {
   fs::path stage, destination, moved;
   std::atomic<std::size_t> opens{0}, closes{0};
   std::atomic<bool> changed{false};
+  std::atomic<std::size_t> physical_mutations{0};
   Fault fault = Fault::kNone;
   bool close_failure = false, committed = false, late_stop = false;
   Phase stop_phase = Phase::kComplete;
@@ -284,15 +285,21 @@ struct Probe {
       auto bytes = f::Read(member);
       Require(!bytes.empty(),
               "substitution targets actual nonempty staged file");
-      bytes.back() ^= std::byte{1};
+      // Keep the receipt mutation inside its pending offset-zero read block;
+      // another partition may already have read its tail.
+      auto& substituted_byte = ordinal == 0 ? bytes.back() : bytes.front();
+      substituted_byte ^= std::byte{1};
       f::Write(member, bytes);
+      ++self.physical_mutations;
     }
   }
   static void Inventory(detail::NativeView stage, void* state) {
     auto& self = *static_cast<Probe*>(state);
     if (self.changed.exchange(true)) return;
-    if (self.fault == Fault::kForeign)
+    if (self.fault == Fault::kForeign) {
       f::Write(fs::path(stage) / "foreign", f::Bytes("foreign bytes"));
+      ++self.physical_mutations;
+    }
     if (self.fault == Fault::kIdentity) {
       self.moved = fs::path(stage);
       self.moved += "-original";
@@ -300,6 +307,7 @@ struct Probe {
       Require(fs::create_directory(fs::path(stage)),
               "actual stage directory substituted");
       f::Write(fs::path(stage) / "foreign", f::Bytes("replacement survives"));
+      ++self.physical_mutations;
     }
   }
   static std::error_code CommitError(void* state) {
@@ -309,6 +317,7 @@ struct Probe {
       Require(fs::create_directory(self.destination),
               "actual racing destination created");
       f::Write(self.destination / "foreign", f::Bytes("race winner"));
+      ++self.physical_mutations;
     }
     return {};  // The real native no-replace call must decide this race.
   }
@@ -483,6 +492,9 @@ struct Provider {
   }
 };
 void ExpectedFaults(const ic::StlFileAsset& source, const fs::path& root) {
+  constexpr std::size_t kExpectedPhysicalMutations = 1;
+  constexpr std::string_view kFaultDiagnosticPrefix =
+      "[STL-expected-fault-diagnostic] ";
   for (auto fault : {Fault::kEntry, Fault::kReceipt, Fault::kForeign,
                      Fault::kIdentity, Fault::kRace}) {
     Probe probe;
@@ -492,6 +504,28 @@ void ExpectedFaults(const ic::StlFileAsset& source, const fs::path& root) {
     const auto result = detail::RewriteForTesting(
         source, probe.destination, f::Retain(ic::StlEncoding::kAscii),
         f::RewriteLimits(), f::RewriteWork(), {}, probe.Options());
+    const auto physical_mutations = probe.physical_mutations.load();
+    if (physical_mutations != kExpectedPhysicalMutations ||
+        result.status == Status::kSuccess || result.bundle || probe.committed) {
+      std::cerr << kFaultDiagnosticPrefix
+                << "fault=" << static_cast<unsigned>(fault)
+                << " status=" << static_cast<int>(result.status)
+                << " phase=" << static_cast<int>(result.phase)
+                << " code=" << static_cast<int>(result.diagnostic.code)
+                << " output=" << bool(result.output)
+                << " bundle=" << bool(result.bundle)
+                << " fresh=" << bool(result.fresh_document)
+                << " verified=" << bool(result.verified)
+                << " changed=" << probe.changed.load()
+                << " physical_mutations=" << physical_mutations
+                << " committed=" << probe.committed
+                << " opens=" << probe.opens.load()
+                << " closes=" << probe.closes.load()
+                << " commit_attempts=" << probe.commit_attempts
+                << " cleanup=" << static_cast<int>(result.cleanup) << '\n';
+    }
+    Require(physical_mutations == kExpectedPhysicalMutations,
+            "expected physical fault completed exactly one mutation");
     Require(
         result.status != Status::kSuccess && !result.bundle && !probe.committed,
         "physical substitution/race never produces publication owner");

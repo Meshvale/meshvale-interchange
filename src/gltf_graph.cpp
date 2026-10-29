@@ -318,7 +318,7 @@ void BuildGraph(AssetState& state) {
       node.authored_transform_mask = GltfLocalTransformLayout::kAuthoredMatrix;
       for (std::uint64_t i = 0; i < node.local_transform_bits.size(); ++i)
         node.local_transform_bits[i] =
-            ReadFloatBits(doc, *ChildAt(doc, *matrix, i));
+            ProjectFloatBits(state, *ChildAt(doc, *matrix, i));
     } else {
       for (std::size_t field = 0; field < kTrs.size(); ++field) {
         const auto array = FindMember(doc, source, kTrs[field]);
@@ -328,7 +328,7 @@ void BuildGraph(AssetState& state) {
         std::size_t at = kTrsOffsets[field];
         for (auto value = doc.FirstChild(*array); value;
              value = doc.NextSibling(*value))
-          node.local_transform_bits[at++] = ReadFloatBits(doc, *value);
+          node.local_transform_bits[at++] = ProjectFloatBits(state, *value);
       }
     }
     state.nodes.push_back(node);

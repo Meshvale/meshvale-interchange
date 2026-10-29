@@ -2,6 +2,7 @@
 #ifndef MESHVALE_INTERCHANGE_SRC_GLTF_ASSET_STATE_H_
 #define MESHVALE_INTERCHANGE_SRC_GLTF_ASSET_STATE_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -41,13 +42,23 @@ struct AssetState {
              JsonSnapshot document);
   geometry::ExecutionContext context;
   AllocationContext allocation;
+  // Detached for legacy reads. Explicit deformation scopes retain the same
+  // complete request/root while applying coupled storage sublimits.
+  AllocationContext deformation_allocation;
+  AllocationContext deformation_descriptors;
   GltfReadLimits limits;
   GltfWorkPolicy work_policy;
+  GltfReadRequest read_request;
+  std::optional<GltfDeformationObservation> deformation_read;
   JsonSnapshot document;
   OwnedVector<std::uint32_t> guard_rules;
   OwnedVector<OwnedVector<std::byte>> resource_storage;
   OwnedVector<GltfResourceView> resources;
   OwnedVector<GltfRawNumberView> raw_numbers;
+  OwnedVector<std::array<GltfRawNumberView,
+                         GltfNodeRotationSourceView::kQuaternionComponents>>
+      node_rotation_storage;
+  OwnedVector<GltfNodeRotationSourceView> node_rotations;
   OwnedVector<OwnedVector<std::uint64_t>> children;
   OwnedVector<GltfNodeView> nodes;
   OwnedVector<OwnedVector<std::uint64_t>> roots;

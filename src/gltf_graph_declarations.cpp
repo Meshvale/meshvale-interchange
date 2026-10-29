@@ -125,6 +125,9 @@ void Morphs(const AssetState& state) {
       state.allocation.Checkpoint();
       const auto targets = FindMember(doc, *primitive, kTargets);
       const auto count = targets ? ChildCount(doc, *targets) : 0;
+      if (!targets && state.read_request.admission_profile ==
+                          GltfAdmissionProfile::kRetainedCoreDeformationV1)
+        continue;
       if (target_count && *target_count != count) RelationshipFailure();
       target_count = count;
       if (!targets) continue;
@@ -140,7 +143,9 @@ void Morphs(const AssetState& state) {
           for (const auto candidate : kCoreMorphAttributes)
             core = core || candidate == semantic;
           if (!base) {
-            if (core) RelationshipFailure();
+            if (core || state.read_request.admission_profile ==
+                            GltfAdmissionProfile::kRetainedCoreDeformationV1)
+              RelationshipFailure();
             continue;
           }
           const auto base_accessor =
@@ -184,8 +189,12 @@ void Animations(const AssetState& state) {
       if (!target_node) continue;
       const auto node_index = ReadExactUnsigned(doc, *target_node);
       const auto node = Row(doc, kNodes, node_index);
-      if (FindMember(doc, node, kMatrix)) RelationshipFailure();
       const auto path = doc.String(*FindMember(doc, target, kPath));
+      if (FindMember(doc, node, kMatrix) &&
+          (state.read_request.admission_profile !=
+               GltfAdmissionProfile::kRetainedCoreDeformationV1 ||
+           path != kWeights))
+        RelationshipFailure();
       const Destination destination(node_index, path);
       for (const auto& previous : destinations)
         if (previous == destination) RelationshipFailure();

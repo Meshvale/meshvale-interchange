@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <meshvale/interchange/gltf_deformation.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -352,6 +354,264 @@ void VerifyReload(const Operation& operation, Stats& stats) {
               gltf_detail::CheckedProduct(corners, sizeof(geometry::index_t)),
               SelectedTopology::Check, &topology, stats);
   }
+}
+void VerifyDeformationReload(const Operation& operation, Stats& stats,
+                             const GltfDeformationPolicy& policy,
+                             GltfDeformationObservation& observation) {
+  const auto* source =
+      operation.request.source.SourceExtraction().Deformation();
+  const auto* actual = operation.request.reloaded_extraction.Deformation();
+  const auto diagnostic =
+      Location(Stage::kReloadedPrimitive, Code::kDeformation);
+  BytePlan plan(operation);
+  auto relationship = [&] {
+    operation.allocation.Checkpoint();
+    if (observation.counts.relationship_steps ==
+        policy.limits.max_relationship_steps)
+      Fail(Status::kLimitExceeded, Stage::kReloadedPrimitive,
+           Code::kCountLimit);
+    ++observation.counts.relationship_steps;
+  };
+  plan.Require(source && actual, diagnostic);
+  if (!source || !actual) {
+    plan.Run(stats);
+    return;
+  }
+  const auto expected_revision = source->NormativeRevision();
+  const auto actual_revision = actual->NormativeRevision();
+  plan.Require(
+      source->AdmissionProfile() == actual->AdmissionProfile() &&
+          source->ProcessingProfile() == actual->ProcessingProfile() &&
+          source->NumericProfile() == actual->NumericProfile() &&
+          source->Primitive().MeshIndex() == actual->Primitive().MeshIndex() &&
+          source->Primitive().PrimitiveIndex() ==
+              actual->Primitive().PrimitiveIndex(),
+      diagnostic);
+  plan.Compare(expected_revision.commit, actual_revision.commit, diagnostic);
+  plan.Compare(expected_revision.blob, actual_revision.blob, diagnostic);
+  plan.Compare(source->QuaternionPolicy(), actual->QuaternionPolicy(),
+               diagnostic);
+  auto rows = [&](auto expected, auto reloaded, auto check) {
+    plan.Require(expected.size() == reloaded.size(), diagnostic);
+    for (std::size_t i = 0; i < std::min(expected.size(), reloaded.size());
+         ++i) {
+      relationship();
+      check(expected[i], reloaded[i]);
+    }
+  };
+  auto raw = [&](const GltfDeformationRawValues& expected,
+                 const GltfDeformationRawValues& reloaded) {
+    plan.Require(expected.index() == reloaded.index(), diagnostic);
+    if (expected.index() != reloaded.index()) return;
+    std::visit(
+        [&](const auto& view) {
+          using View = std::remove_cvref_t<decltype(view)>;
+          const auto& other = std::get<View>(reloaded);
+          if constexpr (std::is_same_v<View, GltfFloat32BitWords>)
+            plan.Compare(view.little_endian_scalar_words,
+                         other.little_endian_scalar_words, diagnostic,
+                         sizeof(std::uint32_t));
+          else
+            plan.Compare(std::as_bytes(view), std::as_bytes(other), diagnostic,
+                         sizeof(typename View::value_type));
+        },
+        expected);
+  };
+  auto optional_raw = [&](const auto& expected, const auto& reloaded) {
+    plan.Require(expected.has_value() == reloaded.has_value(), diagnostic);
+    if (expected && reloaded) raw(*expected, *reloaded);
+  };
+  // The selected index stream has its independent candidate/topology oracle in
+  // VerifyReload. All other actual accessor uses retain their original index.
+  auto selected_index = [&](const auto& use) {
+    return use.semantic == kIndices &&
+           use.mesh == source->Primitive().MeshIndex() &&
+           use.primitive == source->Primitive().PrimitiveIndex();
+  };
+  rows(source->AccessorUses(), actual->AccessorUses(),
+       [&](const auto& a, const auto& b) {
+         const auto expected_accessor =
+             operation.changed && selected_index(a)
+                 ? OriginalTableCount(operation, kAccessors)
+                 : a.accessor;
+         plan.Require(expected_accessor == b.accessor && a.role == b.role &&
+                          a.mesh == b.mesh && a.primitive == b.primitive &&
+                          a.target == b.target && a.set == b.set &&
+                          a.skin == b.skin && a.animation == b.animation &&
+                          a.sampler == b.sampler && a.channel == b.channel &&
+                          a.node == b.node,
+                      diagnostic);
+         plan.Compare(a.semantic, b.semantic, diagnostic);
+       });
+  for (const auto& a : source->Accessors()) {
+    relationship();
+    bool selected_only = operation.changed;
+    bool used = false;
+    for (const auto& use : source->AccessorUses()) {
+      relationship();
+      if (use.accessor == a.accessor) {
+        used = true;
+        if (!selected_index(use)) selected_only = false;
+      }
+    }
+    if (used && selected_only) continue;
+    const GltfDeformationAccessorView* b = nullptr;
+    for (const auto& candidate : actual->Accessors()) {
+      relationship();
+      if (candidate.accessor == a.accessor) b = &candidate;
+    }
+    plan.Require(b != nullptr, diagnostic);
+    if (!b) continue;
+    plan.Require(a.component_type == b->component_type && a.shape == b->shape &&
+                     a.normalized == b->normalized &&
+                     a.element_count == b->element_count &&
+                     a.base_buffer_view == b->base_buffer_view &&
+                     a.base_byte_offset == b->base_byte_offset &&
+                     a.base_byte_stride == b->base_byte_stride &&
+                     a.packed_sparse_step == b->packed_sparse_step &&
+                     SparseEqual(a.sparse_source, b->sparse_source) &&
+                     a.derived_state == b->derived_state,
+                 diagnostic);
+    plan.Compare(std::as_bytes(a.sparse_destinations),
+                 std::as_bytes(b->sparse_destinations), diagnostic,
+                 sizeof(std::uint64_t));
+    optional_raw(a.exact_min, b->exact_min);
+    optional_raw(a.exact_max, b->exact_max);
+    raw(a.raw, b->raw);
+    plan.Compare(std::as_bytes(a.derived_values),
+                 std::as_bytes(b->derived_values), diagnostic, sizeof(double));
+  }
+  // Raw/layout/use identity is a common prerequisite. A failed common check
+  // does not manufacture called domain results. Each following domain owns
+  // its complete comparisons and survives a later domain's failure.
+  plan.Run(stats);
+  plan.Reset();
+  observation.predicates.influences = false;
+  rows(source->InfluenceSets(), actual->InfluenceSets(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(a.mesh == b.mesh && a.primitive == b.primitive &&
+                          a.set == b.set &&
+                          a.joints_accessor == b.joints_accessor &&
+                          a.weights_accessor == b.weights_accessor,
+                      diagnostic);
+       });
+  plan.Run(stats);
+  observation.predicates.influences = true;
+  plan.Reset();
+  observation.predicates.bindings = false;
+  rows(source->Skins(), actual->Skins(), [&](const auto& a, const auto& b) {
+    plan.Require(a.skin == b.skin && a.skeleton == b.skeleton &&
+                     a.inverse_bind_accessor == b.inverse_bind_accessor,
+                 diagnostic);
+    plan.Compare(std::as_bytes(a.joints), std::as_bytes(b.joints), diagnostic,
+                 sizeof(std::uint64_t));
+  });
+  rows(source->Users(), actual->Users(), [&](const auto& a, const auto& b) {
+    plan.Require(a.node == b.node && a.mesh == b.mesh &&
+                     a.primitive == b.primitive && a.skin == b.skin &&
+                     a.instantiated_as_skinned == b.instantiated_as_skinned &&
+                     a.reachable_from_any_scene == b.reachable_from_any_scene,
+                 diagnostic);
+    plan.Compare(std::as_bytes(a.ancestor_nodes),
+                 std::as_bytes(b.ancestor_nodes), diagnostic,
+                 sizeof(std::uint64_t));
+    plan.Compare(std::as_bytes(a.joint_ancestor_nodes),
+                 std::as_bytes(b.joint_ancestor_nodes), diagnostic,
+                 sizeof(std::uint64_t));
+  });
+  rows(source->Asset().Nodes(), actual->Asset().Nodes(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(
+             a.table_index == b.table_index && a.parent == b.parent &&
+                 a.mesh == b.mesh && a.skin == b.skin &&
+                 a.transform_kind == b.transform_kind &&
+                 a.authored_transform_mask == b.authored_transform_mask &&
+                 a.local_transform_bits == b.local_transform_bits,
+             diagnostic);
+         plan.Compare(a.name, b.name, diagnostic);
+         plan.Compare(std::as_bytes(a.children), std::as_bytes(b.children),
+                      diagnostic, sizeof(std::uint64_t));
+       });
+  rows(source->Asset().Scenes(), actual->Asset().Scenes(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(a.table_index == b.table_index, diagnostic);
+         plan.Compare(a.name, b.name, diagnostic);
+         plan.Compare(std::as_bytes(a.roots), std::as_bytes(b.roots),
+                      diagnostic, sizeof(std::uint64_t));
+       });
+  plan.Run(stats);
+  observation.predicates.bindings = true;
+  plan.Reset();
+  observation.predicates.morphs = false;
+  rows(source->MorphPrimitives(), actual->MorphPrimitives(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(a.mesh == b.mesh && a.primitive == b.primitive &&
+                          a.targets_authored == b.targets_authored &&
+                          a.effective_target_count == b.effective_target_count,
+                      diagnostic);
+         rows(a.channels, b.channels, [&](const auto& x, const auto& y) {
+           plan.Require(x.mesh == y.mesh && x.primitive == y.primitive &&
+                            x.target == y.target && x.set == y.set &&
+                            x.base_accessor == y.base_accessor &&
+                            x.delta_accessor == y.delta_accessor,
+                        diagnostic);
+           plan.Compare(x.semantic, y.semantic, diagnostic);
+         });
+       });
+  rows(source->MorphDefaults(), actual->MorphDefaults(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(a.owner_kind == b.owner_kind &&
+                          a.owner_index == b.owner_index &&
+                          a.authored == b.authored,
+                      diagnostic);
+         rows(a.authored_values, b.authored_values,
+              [&](const auto& x, const auto& y) {
+                plan.Require(x.kind == y.kind, diagnostic);
+                plan.Compare(x.lexeme, y.lexeme, diagnostic);
+              });
+       });
+  rows(source->RowLocalDeclarations(), actual->RowLocalDeclarations(),
+       [&](const auto& a, const auto& b) {
+         plan.Compare(a.name, b.name, diagnostic);
+       });
+  plan.Run(stats);
+  observation.predicates.morphs = true;
+  plan.Reset();
+  observation.predicates.affecting_animation = false;
+  rows(source->Animations(), actual->Animations(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(a.animation == b.animation && a.channel == b.channel &&
+                          a.sampler == b.sampler && a.node == b.node &&
+                          a.path == b.path &&
+                          a.interpolation == b.interpolation &&
+                          a.input_accessor == b.input_accessor &&
+                          a.output_accessor == b.output_accessor &&
+                          a.key_count == b.key_count &&
+                          a.values_per_key == b.values_per_key &&
+                          a.affects_selected_deformation ==
+                              b.affects_selected_deformation,
+                      diagnostic);
+       });
+  rows(source->Asset().NodeRotationSources(),
+       actual->Asset().NodeRotationSources(),
+       [&](const auto& a, const auto& b) {
+         plan.Require(a.node == b.node && a.authored == b.authored &&
+                          a.projected_components.has_value() ==
+                              b.projected_components.has_value(),
+                      diagnostic);
+         if (a.projected_components && b.projected_components)
+           plan.Compare(std::as_bytes(*a.projected_components),
+                        std::as_bytes(*b.projected_components), diagnostic,
+                        sizeof(std::uint32_t));
+         rows(a.authored_components, b.authored_components,
+              [&](const auto& x, const auto& y) {
+                plan.Require(x.kind == y.kind, diagnostic);
+                plan.Compare(x.lexeme, y.lexeme, diagnostic);
+              });
+       });
+  plan.Run(stats);
+  observation.predicates.affecting_animation = true;
+  plan.Reset();
 }
 void VerifyProvenance(const Operation& operation, InspectionState& state,
                       Stats& stats) {

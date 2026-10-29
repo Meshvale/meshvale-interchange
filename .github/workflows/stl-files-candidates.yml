@@ -31,10 +31,10 @@ jobs:
       matrix:
         include:
           - os: windows-2022
-            label: MSVC qualified 26 and default-OFF 23
+            label: MSVC qualified 30 and default-OFF 27
             profile: qualified
           - os: ubuntu-24.04
-            label: GNU13 unsupported 25
+            label: GNU13 unsupported 29
             profile: unsupported
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90

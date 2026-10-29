@@ -11,6 +11,8 @@
 #include <string_view>
 #include <system_error>
 
+#include "gltf_numerical_profile.h"
+
 namespace meshvale::interchange::gltf_detail {
 namespace {
 constexpr std::uint64_t kDecimalRadix = 10;
@@ -174,12 +176,22 @@ std::int64_t ReadExactSigned(const JsonSnapshot& document, std::size_t node) {
   return ExactSigned(document.Number(node));
 }
 std::uint32_t ReadFloatBits(const JsonSnapshot& document, std::size_t node) {
+  return ReadFloatBitsObserved(document, node, nullptr);
+}
+std::uint32_t ProjectFloatBits(AssetState& state, std::size_t node) {
+  if (state.deformation_read && !state.deformation_read->numeric)
+    state.deformation_read->numeric.emplace();
+  auto* numeric =
+      state.deformation_read ? &*state.deformation_read->numeric : nullptr;
+  return ReadFloatBitsObserved(state.document, node, numeric);
+}
+std::uint32_t ReadFloatBitsObserved(
+    const JsonSnapshot& document, std::size_t node,
+    GltfDeformationNumericObservation* observation) {
   if (document.Kind(node) != JsonKind::kNumber)
     Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldType);
   const auto text = document.Number(node);
   const auto decimal = ParseDecimal(text);
-  if (decimal.zero)
-    return std::bit_cast<std::uint32_t>(decimal.negative ? -0.0f : 0.0f);
   // Largest finite binary32, expressed exactly so range checks precede
   // rounding.
   constexpr std::string_view kBinary32Maximum =
@@ -189,6 +201,12 @@ std::uint32_t ReadFloatBits(const JsonSnapshot& document, std::size_t node) {
   if (CompareDecimal(positive, kBinary32Maximum) > 0)
     Fail(GltfStatus::kUnsupportedProfile,
          GltfDiagnosticCode::kUnsupportedNumberRepresentation);
+  if (observation &&
+      !EstablishGltfNumericalProfile(*observation, std::nullopt, true))
+    Fail(GltfStatus::kUnsupportedProfile,
+         GltfDiagnosticCode::kNumericalProfile);
+  if (decimal.zero)
+    return std::bit_cast<std::uint32_t>(decimal.negative ? -0.0f : 0.0f);
   float value = 0;
   const auto converted = std::from_chars(text.data(), text.data() + text.size(),
                                          value, std::chars_format::general);
@@ -262,7 +280,7 @@ void CheckMetadataRelationships(AssetState& state) {
               break;
             }
           if (component == kFloatComponent) {
-            (void)ReadFloatBits(doc, *number);
+            (void)ProjectFloatBits(state, *number);
             continue;
           }
           if (CompareDecimal(value, lower) < 0 ||

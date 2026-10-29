@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | GLTF-TOPOLOGY-WRITE-001 |
-| Version | 0.1.2 |
+| Version | 0.2.0 |
 | Status | Qualified native development candidate; no stable API/ABI or release |
 | Interface | [gltf_topology_write.h](../include/meshvale/interchange/gltf_topology_write.h) |
 
@@ -340,3 +340,13 @@ skin/morph/animation processing, GLB asset conversion, filesystem publication,
 Python bindings and reported Repair API/single/batch command composition. Those
 capabilities require their own qualified contracts. No Repair, private Geometry,
 Eigen or parser interface is part of this public header.
+
+## GDEF-WRITE-PROJECTION-001: Retained deformation selection
+
+The [retained deformation contract](gltf-deformation.md) selects the opt-in
+deformation-retained-v1 extension for checked index-only writing.
+Development implementation is present; full workflow and dependency-cohort
+qualification and release availability remain pending. Existing static/direct-translation clauses, defaults and
+unchanged-request wire keep their current meaning. The new contract owns the
+additional source/read/processing authority, policies, roles and called facts.
+There is no implicit source upgrade or widening of a legacy schema/preset.

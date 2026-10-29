@@ -96,6 +96,12 @@ class AllocationContext {
   // Calling on an already capped context is invalid. Actual backend exceptions
   // preserve both counters. Copies/rebounds retain the same operation cap.
   [[nodiscard]] AllocationContext WithRequestLimit(std::size_t bytes) const;
+  // Explicit additional scope for deformation storage under an existing
+  // complete request. Its charged control seed belongs to both caps. Every
+  // allocation retains this owner and its immutable parent through cleanup;
+  // no fresh ledger and no replacement of the original request allowance.
+  [[nodiscard]] AllocationContext WithAdditionalRequestLimit(
+      std::size_t bytes) const;
   [[nodiscard]] std::size_t OperationActiveBytes() const noexcept;
   [[nodiscard]] bool HasRequestLimit() const noexcept;
   static void Deallocate(void* pointer) noexcept;

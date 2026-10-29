@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <meshvale/interchange/gltf.h>
+#include <meshvale/interchange/gltf_deformation.h>
 
 #include <algorithm>
 #include <bit>
@@ -18,7 +19,9 @@
 #include <variant>
 
 #include "gltf_accessor.h"
+#include "gltf_accessor_source.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_state.h"
 #include "gltf_direct_translation.h"
 #include "gltf_metadata.h"
 #include "gltf_operation_workers.h"
@@ -27,14 +30,6 @@
 namespace meshvale::interchange::gltf_detail {
 namespace {
 // Khronos glTF 2.0 core identifiers and roles, not parser enum ordinals.
-constexpr std::uint64_t kByteComponent = 5120;
-constexpr std::uint64_t kUnsignedByteComponent = 5121;
-constexpr std::uint64_t kShortComponent = 5122;
-constexpr std::uint64_t kUnsignedShortComponent = 5123;
-constexpr std::uint64_t kUnsignedIntComponent = 5125;
-constexpr std::uint64_t kFloatComponent = 5126;
-constexpr std::uint64_t kVertexTarget = 34962;
-constexpr std::uint64_t kIndexTarget = 34963;
 constexpr std::uint64_t kTriangles = 4;
 constexpr std::uint64_t kTriangleStrip = 5;
 constexpr std::uint64_t kTriangleFan = 6;
@@ -53,15 +48,6 @@ constexpr std::uint32_t kLimitRule = 314;
 constexpr std::string_view kAccessors = "accessors";
 constexpr std::string_view kBufferViews = "bufferViews";
 constexpr std::string_view kBufferView = "bufferView";
-constexpr std::string_view kBuffer = "buffer";
-constexpr std::string_view kByteOffset = "byteOffset";
-constexpr std::string_view kByteLength = "byteLength";
-constexpr std::string_view kByteStride = "byteStride";
-constexpr std::string_view kTarget = "target";
-constexpr std::string_view kComponentType = "componentType";
-constexpr std::string_view kType = "type";
-constexpr std::string_view kCount = "count";
-constexpr std::string_view kNormalized = "normalized";
 constexpr std::string_view kSparse = "sparse";
 constexpr std::string_view kIndices = "indices";
 constexpr std::string_view kValues = "values";
@@ -87,13 +73,6 @@ constexpr std::string_view kTexcoordPrefix = "TEXCOORD_";
 constexpr std::string_view kColorPrefix = "COLOR_";
 constexpr std::string_view kJointsPrefix = "JOINTS_";
 constexpr std::string_view kWeightsPrefix = "WEIGHTS_";
-constexpr std::string_view kScalarShape = "SCALAR";
-constexpr std::string_view kVec2Shape = "VEC2";
-constexpr std::string_view kVec3Shape = "VEC3";
-constexpr std::string_view kVec4Shape = "VEC4";
-constexpr std::string_view kMat2Shape = "MAT2";
-constexpr std::string_view kMat3Shape = "MAT3";
-constexpr std::string_view kMat4Shape = "MAT4";
 
 std::size_t Host(std::uint64_t number) {
   if (number > std::numeric_limits<std::size_t>::max())
@@ -131,106 +110,6 @@ std::size_t TableRow(const JsonSnapshot& document, std::string_view table,
   auto row = ChildAt(document, Required(document, 0, table), index);
   if (!row) Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreReference);
   return *row;
-}
-GltfComponentType Component(std::uint64_t identifier) {
-  switch (identifier) {
-    case kByteComponent:
-      return GltfComponentType::kInt8;
-    case kUnsignedByteComponent:
-      return GltfComponentType::kUint8;
-    case kShortComponent:
-      return GltfComponentType::kInt16;
-    case kUnsignedShortComponent:
-      return GltfComponentType::kUint16;
-    case kUnsignedIntComponent:
-      return GltfComponentType::kUint32;
-    case kFloatComponent:
-      return GltfComponentType::kFloat32;
-    default:
-      Fail(GltfStatus::kUnsupportedProfile,
-           GltfDiagnosticCode::kUnsupportedEnum);
-  }
-}
-GltfAccessorShape Shape(std::string_view name) {
-  if (name == kScalarShape) return GltfAccessorShape::kScalar;
-  if (name == kVec2Shape) return GltfAccessorShape::kVec2;
-  if (name == kVec3Shape) return GltfAccessorShape::kVec3;
-  if (name == kVec4Shape) return GltfAccessorShape::kVec4;
-  if (name == kMat2Shape) return GltfAccessorShape::kMat2;
-  if (name == kMat3Shape) return GltfAccessorShape::kMat3;
-  if (name == kMat4Shape) return GltfAccessorShape::kMat4;
-  Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kUnsupportedEnum);
-}
-AccessorByteView ResolveView(const AssetState& asset, std::uint64_t index) {
-  const auto& doc = asset.document;
-  const auto row = TableRow(doc, kBufferViews, index);
-  const auto resource_index =
-      ReadExactUnsigned(doc, Required(doc, row, kBuffer));
-  const GltfResourceView* resource = nullptr;
-  for (const auto& entry : asset.resources)
-    if (entry.kind == GltfResourceKind::kBuffer &&
-        entry.table_index == resource_index) {
-      resource = &entry;
-      break;
-    }
-  if (!resource)
-    Fail(GltfStatus::kResourceBindingMismatch,
-         GltfDiagnosticCode::kMissingResource);
-  const auto offset = OptionalUnsigned(doc, row, kByteOffset);
-  const auto size = ReadExactUnsigned(doc, Required(doc, row, kByteLength));
-  if (offset > resource->logical_bytes ||
-      size > resource->logical_bytes - offset ||
-      offset > resource->bytes.size() || size > resource->bytes.size() - offset)
-    Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kResourceExtent);
-  auto target = ViewTarget::kAbsent;
-  if (const auto member = FindMember(doc, row, kTarget)) {
-    const auto value = ReadExactUnsigned(doc, *member);
-    if (value == kVertexTarget)
-      target = ViewTarget::kVertex;
-    else if (value == kIndexTarget)
-      target = ViewTarget::kIndices;
-    else
-      Fail(GltfStatus::kUnsupportedProfile,
-           GltfDiagnosticCode::kUnsupportedEnum);
-  }
-  return {index,
-          resource_index,
-          offset,
-          resource->bytes.subspan(Host(offset), Host(size)),
-          Host(OptionalUnsigned(doc, row, kByteStride)),
-          target};
-}
-AccessorSource ResolveAccessor(const AssetState& asset, std::uint64_t index,
-                               AccessorRole role) {
-  const auto& doc = asset.document;
-  const auto row = TableRow(doc, kAccessors, index);
-  AccessorSource source;
-  source.index = index;
-  source.component_type =
-      Component(ReadExactUnsigned(doc, Required(doc, row, kComponentType)));
-  source.shape = Shape(doc.String(Required(doc, row, kType)));
-  source.count = Host(ReadExactUnsigned(doc, Required(doc, row, kCount)));
-  source.role = role;
-  source.base_offset = Host(OptionalUnsigned(doc, row, kByteOffset));
-  if (const auto normalized = FindMember(doc, row, kNormalized))
-    source.normalized = doc.Boolean(*normalized);
-  if (const auto view = FindMember(doc, row, kBufferView))
-    source.base = ResolveView(asset, ReadExactUnsigned(doc, *view));
-  if (const auto sparse = FindMember(doc, row, kSparse)) {
-    const auto indices = Required(doc, *sparse, kIndices);
-    const auto values = Required(doc, *sparse, kValues);
-    source.sparse = AccessorSparseSource{
-        Host(ReadExactUnsigned(doc, Required(doc, *sparse, kCount))),
-        ResolveView(
-            asset, ReadExactUnsigned(doc, Required(doc, indices, kBufferView))),
-        Host(OptionalUnsigned(doc, indices, kByteOffset)),
-        Component(
-            ReadExactUnsigned(doc, Required(doc, indices, kComponentType))),
-        ResolveView(asset,
-                    ReadExactUnsigned(doc, Required(doc, values, kBufferView))),
-        Host(OptionalUnsigned(doc, values, kByteOffset))};
-  }
-  return source;
 }
 std::optional<std::uint64_t> SetIndex(std::string_view semantic,
                                       std::string_view prefix) {
@@ -472,44 +351,6 @@ struct ChannelStorage {
   std::optional<OwnedRawValues> minimum;
   std::optional<OwnedRawValues> maximum;
 };
-OwnedRawValues ReadBound(const JsonSnapshot& doc, std::size_t bound,
-                         const AccessorSource& source,
-                         const AllocationContext& allocation) {
-  const auto layout =
-      DescribeAccessorLayout(source.component_type, source.shape);
-  const auto components = layout.rows * layout.columns;
-  if (doc.Kind(bound) != JsonKind::kArray ||
-      ChildCount(doc, bound) != components)
-    Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreArrayLength, {},
-         kBoundsRule);
-  auto values = MakeRawValues(source.component_type, allocation, components);
-  std::visit(
-      [&](auto& array) {
-        using Value = typename std::remove_cvref_t<decltype(array)>::value_type;
-        auto child = doc.FirstChild(bound);
-        for (auto& value : array) {
-          if constexpr (std::is_same_v<Value, float>) {
-            value = std::bit_cast<float>(ReadFloatBits(doc, *child));
-          } else if constexpr (std::is_signed_v<Value>) {
-            const auto exact = ReadExactSigned(doc, *child);
-            if (exact < std::numeric_limits<Value>::min() ||
-                exact > std::numeric_limits<Value>::max())
-              Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange, {},
-                   kBoundsRule);
-            value = static_cast<Value>(exact);
-          } else {
-            const auto exact = ReadExactUnsigned(doc, *child);
-            if (exact > std::numeric_limits<Value>::max())
-              Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange, {},
-                   kBoundsRule);
-            value = static_cast<Value>(exact);
-          }
-          child = doc.NextSibling(*child);
-        }
-      },
-      values);
-  return values;
-}
 void ValidateBounds(ChannelStorage& channel, const JsonSnapshot& doc,
                     const AllocationContext& allocation) {
   const auto node = TableRow(doc, kAccessors, channel.source.index);
@@ -519,9 +360,11 @@ void ValidateBounds(ChannelStorage& channel, const JsonSnapshot& doc,
     Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldRequired, {},
          kBoundsRule);
   if (minimum)
-    channel.minimum = ReadBound(doc, *minimum, channel.source, allocation);
+    channel.minimum =
+        ReadAccessorBound(doc, *minimum, channel.source, allocation);
   if (maximum)
-    channel.maximum = ReadBound(doc, *maximum, channel.source, allocation);
+    channel.maximum =
+        ReadAccessorBound(doc, *maximum, channel.source, allocation);
   const auto layout = DescribeAccessorLayout(channel.source.component_type,
                                              channel.source.shape);
   const auto components = layout.rows * layout.columns;
@@ -624,22 +467,85 @@ void DecodeChannel(ChannelStorage& channel, const AssetState& asset,
     }
   }
 }
+
+// The catalog has already admitted every use, including sparse source rows and
+// shared/inactive users. The legacy channel facade still owns typed FLOAT
+// values; form those by exact bit transfer, never by a second admission or
+// numeric conversion. Both copies and their controls remain in the catalog's
+// original decoded/descriptor children of this complete extraction request.
+OwnedRawValues CopyCatalogValues(const OwnedRawValues& values, bool float_words,
+                                 const AllocationContext& allocation) {
+  if (float_words) {
+    const auto& words = std::get<ChargedValues<std::uint32_t>>(values);
+    ChargedValues<float> copy{Allocator<float>(allocation)};
+    copy.resize(words.size());
+    for (std::size_t i = 0; i < words.size(); ++i) {
+      allocation.Checkpoint();
+      copy[i] = std::bit_cast<float>(words[i]);
+    }
+    return copy;
+  }
+  return std::visit(
+      [&](const auto& raw) -> OwnedRawValues {
+        using Value = typename std::remove_cvref_t<decltype(raw)>::value_type;
+        ChargedValues<Value> copy{Allocator<Value>(allocation)};
+        copy.resize(raw.size());
+        for (std::size_t i = 0; i < raw.size(); ++i) {
+          allocation.Checkpoint();
+          copy[i] = raw[i];
+        }
+        return copy;
+      },
+      values);
+}
+const gltf_deformation_detail::AccessorStorage& CatalogAccessor(
+    const gltf_deformation_detail::State& catalog, std::uint64_t index) {
+  for (const auto& accessor : catalog.accessor_storage) {
+    catalog.allocation.Checkpoint();
+    if (accessor.source.index == index) return accessor;
+  }
+  Fail(GltfStatus::kInvalidSelection, GltfDiagnosticCode::kInvalidSelection, {},
+       kSelectionRule);
+}
+void CopyCatalogChannel(ChannelStorage& channel,
+                        const gltf_deformation_detail::AccessorStorage& source,
+                        const AllocationContext& allocation) {
+  channel.values.raw = CopyCatalogValues(
+      source.decoded.raw, source.decoded.float_words, allocation);
+  channel.values.base_stride = source.decoded.base_stride;
+  channel.values.packed_sparse_step = source.decoded.packed_sparse_step;
+  for (const auto destination : source.decoded.sparse_destinations) {
+    allocation.Checkpoint();
+    channel.values.sparse_destinations.push_back(destination);
+  }
+  for (const auto value : source.decoded.normalized) {
+    allocation.Checkpoint();
+    channel.values.normalized.push_back(value);
+  }
+  if (source.minimum)
+    channel.minimum = CopyCatalogValues(*source.minimum, false, allocation);
+  if (source.maximum)
+    channel.maximum = CopyCatalogValues(*source.maximum, false, allocation);
+}
 }  // namespace
 struct ExtractionState {
   ExtractionState(std::shared_ptr<const AssetState> source,
                   const PrimitiveRecord& source_primitive,
-                  const AllocationContext& operation)
+                  const AllocationContext& operation,
+                  const AllocationContext& descriptors)
       : asset(std::move(source)),
         primitive(source_primitive),
         allocation(operation),
-        channel_storage(Allocator<ChannelStorage>(operation)),
-        channels(Allocator<GltfChannelView>(operation)),
-        triangles(Allocator<std::uint32_t>(operation)),
-        corners(Allocator<GltfSourceCorner>(operation)) {}
+        channel_storage(Allocator<ChannelStorage>(descriptors)),
+        channels(Allocator<GltfChannelView>(descriptors)),
+        triangles(Allocator<std::uint32_t>(descriptors)),
+        corners(Allocator<GltfSourceCorner>(descriptors)) {}
   std::shared_ptr<const AssetState> asset;
   PrimitiveRecord primitive;
   AllocationContext allocation;
   std::shared_ptr<const DirectTranslationState> translation;
+  std::optional<GltfDeformationProof> deformation;
+  std::optional<GltfDeformationObservation> deformation_facts;
   std::uint64_t mode = 0;
   std::optional<std::uint64_t> material;
   ChargedValues<ChannelStorage> channel_storage;
@@ -686,9 +592,19 @@ std::uint64_t GltfPrimitiveExtraction::NewRequestedBytes() const noexcept {
 }
 GltfProcessingProfile GltfPrimitiveExtraction::ProcessingProfile()
     const noexcept {
+  if (owner_->deformation)
+    return GltfProcessingProfile::kDeformationRetainedTrianglesV1;
   return owner_->translation
              ? GltfProcessingProfile::kDirectTranslationTrianglesV1
              : GltfProcessingProfile::kStaticLocalTrianglesV1;
+}
+const GltfDeformationProof* GltfPrimitiveExtraction::Deformation()
+    const noexcept {
+  return owner_->deformation ? &*owner_->deformation : nullptr;
+}
+const GltfDeformationObservation* GltfPrimitiveExtraction::DeformationFacts()
+    const noexcept {
+  return owner_->deformation_facts ? &*owner_->deformation_facts : nullptr;
 }
 std::optional<GltfDirectTranslationProofView>
 GltfPrimitiveExtraction::DirectTranslation() const noexcept {
@@ -735,6 +651,7 @@ GltfExtractionResult ExtractPrimitive(
     const gltf_detail::NativeExecutionOptions* execution) {
   using namespace gltf_detail;
   std::optional<GltfDirectTranslationObservation> translation_observation;
+  std::optional<GltfDeformationObservation> deformation_observation;
   try {
     if ((request.triangles != GltfTriangleRequest::kRequireTriangles &&
          request.triangles != GltfTriangleRequest::kConvertStripOrFan) ||
@@ -742,10 +659,20 @@ GltfExtractionResult ExtractPrimitive(
          request.values != GltfValueRequest::kRawAndNormalized))
       Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest, {},
            kSelectionRule);
+    const bool deformation_requested =
+        request.processing_profile ==
+        GltfProcessingProfile::kDeformationRetainedTrianglesV1;
+    const bool deformation_source =
+        asset.AdmissionProfile() ==
+        GltfAdmissionProfile::kRetainedCoreDeformationV1;
+    if (deformation_requested != deformation_source)
+      Fail(GltfStatus::kInvalidRequest,
+           GltfDiagnosticCode::kAdmissionProfileMismatch, {}, kSelectionRule);
     if (request.processing_profile !=
             GltfProcessingProfile::kStaticLocalTrianglesV1 &&
         request.processing_profile !=
-            GltfProcessingProfile::kDirectTranslationTrianglesV1)
+            GltfProcessingProfile::kDirectTranslationTrianglesV1 &&
+        !deformation_requested)
       Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest, {},
            kSelectionRule);
     for (const auto limit : {limits.max_components, limits.max_triangle_corners,
@@ -763,7 +690,7 @@ GltfExtractionResult ExtractPrimitive(
     const bool translated =
         request.processing_profile ==
         GltfProcessingProfile::kDirectTranslationTrianglesV1;
-    if (!translated &&
+    if (!translated && !deformation_requested &&
         record->capability != GltfCapabilityReason::kBinaryAdmissionPending &&
         record->capability != GltfCapabilityReason::kReady)
       Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kIndexRole, {},
@@ -794,10 +721,29 @@ GltfExtractionResult ExtractPrimitive(
     // Full actual request admission is supplied by the operation allocator,
     // including rebound shared control storage and replacement overlap.
     allocation = allocation.WithRequestLimit(ordinary_allowance);
+    std::optional<GltfDeformationProof> deformation;
+    if (deformation_requested) {
+      auto validation = gltf_deformation_detail::ValidateDeformation(
+          asset, primitive, request, allocation, limits, execution);
+      deformation_observation = validation.observation;
+      if (!validation.proof)
+        return {{},
+                validation.diagnostic,
+                translation_observation,
+                deformation_observation};
+      deformation = gltf_deformation_detail::Access::MakeProof(
+          std::move(validation.proof));
+    }
+    const auto* catalog =
+        deformation ? &gltf_deformation_detail::Access::Get(*deformation)
+                    : nullptr;
+    const auto descriptors = catalog ? catalog->descriptors : allocation;
+    const auto decoded = catalog ? catalog->decoded : allocation;
     auto output = std::allocate_shared<ExtractionState>(
-        Allocator<ExtractionState>(allocation), Access::Owner(asset), *record,
-        allocation);
+        Allocator<ExtractionState>(descriptors), Access::Owner(asset), *record,
+        allocation, descriptors);
     output->translation = std::move(translation);
+    output->deformation = std::move(deformation);
     const auto& doc = state.document;
     const auto primitive_node = record->json_node;
     output->mode = OptionalUnsigned(doc, primitive_node, kMode, kTriangles);
@@ -818,19 +764,26 @@ GltfExtractionResult ExtractPrimitive(
            kRoleRule);
     ValidateSets(doc, attributes, kTexcoordPrefix);
     ValidateSets(doc, attributes, kColorPrefix);
+    const auto position_index = ReadExactUnsigned(doc, *position);
     const auto vertex_count =
-        ResolveAccessor(state, ReadExactUnsigned(doc, *position),
-                        AccessorRole::kVertex)
-            .count;
-    const auto inventory = BuildRoleInventory(state, allocation);
+        catalog ? CatalogAccessor(*catalog, position_index).source.count
+                : ResolveAccessorSource(state, position_index,
+                                        AccessorRole::kVertex)
+                      .count;
+    std::optional<RoleInventory> inventory;
+    if (!catalog) inventory = BuildRoleInventory(state, allocation);
     std::size_t total_components = 0;
     output->channel_storage.reserve(Host(ChildCount(doc, attributes)));
     output->channels.reserve(Host(ChildCount(doc, attributes)));
     for (auto child = doc.FirstChild(attributes); child;
          child = doc.NextSibling(*child)) {
       allocation.Checkpoint();
-      auto source = ResolveAccessor(state, ReadExactUnsigned(doc, *child),
-                                    AccessorRole::kVertex);
+      const auto index = ReadExactUnsigned(doc, *child);
+      const auto* admitted =
+          catalog ? &CatalogAccessor(*catalog, index) : nullptr;
+      auto source =
+          admitted ? admitted->source
+                   : ResolveAccessorSource(state, index, AccessorRole::kVertex);
       if (source.count != vertex_count)
         Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kIndexRole, {},
              kRoleRule);
@@ -842,27 +795,43 @@ GltfExtractionResult ExtractPrimitive(
       if (total_components > limits.max_components)
         Fail(GltfStatus::kUnsupportedProfile,
              GltfDiagnosticCode::kLimitExceeded, {}, kLimitRule);
-      const auto set = AdmitRole(source, doc.Key(*child));
-      output->channel_storage.emplace_back(allocation, std::move(source),
+      const auto semantic = doc.Key(*child);
+      auto set = catalog ? std::optional<std::uint64_t>{}
+                         : AdmitRole(source, semantic);
+      if (catalog)
+        for (const auto prefix :
+             {kTexcoordPrefix, kColorPrefix, kJointsPrefix, kWeightsPrefix})
+          if (semantic.starts_with(prefix)) set = SetIndex(semantic, prefix);
+      output->channel_storage.emplace_back(decoded, std::move(source),
                                            doc.Key(*child));
       auto& channel = output->channel_storage.back();
       channel.set = set;
-      DecodeChannel(channel, state, inventory, request, limits, allocation,
-                    stop, execution);
+      if (admitted)
+        CopyCatalogChannel(channel, *admitted, decoded);
+      else
+        DecodeChannel(channel, state, *inventory, request, limits, allocation,
+                      stop, execution);
       output->channels.push_back(ChannelView(channel));
     }
     std::size_t stream_count = vertex_count;
     if (const auto index = FindMember(doc, primitive_node, kIndices)) {
-      auto source = ResolveAccessor(state, ReadExactUnsigned(doc, *index),
-                                    AccessorRole::kIndices);
+      const auto accessor_index = ReadExactUnsigned(doc, *index);
+      const auto* admitted =
+          catalog ? &CatalogAccessor(*catalog, accessor_index) : nullptr;
+      auto source = admitted ? admitted->source
+                             : ResolveAccessorSource(state, accessor_index,
+                                                     AccessorRole::kIndices);
       stream_count = source.count;
       total_components = Add(total_components, stream_count);
       if (total_components > limits.max_components)
         Fail(GltfStatus::kUnsupportedProfile,
              GltfDiagnosticCode::kLimitExceeded, {}, kLimitRule);
-      output->indices.emplace(allocation, std::move(source), kIndices);
-      DecodeChannel(*output->indices, state, inventory, request, limits,
-                    allocation, stop, execution);
+      output->indices.emplace(decoded, std::move(source), kIndices);
+      if (admitted)
+        CopyCatalogChannel(*output->indices, *admitted, decoded);
+      else
+        DecodeChannel(*output->indices, state, *inventory, request, limits,
+                      allocation, stop, execution);
     } else if (vertex_count != 0 &&
                vertex_count - 1 > std::numeric_limits<std::uint32_t>::max()) {
       Fail(GltfStatus::kUnsupportedProfile,
@@ -918,10 +887,23 @@ GltfExtractionResult ExtractPrimitive(
       output->corners[corner] = {source_corner, row};
     }
     allocation.Checkpoint();
+    if (deformation_observation) {
+      deformation_observation->new_requested_bytes =
+          output->deformation->NewRequestedBytes();
+      output->deformation_facts = deformation_observation;
+    }
     return {Access::MakeExtraction(std::move(output)), AcceptedDiagnostic(),
-            translation_observation};
+            translation_observation, deformation_observation};
   } catch (const GltfFailure& failure) {
-    return {{}, failure.Diagnostic(), translation_observation};
+    if (deformation_observation) {
+      deformation_observation->complete = false;
+      deformation_observation->status = failure.Diagnostic().status;
+      deformation_observation->diagnostic = failure.Diagnostic();
+    }
+    return {{},
+            failure.Diagnostic(),
+            translation_observation,
+            deformation_observation};
   } catch (const AdmissionFailure& failure) {
     GltfStatus status = GltfStatus::kUnsupportedProfile;
     GltfDiagnosticCode code = GltfDiagnosticCode::kLimitExceeded;
@@ -941,9 +923,13 @@ GltfExtractionResult ExtractPrimitive(
       case AdmissionCode::kInvalidObject:
         throw;
     }
-    return {{},
-            {status, code, {}, {}, {}, {}, kLimitRule},
-            translation_observation};
+    const GltfDiagnostic diagnostic{status, code, {}, {}, {}, {}, kLimitRule};
+    if (deformation_observation) {
+      deformation_observation->complete = false;
+      deformation_observation->status = status;
+      deformation_observation->diagnostic = diagnostic;
+    }
+    return {{}, diagnostic, translation_observation, deformation_observation};
   }
 }
 }  // namespace

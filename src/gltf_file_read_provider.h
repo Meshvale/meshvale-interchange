@@ -23,6 +23,7 @@ void ValidateFileReadConfiguration(const GltfReadOperationLimits& limits,
 [[nodiscard]] GltfReadResult ReadGltfAssetFromFiles(
     std::span<const std::byte> json, const GltfReadOperationLimits& limits,
     const GltfWorkPolicy& policy, const geometry::ExecutionContext& context,
-    std::stop_token stop, FileResourceProvider provider, void* provider_state);
+    std::stop_token stop, FileResourceProvider provider, void* provider_state,
+    const GltfReadRequest* request = nullptr);
 }  // namespace meshvale::interchange::gltf_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_FILE_READ_PROVIDER_H_

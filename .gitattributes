@@ -2,3 +2,6 @@
 
 # Original wire fixtures retain exact mixed text/binary bytes.
 tests/fixtures/ply-files/ascii.ply -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Deformation fixtures preserve authored wire bytes across checkout settings.
+tests/fixtures/gltf-deformation/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+tests/fixtures/gltf-deformation-catalog/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

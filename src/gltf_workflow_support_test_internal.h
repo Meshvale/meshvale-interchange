@@ -24,6 +24,8 @@ InspectGltfTopologyOutputForTest(
     const GltfTopologyOutputInspectionRequest& request,
     const GltfTopologyOutputInspectionLimits& limits,
     const GltfTopologyOutputInspectionWorkPolicy& work, std::stop_token stop,
-    const InspectionTestOptions& options);
+    const InspectionTestOptions& options,
+    const GltfDeformationPolicy* deformation = nullptr,
+    const gltf_detail::AllocationContext* complete_parent = nullptr);
 }  // namespace meshvale::interchange::gltf_workflow_support_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_WORKFLOW_SUPPORT_TEST_INTERNAL_H_

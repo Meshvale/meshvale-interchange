@@ -72,6 +72,7 @@ struct InspectionState {
   Vector<GltfSourceCorner> original_corners;
   GltfTopologyOutputCoverage coverage;
   std::optional<GltfDirectTranslationObservation> direct_translation;
+  std::optional<GltfDeformationObservation> deformation;
 };
 struct Access {
   static GltfTopologyOutputInspection Make(
@@ -85,6 +86,7 @@ struct Operation {
   const gltf_detail::AllocationContext& allocation;
   std::stop_token stop;
   gltf_detail::NativeExecutionOptions execution;
+  GltfDeformationObservation* deformation = nullptr;
   bool changed = false;
 };
 using RangeCheck = std::optional<Diagnostic> (*)(void*, std::size_t,
@@ -112,6 +114,10 @@ class BytePlan {
   void Require(bool condition, Diagnostic diagnostic);
   void Checkpoint();
   void Run(Stats& stats);
+  // Reuse charged scratch only after a successful complete check. This clears
+  // pending work, never observed facts or execution counters, between genuine
+  // typed preservation domains.
+  void Reset();
 
  private:
   static std::optional<Diagnostic> Check(void*, std::size_t, std::size_t, bool);
@@ -135,6 +141,9 @@ void VerifyCorrespondence(Operation& operation, Stats& stats);
 void VerifyLexical(const Operation& operation, Stats& stats);
 void VerifyResources(const Operation& operation, Stats& stats);
 void VerifyReload(const Operation& operation, Stats& stats);
+void VerifyDeformationReload(const Operation& operation, Stats& stats,
+                             const GltfDeformationPolicy& policy,
+                             GltfDeformationObservation& observation);
 void VerifyProvenance(const Operation& operation, InspectionState& state,
                       Stats& stats);
 }  // namespace meshvale::interchange::gltf_workflow_support_detail

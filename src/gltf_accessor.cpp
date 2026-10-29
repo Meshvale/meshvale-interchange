@@ -128,7 +128,8 @@ void ValidateSource(const AccessorSource& source,
   if (source.role == AccessorRole::kVertex &&
       source.component_type == GltfComponentType::kUint32)
     Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kIndexRole);
-  const bool vertex = source.role == AccessorRole::kVertex;
+  const bool vertex = source.role == AccessorRole::kVertex ||
+                      source.role == AccessorRole::kDeformationVertex;
   if (source.base) {
     const auto& view = *source.base;
     const auto step = view.stride ? view.stride : layout.packed_step;
@@ -138,6 +139,14 @@ void ValidateSource(const AccessorSource& source,
       LayoutFailure(view, source.base_offset);
     CheckAlignment(view, source.base_offset, layout.component_bytes,
                    layout.matrix, vertex);
+    // Pinned retained-deformation admission additionally requires an explicit
+    // stride for sub-four-byte vertex components, even when a packed VEC4 row
+    // itself happens to occupy a multiple of four bytes. Sparse replacement
+    // views have their distinct tightly packed rule below. Legacy admission
+    // keeps its published profile behavior.
+    if (source.role == AccessorRole::kDeformationVertex &&
+        layout.component_bytes % kVertexAlignment && !view.stride)
+      LayoutFailure(view, source.base_offset);
     if (step < layout.packed_step || step % layout.component_bytes ||
         (view.stride && (!vertex || view.stride % kVertexAlignment ||
                          view.stride > kMaximumVertexStride)) ||
@@ -243,13 +252,32 @@ template <class T>
 void DecodeRows(const AccessorSource& source, const AccessorLayout& layout,
                 const std::span<const std::uint64_t> sparse_destinations,
                 ChargedValues<T>& raw, ChargedValues<double>& normalized,
-                std::size_t first, std::size_t last, std::stop_token stop) {
-  auto sparse = std::lower_bound(sparse_destinations.begin(),
-                                 sparse_destinations.end(), first);
+                std::size_t first, std::size_t last, std::stop_token stop,
+                const AllocationContext* allocation = nullptr,
+                const AccessorCopyWork* work = nullptr) {
+  auto sparse = sparse_destinations.begin();
+  if (work) {
+    auto count = sparse_destinations.size();
+    while (count) {
+      if (allocation) allocation->Checkpoint();
+      if (work->reference) work->reference(work->state);
+      const auto half = count / 2;
+      const auto middle = sparse + half;
+      if (*middle < first) {
+        sparse = middle + 1;
+        count -= half + 1;
+      } else
+        count = half;
+    }
+  } else
+    sparse = std::lower_bound(sparse_destinations.begin(),
+                              sparse_destinations.end(), first);
   const auto components = layout.rows * layout.columns;
   for (auto row = first; row < last; ++row) {
     if (stop.stop_requested())
       Fail(GltfStatus::kCanceled, GltfDiagnosticCode::kCanceled);
+    if (allocation) allocation->Checkpoint();
+    if (work && work->reference) work->reference(work->state);
     const std::byte* bytes = nullptr;
     if (source.base)
       bytes = source.base->bytes.data() + source.base_offset +
@@ -260,9 +288,13 @@ void DecodeRows(const AccessorSource& source, const AccessorLayout& layout,
         if (bytes)
           for (std::size_t column = 0; column < layout.columns; ++column)
             for (std::size_t component = 0; component < layout.rows;
-                 ++component)
+                 ++component) {
+              if (allocation) allocation->Checkpoint();
+              if (work && work->scalar) work->scalar(work->state);
+              if (work && work->bytes) work->bytes(sizeof(T), work->state);
               (void)ReadScalar<T>(bytes + column * layout.column_step +
                                   component * sizeof(T));
+            }
       }
       const auto ordinal =
           static_cast<std::size_t>(sparse - sparse_destinations.begin());
@@ -273,6 +305,9 @@ void DecodeRows(const AccessorSource& source, const AccessorLayout& layout,
     for (std::size_t column = 0; column < layout.columns; ++column) {
       for (std::size_t component = 0; component < layout.rows; ++component) {
         const auto slot = row * components + column * layout.rows + component;
+        if (allocation) allocation->Checkpoint();
+        if (work && work->scalar) work->scalar(work->state);
+        if (bytes && work && work->bytes) work->bytes(sizeof(T), work->state);
         const T value =
             bytes ? ReadScalar<T>(bytes + column * layout.column_step +
                                   component * sizeof(T))
@@ -487,20 +522,15 @@ OwnedRawValues MakeRawValues(GltfComponentType component,
   }
   Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest);
 }
-AccessorDecodeResult DecodeAccessor(
-    const AccessorSource& source, bool normalized_view,
-    const GltfExtractionLimits& limits, const GltfWorkPolicy& policy,
-    const geometry::ExecutionContext& context,
-    const AllocationContext& allocation, std::stop_token stop,
-    AccessorExecutionStats* stats, const AccessorExecutionHooks* hooks,
-    const NativeExecutionOptions* execution) {
-  if (stats) *stats = {};
+AccessorDecodeResult PrepareAccessorDecode(const AccessorSource& source,
+                                           bool normalized_view,
+                                           const GltfExtractionLimits& limits,
+                                           const AllocationContext& allocation,
+                                           const AccessorCopyWork* work) {
   try {
     constexpr auto kHostMaximum = std::numeric_limits<std::size_t>::max();
     for (const auto value : {limits.max_components, limits.max_triangle_corners,
-                             limits.max_output_requested_bytes,
-                             policy.parallel_min_channel_components,
-                             policy.channel_partition_elements}) {
+                             limits.max_output_requested_bytes}) {
       if (!value)
         Fail(GltfStatus::kInvalidLimits, GltfDiagnosticCode::kZeroLimit);
       if (value > kHostMaximum)
@@ -508,6 +538,10 @@ AccessorDecodeResult DecodeAccessor(
              GltfDiagnosticCode::kLimitNotRepresentable);
     }
     allocation.Checkpoint();
+    if (source.retain_float_words &&
+        (source.component_type != GltfComponentType::kFloat32 ||
+         source.normalized || normalized_view))
+      Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest);
     const auto layout =
         DescribeAccessorLayout(source.component_type, source.shape);
     ValidateSource(source, layout);
@@ -535,7 +569,11 @@ AccessorDecodeResult DecodeAccessor(
                              ? source.base->stride
                              : layout.packed_step;
     output.packed_sparse_step = layout.packed_step;
-    output.raw = MakeRawValues(source.component_type, allocation, components);
+    output.float_words = source.retain_float_words;
+    output.raw =
+        MakeRawValues(source.retain_float_words ? GltfComponentType::kUint32
+                                                : source.component_type,
+                      allocation, components);
     if (normalized_view && source.normalized)
       output.normalized.resize(components);
     if (source.sparse) {
@@ -544,6 +582,9 @@ AccessorDecodeResult DecodeAccessor(
       output.sparse_destinations.resize(sparse.count);
       for (std::size_t i = 0; i < sparse.count; ++i) {
         allocation.Checkpoint();
+        if (work && work->reference) work->reference(work->state);
+        if (work && work->scalar) work->scalar(work->state);
+        if (work && work->bytes) work->bytes(index_bytes, work->state);
         const auto destination =
             ReadLittleEndian(sparse.indices.bytes.data() +
                                  sparse.indices_offset + i * index_bytes,
@@ -555,11 +596,124 @@ AccessorDecodeResult DecodeAccessor(
         output.sparse_destinations[i] = destination;
       }
     }
-    RunRows(source, layout, output, policy, context, allocation, stop, stats,
-            hooks, execution);
     allocation.Checkpoint();
     return {std::move(output),
             Diagnostic(GltfStatus::kAccepted, GltfDiagnosticCode::kNone)};
+  } catch (const DecodeFailure& failure) {
+    return {{}, failure.diagnostic};
+  } catch (const AdmissionFailure& failure) {
+    switch (failure.Code()) {
+      case AdmissionCode::kBudgetExceeded:
+        return {{},
+                Diagnostic(GltfStatus::kBudgetExceeded,
+                           GltfDiagnosticCode::kPayloadBudget)};
+      case AdmissionCode::kCanceled:
+        return {
+            {},
+            Diagnostic(GltfStatus::kCanceled, GltfDiagnosticCode::kCanceled)};
+      case AdmissionCode::kSizeLimit:
+        return {{},
+                Diagnostic(GltfStatus::kUnsupportedProfile,
+                           GltfDiagnosticCode::kSizeOverflow)};
+      case AdmissionCode::kInvalidObject:
+        throw;
+    }
+    throw;
+  }
+}
+GltfDiagnostic CopyPreparedAccessorRows(const AccessorSource& source,
+                                        DecodedAccessor& output,
+                                        std::size_t first, std::size_t last,
+                                        const AllocationContext& allocation,
+                                        std::stop_token stop,
+                                        const AccessorCopyWork* work) {
+  try {
+    allocation.Checkpoint();
+    if (first > last || last > source.count || !output.normalized.empty() ||
+        output.float_words != source.retain_float_words ||
+        output.sparse_destinations.size() !=
+            (source.sparse ? source.sparse->count : 0))
+      Fail(GltfStatus::kInvalidRequest, GltfDiagnosticCode::kInvalidRequest);
+    const auto layout =
+        DescribeAccessorLayout(source.component_type, source.shape);
+    const auto count = Product(source.count, layout.rows * layout.columns);
+    const auto storage = source.retain_float_words ? GltfComponentType::kUint32
+                                                   : source.component_type;
+    std::visit(
+        [&](auto& values) {
+          using Value =
+              typename std::remove_cvref_t<decltype(values)>::value_type;
+          constexpr auto type = [] {
+            if constexpr (std::is_same_v<Value, std::int8_t>)
+              return GltfComponentType::kInt8;
+            else if constexpr (std::is_same_v<Value, std::uint8_t>)
+              return GltfComponentType::kUint8;
+            else if constexpr (std::is_same_v<Value, std::int16_t>)
+              return GltfComponentType::kInt16;
+            else if constexpr (std::is_same_v<Value, std::uint16_t>)
+              return GltfComponentType::kUint16;
+            else if constexpr (std::is_same_v<Value, std::uint32_t>)
+              return GltfComponentType::kUint32;
+            else
+              return GltfComponentType::kFloat32;
+          }();
+          if (type != storage || values.size() != count)
+            Fail(GltfStatus::kInvalidRequest,
+                 GltfDiagnosticCode::kInvalidRequest);
+          DecodeRows(source, layout, output.sparse_destinations, values,
+                     output.normalized, first, last, stop, &allocation, work);
+        },
+        output.raw);
+    allocation.Checkpoint();
+    return Diagnostic(GltfStatus::kAccepted, GltfDiagnosticCode::kNone);
+  } catch (const DecodeFailure& failure) {
+    return failure.diagnostic;
+  } catch (const AdmissionFailure& failure) {
+    switch (failure.Code()) {
+      case AdmissionCode::kBudgetExceeded:
+        return Diagnostic(GltfStatus::kBudgetExceeded,
+                          GltfDiagnosticCode::kPayloadBudget);
+      case AdmissionCode::kCanceled:
+        return Diagnostic(GltfStatus::kCanceled, GltfDiagnosticCode::kCanceled);
+      case AdmissionCode::kSizeLimit:
+        return Diagnostic(GltfStatus::kUnsupportedProfile,
+                          GltfDiagnosticCode::kSizeOverflow);
+      case AdmissionCode::kInvalidObject:
+        throw;
+    }
+    throw;
+  }
+}
+AccessorDecodeResult DecodeAccessor(
+    const AccessorSource& source, bool normalized_view,
+    const GltfExtractionLimits& limits, const GltfWorkPolicy& policy,
+    const geometry::ExecutionContext& context,
+    const AllocationContext& allocation, std::stop_token stop,
+    AccessorExecutionStats* stats, const AccessorExecutionHooks* hooks,
+    const NativeExecutionOptions* execution) {
+  if (stats) *stats = {};
+  try {
+    // Preserve legacy configuration precedence before preparing any storage.
+    constexpr auto kHostMaximum = std::numeric_limits<std::size_t>::max();
+    for (const auto value : {limits.max_components, limits.max_triangle_corners,
+                             limits.max_output_requested_bytes,
+                             policy.parallel_min_channel_components,
+                             policy.channel_partition_elements}) {
+      if (!value)
+        Fail(GltfStatus::kInvalidLimits, GltfDiagnosticCode::kZeroLimit);
+      if (value > kHostMaximum)
+        Fail(GltfStatus::kInvalidLimits,
+             GltfDiagnosticCode::kLimitNotRepresentable);
+    }
+    auto prepared =
+        PrepareAccessorDecode(source, normalized_view, limits, allocation);
+    if (!prepared.values) return prepared;
+    const auto layout =
+        DescribeAccessorLayout(source.component_type, source.shape);
+    RunRows(source, layout, *prepared.values, policy, context, allocation, stop,
+            stats, hooks, execution);
+    allocation.Checkpoint();
+    return prepared;
   } catch (const DecodeFailure& failure) {
     return {{}, failure.diagnostic};
   } catch (const AdmissionFailure& failure) {
