@@ -285,7 +285,10 @@ struct Probe {
       auto bytes = f::Read(member);
       Require(!bytes.empty(),
               "substitution targets actual nonempty staged file");
-      bytes.back() ^= std::byte{1};
+      // Keep the receipt mutation inside its pending offset-zero read block;
+      // another partition may already have read its tail.
+      auto& substituted_byte = ordinal == 0 ? bytes.back() : bytes.front();
+      substituted_byte ^= std::byte{1};
       f::Write(member, bytes);
       ++self.physical_mutations;
     }
