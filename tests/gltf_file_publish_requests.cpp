@@ -22,6 +22,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <optional>
@@ -672,7 +673,9 @@ void OriginalRequests() {
     const auto foreign = fixture.context.ActiveTrackedPayload();
     for (const bool serial : {true, false}) {
       for (const bool dynamic : {false, true}) {
-        Witnesses baseline(fixture.context);
+        const auto baseline_owner =
+            std::make_unique<Witnesses>(fixture.context);
+        auto& baseline = *baseline_owner;
         Supplements baseline_supplements;
         baseline_supplements.dynamic = dynamic;
         std::size_t calls = 0;
@@ -698,7 +701,9 @@ void OriginalRequests() {
         baseline.Released(foreign);
         fs::remove_all(fixture.Destination());
         for (std::size_t ordinal = 1; ordinal <= calls; ++ordinal) {
-          Witnesses witness(fixture.context);
+          const auto witness_owner =
+              std::make_unique<Witnesses>(fixture.context);
+          auto& witness = *witness_owner;
           Supplements supplements;
           supplements.dynamic = dynamic;
           witness.requests.fail_at = ordinal;
@@ -737,7 +742,8 @@ void FreshCapsAndLifetime() {
   Fixture fixture(true);
   const auto foreign = fixture.context.ActiveTrackedPayload();
   for (const bool serial : {true, false}) {
-    Witnesses baseline(fixture.context);
+    const auto baseline_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& baseline = *baseline_owner;
     Supplements initial;
     {
       auto result = Publish(fixture, fixture.Destination(), baseline,
@@ -750,7 +756,8 @@ void FreshCapsAndLifetime() {
     for (const bool reduce : {false, true}) {
       auto limits = Limits();
       limits.files.max_new_requested_bytes = peak - (reduce ? 1 : 0);
-      Witnesses witness(fixture.context);
+      const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+      auto& witness = *witness_owner;
       Supplements supplements;
       {
         auto result = Publish(fixture, fixture.Destination(), witness,
@@ -778,7 +785,8 @@ void FreshCapsAndLifetime() {
       if (!reduce) fs::remove_all(fixture.Destination());
     }
   }
-  Witnesses witness(fixture.context);
+  const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+  auto& witness = *witness_owner;
   Supplements supplements;
   supplements.copy_inspection = true;
   std::optional<ic::GltfPublishedBundle> retained;
@@ -817,7 +825,8 @@ void NativeFailuresAndStops() {
   Fixture fixture(true);
   const auto foreign = fixture.context.ActiveTrackedPayload();
   {
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     Supplements supplements;
     std::stop_source stop;
     witness.requests.cancel = &stop;
@@ -836,7 +845,8 @@ void NativeFailuresAndStops() {
   enum class Role { kWrite, kImport, kCapture, kVerification };
   for (const auto role :
        {Role::kWrite, Role::kImport, Role::kCapture, Role::kVerification}) {
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     auto& worker = role == Role::kWrite     ? witness.write
                    : role == Role::kImport  ? witness.import
                    : role == Role::kCapture ? witness.capture
@@ -862,7 +872,8 @@ void NativeFailuresAndStops() {
   }
   for (const auto role :
        {Role::kWrite, Role::kImport, Role::kCapture, Role::kVerification}) {
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     auto& worker = role == Role::kWrite     ? witness.write
                    : role == Role::kImport  ? witness.import
                    : role == Role::kCapture ? witness.capture
@@ -886,7 +897,8 @@ void NativeFailuresAndStops() {
                            ic::GltfFilePublicationPhase::kStaging,
                            ic::GltfFilePublicationPhase::kVerification,
                            ic::GltfFilePublicationPhase::kPublication}) {
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     Supplements supplements;
     auto options = supplements.Options();
     std::stop_source stop;
@@ -916,7 +928,8 @@ void DelegatedAllowances() {
       limits.extraction.max_output_requested_bytes = 1;
     if (owner == Owner::kInspection)
       limits.inspection.max_new_requested_bytes = 1;
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     Supplements supplements;
     const auto result = Publish(fixture, fixture.Destination(), witness,
                                 supplements.Options(), false, limits);
@@ -968,7 +981,8 @@ void ExpectedCleanupAndRuntimeExceptions() {
   Fixture fixture(true);
   const auto foreign = fixture.context.ActiveTrackedPayload();
   for (const bool prevent_cleanup : {false, true}) {
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     if (prevent_cleanup)
       witness.refuse_cleanup =
           std::make_error_code(std::errc::permission_denied);
@@ -1003,7 +1017,8 @@ void ExpectedCleanupAndRuntimeExceptions() {
   enum class Failure { kWrite, kInventory, kCommit, kCallbackAllocation };
   for (const auto failure : {Failure::kWrite, Failure::kInventory,
                              Failure::kCommit, Failure::kCallbackAllocation}) {
-    Witnesses witness(fixture.context);
+    const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& witness = *witness_owner;
     witness.throw_write = failure == Failure::kWrite;
     witness.throw_inventory = failure == Failure::kInventory;
     witness.throw_commit = failure == Failure::kCommit;
@@ -1033,7 +1048,8 @@ void OccupiedWorkers() {
   auto occupied = geo::TryReserveWorkers(fixture.context, kWorkerCount);
   Require(occupied.Count() == kWorkerCount,
           "all authoritative worker slots occupied");
-  Witnesses witness(fixture.context);
+  const auto witness_owner = std::make_unique<Witnesses>(fixture.context);
+  auto& witness = *witness_owner;
   Supplements supplements;
   {
     auto result =
@@ -1071,7 +1087,8 @@ void ConcurrentRequests() {
   const auto foreign = fixture.context.ActiveTrackedPayload();
   std::uint64_t cap = 0;
   for (const bool serial : {true, false}) {
-    Witnesses baseline(fixture.context);
+    const auto baseline_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& baseline = *baseline_owner;
     Supplements supplements;
     {
       auto result = Publish(fixture, fixture.Destination(), baseline,
@@ -1085,7 +1102,8 @@ void ConcurrentRequests() {
   for (const bool tight : {false, true}) {
     auto limits = Limits();
     limits.files.max_new_requested_bytes = cap;
-    Witnesses first(fixture.context);
+    const auto first_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& first = *first_owner;
     Supplements first_supplements;
     Gate gate;
     first.write.gate = &gate;
@@ -1113,7 +1131,8 @@ void ConcurrentRequests() {
         tight ? static_cast<std::size_t>(kRequestBytes - held - 1) : 0);
     Require(unrelated.status == geo::ReservationStatus::kAccepted,
             "explicit unrelated common-ledger reservation admitted");
-    Witnesses second(fixture.context);
+    const auto second_owner = std::make_unique<Witnesses>(fixture.context);
+    auto& second = *second_owner;
     Supplements second_supplements;
     {
       auto result = Publish(fixture, fixture.Destination("published-b"), second,
