@@ -13,7 +13,7 @@ verified new-directory rewrite of one STL file. The [existing STL codec](stl.md)
 owns admitted syntax, numeric values, triangle-soup storage and serialization.
 Its complete admitted domain includes
 empty documents and finite degenerate facets. The file/API/command development
-profiles have their own [evaluation workflow](../.github/workflows/stl-files-candidates.yml).
+profiles have their own [evaluation workflow](https://github.com/Meshvale/meshvale-interchange/blob/82e955bdce6671ce4d1a930124c3b2a551dd81ff/.github/workflows/stl-files-candidates.yml).
 Existing supplied-byte or supplied-surface success alone establishes no
 file/API/command qualification.
 

@@ -58,7 +58,7 @@ python examples/python/obj_bundle.py
 ```
 
 These commands verify the OBJ baseline. The separate
-[STL candidate workflow](../.github/workflows/stl-files-candidates.yml) requires
+[STL candidate workflow](https://github.com/Meshvale/meshvale-interchange/blob/82e955bdce6671ce4d1a930124c3b2a551dd81ff/.github/workflows/stl-files-candidates.yml) requires
 all 34 OBJ/STL methods and the standalone exception and lifetime checks for each of its
 selected source/sdist runtimes; OBJ baseline success does not qualify STL.
 
@@ -78,7 +78,7 @@ See [the runnable bundle example](../examples/python/obj_bundle.py), [focused Py
 
 ## Portable development candidates
 
-The [candidate workflow](../.github/workflows/portable-candidates.yml) evaluates ordinary GIL-enabled CPython 3.13 on Linux x86_64 with a manylinux_2_28 floor and Windows x64 on `windows-2022`. These are development CI artifacts, retained for 14 days; they do not establish a supported release matrix. macOS, other interpreters/architectures and a clean Windows 11 consumer floor remain unevaluated by this workflow. Windows candidates require the [official x64 Microsoft Visual C++ v14 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) at least as recent as the recorded build toolset, including `msvcp140.dll` and `msvcp140_atomic_wait.dll`; these runtime files are not bundled.
+The [candidate workflow](https://github.com/Meshvale/meshvale-interchange/blob/82e955bdce6671ce4d1a930124c3b2a551dd81ff/.github/workflows/portable-candidates.yml) evaluates ordinary GIL-enabled CPython 3.13 on Linux x86_64 with a manylinux_2_28 floor and Windows x64 on `windows-2022`. These are development CI artifacts, retained for 14 days; they do not establish a supported release matrix. macOS, other interpreters/architectures and a clean Windows 11 consumer floor remain unevaluated by this workflow. Windows candidates require the [official x64 Microsoft Visual C++ v14 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) at least as recent as the recorded build toolset, including `msvcp140.dll` and `msvcp140_atomic_wait.dll`; these runtime files are not bundled.
 
 Each lane rebuilds public Geometry revision `48298b24be7c132816fb5580d22d58bde61558d0` as Python `0.0.1.dev134+g48298b24b` and native `0.0.0`, with full source history. It installs double-precision, static tinyobjloader `2.0.0rc13` using the unchanged [manifest baseline](../vcpkg.json). No earlier CI download is a build dependency. Linux builds run inside an immutable manylinux image; cibuildwheel `4.2.0`, product CMake `4.3.1`, backend pins and action revisions are recorded in the workflow. Isolated wheel backends receive the same exact CMake requirement. vcpkg's pinned registry owns its host helper tools.
 
