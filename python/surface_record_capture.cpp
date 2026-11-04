@@ -116,23 +116,31 @@ struct ScalarFormat {
   std::string_view formats;
 };
 ScalarFormat Format(RecordBufferKind kind) {
+  constexpr std::string_view kRawByteFormats = "Bbc";
+  constexpr std::string_view kFloat32Formats = "f";
+  constexpr std::string_view kFloat64Formats = "d";
+  constexpr std::string_view kInt32Formats = "il";
+  constexpr std::string_view kUint8Formats = "B";
+  constexpr std::string_view kUint16Formats = "H";
+  constexpr std::string_view kUint32Formats = "IL";
+  constexpr std::string_view kUint64Formats = "QL";
   switch (kind) {
     case RecordBufferKind::kBytes:
-      return {1, alignof(std::byte), "Bbc"};
+      return {1, alignof(std::byte), kRawByteFormats};
     case RecordBufferKind::kFloat32:
-      return {sizeof(float), alignof(float), "f"};
+      return {sizeof(float), alignof(float), kFloat32Formats};
     case RecordBufferKind::kFloat64:
-      return {sizeof(double), alignof(double), "d"};
+      return {sizeof(double), alignof(double), kFloat64Formats};
     case RecordBufferKind::kInt32:
-      return {sizeof(std::int32_t), alignof(std::int32_t), "il"};
+      return {sizeof(std::int32_t), alignof(std::int32_t), kInt32Formats};
     case RecordBufferKind::kUint8:
-      return {sizeof(std::uint8_t), alignof(std::uint8_t), "B"};
+      return {sizeof(std::uint8_t), alignof(std::uint8_t), kUint8Formats};
     case RecordBufferKind::kUint16:
-      return {sizeof(std::uint16_t), alignof(std::uint16_t), "H"};
+      return {sizeof(std::uint16_t), alignof(std::uint16_t), kUint16Formats};
     case RecordBufferKind::kUint32:
-      return {sizeof(std::uint32_t), alignof(std::uint32_t), "IL"};
+      return {sizeof(std::uint32_t), alignof(std::uint32_t), kUint32Formats};
     case RecordBufferKind::kUint64:
-      return {sizeof(std::uint64_t), alignof(std::uint64_t), "QL"};
+      return {sizeof(std::uint64_t), alignof(std::uint64_t), kUint64Formats};
   }
   throw std::logic_error("invalid surface scalar selector");
 }
@@ -433,14 +441,18 @@ RecordBufferId SharedSurfaceIngress::Acquire(nb::handle value,
   ++reached_.buffer_views;
   const auto& b = slot.source;
   const auto format = Format(kind);
+  constexpr char kCContiguousOrder = 'C';
+  constexpr char kNativeAlignedPrefix = '@';
+  constexpr char kNativeStandardPrefix = '=';
   if (b.ndim != 1 || b.suboffsets || !b.shape || b.shape[0] < 0 || b.len < 0 ||
       b.itemsize != static_cast<Py_ssize_t>(format.size) ||
-      !PyBuffer_IsContiguous(&b, 'C'))
+      !PyBuffer_IsContiguous(&b, kCContiguousOrder))
     Value(*this, field, row,
           "buffer must be flat direct contiguous native scalar storage");
   const char* spelling = b.format;
   if (!spelling) Value(*this, field, row, "buffer requires a scalar format");
-  if (*spelling == '@' || *spelling == '=') ++spelling;
+  if (*spelling == kNativeAlignedPrefix || *spelling == kNativeStandardPrefix)
+    ++spelling;
   if (!*spelling || spelling[1] ||
       format.formats.find(*spelling) == std::string_view::npos)
     Value(*this, field, row, "buffer has wrong native scalar format");
