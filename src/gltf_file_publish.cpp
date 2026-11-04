@@ -26,6 +26,7 @@
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
 #include "gltf_deformation_read.h"
+#include "gltf_deformation_work.h"
 #include "gltf_direct_translation.h"
 #include "gltf_file_publish_internal.h"
 #include "gltf_files_internal.h"
@@ -468,25 +469,31 @@ class Publication {
                                       descriptors,
                                       stop_,
                                       testing_.verification_execution};
+      inspection::Stage comparison_stage = inspection::Stage::kSourceCandidate;
+      allocation::DeformationWork owning_work(
+          policy, facts, descriptors,
+          [](void* stage, allocation::DeformationWorkRefusal) {
+            inspection::Fail(inspection::Status::kLimitExceeded,
+                             *static_cast<inspection::Stage*>(stage),
+                             inspection::Code::kCountLimit);
+          },
+          &comparison_stage);
+      operation.deformation = &facts;
+      operation.deformation_work = &owning_work;
       inspection::Stats stats;
-      auto observe = [&] {
-        facts.execution = {stats.planned_jobs, stats.launched_workers,
-                           stats.joined_workers, stats.caller_jobs};
-      };
-      try {
+      {
         facts.predicates.canonical_association = false;
         inspection::VerifyGeometry(operation, stats);
+        comparison_stage = inspection::Stage::kCorrespondence;
         inspection::VerifyCorrespondence(operation, stats);
         facts.predicates.canonical_association = true;
+        comparison_stage = inspection::Stage::kReloadedPrimitive;
         inspection::VerifyReload(operation, stats);
         inspection::VerifyDeformationReload(operation, stats, policy, facts);
-      } catch (...) {
-        observe();
-        throw;
       }
-      observe();
-      Verify(physical);
-      Inventory();
+      comparison_stage = inspection::Stage::kResources;
+      Verify(physical, &operation, &stats);
+      Inventory(&owning_work);
       descriptors.Checkpoint();
       facts.predicates.staged_reload = true;
       facts.status = GltfStatus::kAccepted;
@@ -498,9 +505,13 @@ class Publication {
                          ? GltfStatus::kCanceled
                      : failure.status == inspection::Status::kBudgetExceeded
                          ? GltfStatus::kBudgetExceeded
+                     : failure.status == inspection::Status::kLimitExceeded
+                         ? GltfStatus::kUnsupportedProfile
                          : GltfStatus::kResourceBindingMismatch;
       facts.diagnostic = {facts.status,
-                          GltfDiagnosticCode::kInvalidSelection,
+                          failure.status == inspection::Status::kLimitExceeded
+                              ? GltfDiagnosticCode::kLimitExceeded
+                              : GltfDiagnosticCode::kInvalidSelection,
                           {},
                           {},
                           {},
@@ -542,10 +553,13 @@ class Publication {
           {},
           0};
       throw;
-    } catch (const detail::Failure&) {
-      facts.status = GltfStatus::kResourceBindingMismatch;
+    } catch (const detail::Failure& failure) {
+      const bool canceled = failure.diagnostic.status == Status::kCanceled;
+      facts.status = canceled ? GltfStatus::kCanceled
+                              : GltfStatus::kResourceBindingMismatch;
       facts.diagnostic = {facts.status,
-                          GltfDiagnosticCode::kInvalidSelection,
+                          canceled ? GltfDiagnosticCode::kCanceled
+                                   : GltfDiagnosticCode::kInvalidSelection,
                           {},
                           {},
                           {},
@@ -870,16 +884,43 @@ class Publication {
                      : Code::kResourceBytes,
                  file, offset);
   }
-  void Verify(detail::FileAssetState& actual) {
+  void Verify(detail::FileAssetState& actual,
+              const gltf_workflow_support_detail::Operation* helper = nullptr,
+              gltf_workflow_support_detail::Stats* helper_stats = nullptr) {
     if (actual.records.size() != expected_.size())
       detail::Fail(Status::kPreservationMismatch, Stage::kInventory,
                    Code::kStagedInventory);
     for (std::size_t i = 0; i < expected_.size(); ++i) {
+      if (helper) helper->Reference();
       auto& actual_file = actual.records[i];
       const auto& expected_file = expected_[i];
-      if (actual_file.path != expected_file.path)
+      bool same_path = helper ? true : actual_file.path == expected_file.path;
+      if (helper) {
+        same_path = actual_file.path.size() == expected_file.path.size();
+        for (std::size_t unit = 0;
+             same_path && unit < expected_file.path.size(); ++unit) {
+          helper->Bytes(sizeof(expected_file.path[unit]));
+          same_path = actual_file.path[unit] == expected_file.path[unit];
+        }
+      }
+      if (!same_path)
         detail::Fail(Status::kPreservationMismatch, Stage::kInventory,
                      Code::kStagedInventory, i);
+      if (helper) {
+        namespace inspection = gltf_workflow_support_detail;
+        inspection::BytePlan equality(*helper);
+        equality.Compare(expected_file.bytes, actual_file.bytes,
+                         inspection::Location(inspection::Stage::kResources,
+                                              inspection::Code::kResourceBytes),
+                         1);
+        try {
+          equality.Run(*helper_stats);
+        } catch (const inspection::Failure& failure) {
+          if (failure.status != inspection::Status::kOutputMismatch) throw;
+          Mismatch(i, failure.diagnostic.element.value_or(0));
+        }
+        continue;
+      }
       const auto size =
           std::min(expected_file.bytes.size(), actual_file.bytes.size());
       const bool changed_size =
@@ -915,21 +956,56 @@ class Publication {
   static bool Visit(detail::NativeView path, bool directory,
                     void* opaque) noexcept {
     auto& operation = *static_cast<Publication*>(opaque);
-    const auto found = std::find_if(
-        operation.paths_.begin(), operation.paths_.end(), [&](const auto& p) {
-          return p.path == path && p.directory == directory;
-        });
-    if (found == operation.paths_.end() || found->seen) return false;
-    found->seen = true;
-    return true;
+    try {
+      auto* work = operation.inventory_work_;
+      if (work) work->Reference();
+      const auto found = std::find_if(
+          operation.paths_.begin(), operation.paths_.end(), [&](const auto& p) {
+            if (!work) return p.path == path && p.directory == directory;
+            work->Reference();
+            if (p.directory != directory || p.path.size() != path.size())
+              return false;
+            for (std::size_t unit = 0; unit < path.size(); ++unit) {
+              work->Bytes(sizeof(path[unit]));
+              if (p.path[unit] != path[unit]) return false;
+            }
+            return true;
+          });
+      if (found == operation.paths_.end() || found->seen) return false;
+      found->seen = true;
+      return true;
+    } catch (...) {
+      operation.inventory_failure_ = std::current_exception();
+      return false;
+    }
   }
-  void Inventory() {
-    for (auto& path : paths_) path.seen = false;
-    transaction_.Inventory(Visit, this);
-    if (std::any_of(paths_.begin(), paths_.end(),
-                    [](const auto& p) { return !p.seen; }))
-      detail::Fail(Status::kPreservationMismatch, Stage::kInventory,
-                   Code::kStagedInventory);
+  void Inventory(allocation::DeformationWork* work = nullptr) {
+    if (inventory_work_ || inventory_failure_)
+      throw allocation::AdmissionFailure(
+          allocation::AdmissionCode::kInvalidObject);
+    inventory_work_ = work;
+    try {
+      for (auto& path : paths_) {
+        if (work) work->Reference();
+        path.seen = false;
+      }
+      transaction_.Inventory(Visit, this);
+      if (std::any_of(paths_.begin(), paths_.end(), [&](const auto& p) {
+            if (work) work->Reference();
+            return !p.seen;
+          }))
+        detail::Fail(Status::kPreservationMismatch, Stage::kInventory,
+                     Code::kStagedInventory);
+    } catch (...) {
+      const auto original = inventory_failure_;
+      inventory_work_ = nullptr;
+      inventory_failure_ = {};
+      // Native walk has returned and closed every traversal handle. Preserve
+      // the actual typed cap/stop/allocation refusal caught by noexcept Visit.
+      if (original) std::rethrow_exception(original);
+      throw;
+    }
+    inventory_work_ = nullptr;
   }
   const GltfFilePublicationRequest& request_;
   const GltfFilePublicationOptions& options_;
@@ -944,6 +1020,8 @@ class Publication {
   detail::Vector<detail::FileRecord> expected_;
   detail::Vector<PathRecord> paths_;
   detail::Vector<std::string_view> opaque_;
+  allocation::DeformationWork* inventory_work_ = nullptr;
+  std::exception_ptr inventory_failure_;
   std::uint64_t total_paths_ = 0;
   std::uint64_t total_bytes_ = 0;
   std::uint64_t planned_entry_bytes_ = 0;

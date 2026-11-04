@@ -10,6 +10,7 @@
 #include <string_view>
 #include <system_error>
 
+#include "gltf_deformation_work.h"
 #include "gltf_workflow_support_internal.h"
 
 namespace meshvale::interchange::gltf_workflow_support_detail {
@@ -61,16 +62,17 @@ class LexicalIndex {
     Value(0, 0);
     while (!stack_.empty()) {
       Whitespace();
+      operation_.Reference();
       auto parent = stack_.back().node;
       const char closer = nodes_[parent].kind == '{' ? '}' : ']';
       if (position_ >= text_.size()) Malformed();
-      if (text_[position_] == closer) {
+      if (ReadByte(position_) == closer) {
         nodes_[parent].end = ++position_;
         stack_.pop_back();
         continue;
       }
       if (nodes_[parent].first != kNoNode) {
-        if (text_[position_] != ',') Malformed();
+        if (ReadByte(position_) != ',') Malformed();
         ++position_;
         Whitespace();
       }
@@ -81,7 +83,8 @@ class LexicalIndex {
         String();
         key_end = position_;
         Whitespace();
-        if (position_ >= text_.size() || text_[position_++] != ':') Malformed();
+        if (position_ >= text_.size() || ReadByte(position_++) != ':')
+          Malformed();
         Whitespace();
       }
       const auto child = nodes_.size();
@@ -95,7 +98,11 @@ class LexicalIndex {
     Whitespace();
     if (position_ != text_.size()) Malformed();
   }
-  const Node& At(std::size_t node) const { return nodes_[node]; }
+  const Node& At(std::size_t node) const {
+    operation_.Reference();
+    return nodes_[node];
+  }
+  void Reference() const { operation_.Reference(); }
   std::string_view Text(std::size_t begin, std::size_t end) const {
     return text_.substr(begin, end - begin);
   }
@@ -116,10 +123,10 @@ class LexicalIndex {
     auto position = begin + 1;
     std::size_t ordinal = 0;
     while (position < end - 1) {
-      unsigned character = static_cast<unsigned char>(text_[position++]);
+      unsigned character = static_cast<unsigned char>(ReadByte(position++));
       if (character == '\\') {
         if (position >= end - 1) return false;
-        character = static_cast<unsigned char>(text_[position++]);
+        character = static_cast<unsigned char>(ReadByte(position++));
         if (character == 'u') {
           character = 0;
           constexpr std::size_t kUnicodeHexDigits = 4;
@@ -127,7 +134,7 @@ class LexicalIndex {
           constexpr unsigned kHexLetterOffset = 10;
           for (std::size_t digit = 0; digit < kUnicodeHexDigits; ++digit) {
             if (position >= end - 1) return false;
-            const auto hex = text_[position++];
+            const auto hex = ReadByte(position++);
             unsigned hex_value = 0;
             if (hex >= '0' && hex <= '9')
               hex_value = hex - '0';
@@ -203,24 +210,28 @@ class LexicalIndex {
     Fail(Status::kOutputMismatch, Stage::kLexical, Code::kOutputJson, {}, {},
          {}, GltfSourceSpan{position_, 1});
   }
+  char ReadByte(std::size_t position) const {
+    operation_.Bytes(1);
+    return text_[position];
+  }
   void Tick() const {
     if (position_ % operation_.work.cancellation_block_bytes == 0)
       operation_.allocation.Checkpoint();
   }
   void Whitespace() {
     while (position_ < text_.size()) {
-      const auto c = text_[position_];
+      const auto c = ReadByte(position_);
       if (c != ' ' && c != '\t' && c != '\n' && c != '\r') break;
       Tick();
       ++position_;
     }
   }
   void String() {
-    if (position_ >= text_.size() || text_[position_++] != '"') Malformed();
+    if (position_ >= text_.size() || ReadByte(position_++) != '"') Malformed();
     bool escaped = false;
     while (position_ < text_.size()) {
       Tick();
-      const auto c = text_[position_++];
+      const auto c = ReadByte(position_++);
       if (escaped)
         escaped = false;
       else if (c == '\\')
@@ -231,13 +242,14 @@ class LexicalIndex {
     Malformed();
   }
   void Value(std::size_t key_begin, std::size_t key_end) {
+    operation_.Reference();
     operation_.allocation.Checkpoint();
     Count(Add(nodes_.size(), 1), operation_.limits.max_json_nodes);
     Count(Add(stack_.size(), 1), operation_.limits.max_json_depth);
     if (position_ >= text_.size()) Malformed();
     const auto ordinal = nodes_.size();
     nodes_.push_back({position_, 0, key_begin, key_end});
-    const auto kind = text_[position_];
+    const auto kind = ReadByte(position_);
     nodes_[ordinal].kind = kind;
     if (kind == '{' || kind == '[') {
       ++position_;
@@ -249,7 +261,7 @@ class LexicalIndex {
     else {
       const auto begin = position_;
       while (position_ < text_.size()) {
-        const auto c = text_[position_];
+        const auto c = ReadByte(position_);
         if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\t' ||
             c == '\n' || c == '\r')
           break;
@@ -313,15 +325,16 @@ std::uint8_t IndexByte(geometry::MeshReadView candidate, std::size_t byte) {
 struct UriCheck {
   const Operation& operation;
   std::string_view actual;
-  static std::optional<Diagnostic> Check(void* opaque, std::size_t begin,
-                                         std::size_t end, bool finalizing) {
+  static std::optional<Diagnostic> Check(
+      void* opaque, std::size_t begin, std::size_t end, bool finalizing,
+      gltf_detail::DeformationWork::Local* local) {
     const auto& self = *static_cast<UriCheck*>(opaque);
     const auto candidate = self.operation.request.candidate.Source().View();
     const auto bytes = candidate.corner_vertices.size() * kUint32Bytes;
     for (auto ordinal = begin; ordinal < end; ++ordinal) {
       if (!finalizing &&
           ordinal % self.operation.work.cancellation_block_bytes == 0)
-        self.operation.allocation.Checkpoint();
+        self.operation.Checkpoint(finalizing);
       char expected = kBase64Padding;
       if (ordinal < kDataUriPrefix.size())
         expected = kDataUriPrefix[ordinal];
@@ -330,6 +343,7 @@ struct UriCheck {
         const auto group = position / kBase64OutputBytes * kBase64InputBytes;
         const auto digit = position % kBase64OutputBytes;
         const auto at = [&](std::size_t index) -> std::uint32_t {
+          if (index < bytes) self.operation.Reference(local);
           return index < bytes ? IndexByte(candidate, index) : 0;
         };
         const auto bits = (at(group) << (2 * kBitsPerByte)) |
@@ -340,6 +354,7 @@ struct UriCheck {
                                         kBase64DigitBits * (digit + 1))) &
                               kBase64DigitMask];
       }
+      self.operation.Bytes(1, local);
       if (self.actual[ordinal] != expected)
         return Location(Stage::kLexical, Code::kAppendedBinding, {}, ordinal);
     }
@@ -411,7 +426,9 @@ void Appended(const Operation& operation, const LexicalIndex& source,
   if (text.size() != encoded + 2 || text.front() != '"' || text.back() != '"')
     BindingFailure();
   UriCheck check{operation, text.substr(1, text.size() - 2)};
-  RunRanges(operation, encoded, UriCheck::Check, &check, stats);
+  const auto extent =
+      ReferenceExtent(operation, encoded, kBase64InputBytes, encoded);
+  RunRanges(operation, encoded, UriCheck::Check, &check, stats, 1, &extent);
 }
 void ValueHole(Vector<Hole>& holes, const LexicalIndex& original,
                const LexicalIndex& actual, std::size_t first,
@@ -521,13 +538,15 @@ void VerifyLexical(const Operation& operation, Stats& stats) {
   if (actual.Children(0) != source.Children(0))
     InsertionHole(holes, source, actual, 0, 0, source.Children(0));
   std::sort(holes.begin(), holes.end(),
-            [](const Hole& first, const Hole& second) {
+            [&](const Hole& first, const Hole& second) {
+              operation.Reference();
               return first.source_begin < second.source_begin;
             });
   BytePlan preservation(operation);
   std::size_t source_position = 0;
   std::size_t output_position = 0;
   for (const auto& hole : holes) {
+    operation.Reference();
     if (hole.source_begin < source_position ||
         hole.output_begin < output_position)
       BindingFailure();

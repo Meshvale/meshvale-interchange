@@ -12,15 +12,21 @@
 #include <variant>
 
 #include "gltf_asset_state.h"
+#include "gltf_deformation_work.h"
+#include "gltf_json_snapshot.h"
 #include "gltf_workflow_support_internal.h"
 
 namespace meshvale::interchange::gltf_workflow_support_detail {
 namespace {
 std::uint64_t OriginalTableCount(const Operation& operation,
                                  std::string_view key) {
-  const auto& document =
+  auto document =
       gltf_detail::Access::State(operation.request.source.SourceAsset())
           .document;
+  gltf_detail::JsonReferenceScope references(
+      document,
+      operation.deformation_work ? Operation::ReferenceCallback : nullptr,
+      const_cast<Operation*>(&operation));
   const auto table = gltf_detail::FindMember(document, 0, key);
   return table ? gltf_detail::ChildCount(document, *table) : 0;
 }
@@ -49,6 +55,7 @@ bool SparseEqual(const std::optional<GltfSparseProvenance>& expected,
 }
 void Channel(BytePlan& plan, const GltfChannelView& expected,
              const GltfChannelView& actual, std::uint64_t ordinal) {
+  plan.Reference();
   auto descriptor =
       Location(Stage::kReloadedPrimitive, Code::kChannelDescriptor, ordinal);
   plan.Require(
@@ -82,10 +89,11 @@ void Channel(BytePlan& plan, const GltfChannelView& expected,
 }
 std::optional<std::size_t> AliasOffset(
     std::span<const GltfResourceView> inventory,
-    const GltfResourceView& resource) {
+    const GltfResourceView& resource, const Operation& operation) {
   if (resource.origin != GltfResourceOrigin::kBufferView) return {};
   if (!resource.buffer_index || !resource.buffer_view_index) return {};
   for (const auto& buffer : inventory) {
+    operation.Reference();
     if (buffer.kind != GltfResourceKind::kBuffer ||
         buffer.table_index != *resource.buffer_index)
       continue;
@@ -102,15 +110,18 @@ struct EncodedResource {
   const Operation& operation;
   std::span<const std::byte> actual;
   std::uint64_t resource;
-  static std::optional<Diagnostic> Check(void* opaque, std::size_t begin,
-                                         std::size_t end, bool finalizing) {
+  static std::optional<Diagnostic> Check(
+      void* opaque, std::size_t begin, std::size_t end, bool finalizing,
+      gltf_detail::DeformationWork::Local* local) {
     const auto& self = *static_cast<EncodedResource*>(opaque);
     const auto candidate = self.operation.request.candidate.Source().View();
     constexpr std::size_t kBitsPerByte = 8;
     for (auto byte = begin; byte < end; ++byte) {
       if (!finalizing &&
           byte % self.operation.work.cancellation_block_bytes == 0)
-        self.operation.allocation.Checkpoint();
+        self.operation.Checkpoint(finalizing);
+      self.operation.Reference(local);
+      self.operation.Bytes(1, local);
       const auto expected = static_cast<std::uint8_t>(
           candidate.corner_vertices[byte / kUint32Bytes] >>
           ((byte % kUint32Bytes) * kBitsPerByte));
@@ -127,8 +138,9 @@ struct EncodedResource {
 struct SelectedTopology {
   const Operation& operation;
   bool indices;
-  static std::optional<Diagnostic> Check(void* opaque, std::size_t begin,
-                                         std::size_t end, bool finalizing) {
+  static std::optional<Diagnostic> Check(
+      void* opaque, std::size_t begin, std::size_t end, bool finalizing,
+      gltf_detail::DeformationWork::Local* local) {
     const auto& self = *static_cast<SelectedTopology*>(opaque);
     const auto candidate = self.operation.request.candidate.Source().View();
     const auto& reload = self.operation.request.reloaded_extraction;
@@ -140,7 +152,8 @@ struct SelectedTopology {
                        1, self.operation.work.cancellation_block_bytes /
                               sizeof(geometry::index_t)) ==
               0)
-        self.operation.allocation.Checkpoint();
+        self.operation.Checkpoint(finalizing);
+      self.operation.Reference(local);
       std::uint32_t actual = reload.TriangleIndices()[corner];
       if (self.indices) {
         const auto index = reload.SourceIndices();
@@ -156,8 +169,9 @@ struct SelectedTopology {
 struct Provenance {
   const Operation& operation;
   InspectionState& owner;
-  static std::optional<Diagnostic> Check(void* opaque, std::size_t begin,
-                                         std::size_t end, bool finalizing) {
+  static std::optional<Diagnostic> Check(
+      void* opaque, std::size_t begin, std::size_t end, bool finalizing,
+      gltf_detail::DeformationWork::Local* local) {
     auto& self = *static_cast<Provenance*>(opaque);
     const auto& request = self.operation.request;
     const auto original = request.source.SourceExtraction().SourceCorners();
@@ -170,7 +184,10 @@ struct Provenance {
                         1, self.operation.work.cancellation_block_bytes /
                                sizeof(GltfSourceCorner)) ==
               0)
-        self.operation.allocation.Checkpoint();
+        self.operation.Checkpoint(finalizing);
+      self.operation.Reference(local);
+      self.operation.Reference(local);
+      self.operation.Reference(local);
       const auto expected = original[request.source_corners[ordinal]];
       const auto bundle = request.output.OriginalCorners()[ordinal];
       const auto reload = request.reloaded_extraction.SourceCorners()[ordinal];
@@ -186,6 +203,7 @@ struct Provenance {
         return Location(Stage::kProvenance, Code::kSourceProvenance, {},
                         ordinal);
       self.owner.original_corners[ordinal] = expected;
+      self.operation.Bytes(sizeof(GltfSourceCorner), local);
     }
     return {};
   }
@@ -199,12 +217,14 @@ void VerifyResources(const Operation& operation, Stats& stats) {
   std::optional<std::size_t> added_reload;
   if (operation.changed) {
     const auto buffer_index = OriginalTableCount(operation, kBuffers);
-    for (std::size_t ordinal = 0; ordinal < reload.size(); ++ordinal)
+    for (std::size_t ordinal = 0; ordinal < reload.size(); ++ordinal) {
+      operation.Reference();
       if (reload[ordinal].kind == GltfResourceKind::kBuffer &&
           reload[ordinal].table_index == buffer_index) {
         added_reload = ordinal;
         break;
       }
+    }
   }
   BytePlan plan(operation);
   plan.Require(bundle.size() == expected_size &&
@@ -214,6 +234,7 @@ void VerifyResources(const Operation& operation, Stats& stats) {
   for (std::size_t ordinal = 0;
        ordinal < std::min({original.size(), bundle.size(), reload.size()});
        ++ordinal) {
+    operation.Reference();
     plan.Checkpoint();
     const auto& expected = original[ordinal];
     auto descriptor = Location(Stage::kResources, Code::kResourceIdentity);
@@ -224,6 +245,7 @@ void VerifyResources(const Operation& operation, Stats& stats) {
     const auto reload_ordinal =
         ordinal + (added_reload && ordinal >= *added_reload ? 1 : 0);
     for (const bool reloaded : {false, true}) {
+      operation.Reference();
       const auto inventory = reloaded ? reload : bundle;
       const auto actual_ordinal = reloaded ? reload_ordinal : ordinal;
       plan.Require(actual_ordinal < inventory.size(), descriptor);
@@ -237,8 +259,8 @@ void VerifyResources(const Operation& operation, Stats& stats) {
                        expected.buffer_view_index == actual.buffer_view_index,
                    descriptor);
       if (expected.origin == GltfResourceOrigin::kBufferView) {
-        const auto expected_offset = AliasOffset(original, expected);
-        const auto actual_offset = AliasOffset(inventory, actual);
+        const auto expected_offset = AliasOffset(original, expected, operation);
+        const auto actual_offset = AliasOffset(inventory, actual, operation);
         plan.Require(expected_offset && actual_offset &&
                          expected_offset == actual_offset,
                      descriptor);
@@ -260,6 +282,7 @@ void VerifyResources(const Operation& operation, Stats& stats) {
   BytePlan appended(operation);
   for (const auto* actual_pointer :
        {&bundle[ordinal], &reload[*added_reload]}) {
+    operation.Reference();
     const auto& actual = *actual_pointer;
     const bool buffer_index_matches =
         actual_pointer == &bundle[ordinal]
@@ -279,8 +302,11 @@ void VerifyResources(const Operation& operation, Stats& stats) {
                    reload[*added_reload].authored_uri, descriptor);
   appended.Run(stats);
   for (const auto* actual : {&bundle[ordinal], &reload[*added_reload]}) {
+    operation.Reference();
     EncodedResource check{operation, actual->bytes, ordinal};
-    RunRanges(operation, bytes, EncodedResource::Check, &check, stats);
+    const auto extent = ReferenceExtent(operation, bytes, 1, bytes);
+    RunRanges(operation, bytes, EncodedResource::Check, &check, stats, 1,
+              &extent);
   }
 }
 void VerifyReload(const Operation& operation, Stats& stats) {
@@ -345,14 +371,19 @@ void VerifyReload(const Operation& operation, Stats& stats) {
                Location(Stage::kReloadedPrimitive, Code::kSelectedTopology));
   plan.Run(stats);
   SelectedTopology topology{operation, false};
+  const auto topology_extent = ReferenceExtent(operation, corners);
   RunRanges(operation,
             gltf_detail::CheckedProduct(corners, sizeof(geometry::index_t)),
-            SelectedTopology::Check, &topology, stats);
+            SelectedTopology::Check, &topology, stats,
+            operation.deformation_work ? sizeof(geometry::index_t) : 1,
+            &topology_extent);
   if (operation.changed) {
     topology.indices = true;
     RunRanges(operation,
               gltf_detail::CheckedProduct(corners, sizeof(geometry::index_t)),
-              SelectedTopology::Check, &topology, stats);
+              SelectedTopology::Check, &topology, stats,
+              operation.deformation_work ? sizeof(geometry::index_t) : 1,
+              &topology_extent);
   }
 }
 void VerifyDeformationReload(const Operation& operation, Stats& stats,
@@ -364,14 +395,8 @@ void VerifyDeformationReload(const Operation& operation, Stats& stats,
   const auto diagnostic =
       Location(Stage::kReloadedPrimitive, Code::kDeformation);
   BytePlan plan(operation);
-  auto relationship = [&] {
-    operation.allocation.Checkpoint();
-    if (observation.counts.relationship_steps ==
-        policy.limits.max_relationship_steps)
-      Fail(Status::kLimitExceeded, Stage::kReloadedPrimitive,
-           Code::kCountLimit);
-    ++observation.counts.relationship_steps;
-  };
+  (void)policy;
+  auto relationship = [&] { operation.Reference(); };
   plan.Require(source && actual, diagnostic);
   if (!source || !actual) {
     plan.Run(stats);
@@ -391,11 +416,12 @@ void VerifyDeformationReload(const Operation& operation, Stats& stats,
   plan.Compare(expected_revision.blob, actual_revision.blob, diagnostic);
   plan.Compare(source->QuaternionPolicy(), actual->QuaternionPolicy(),
                diagnostic);
-  auto rows = [&](auto expected, auto reloaded, auto check) {
+  auto rows = [&](auto expected, auto reloaded, auto check,
+                  bool reference = true) {
     plan.Require(expected.size() == reloaded.size(), diagnostic);
     for (std::size_t i = 0; i < std::min(expected.size(), reloaded.size());
          ++i) {
-      relationship();
+      if (reference) relationship();
       check(expected[i], reloaded[i]);
     }
   };
@@ -564,11 +590,13 @@ void VerifyDeformationReload(const Operation& operation, Stats& stats,
                           a.owner_index == b.owner_index &&
                           a.authored == b.authored,
                       diagnostic);
-         rows(a.authored_values, b.authored_values,
-              [&](const auto& x, const auto& y) {
-                plan.Require(x.kind == y.kind, diagnostic);
-                plan.Compare(x.lexeme, y.lexeme, diagnostic);
-              });
+         rows(
+             a.authored_values, b.authored_values,
+             [&](const auto& x, const auto& y) {
+               plan.Require(x.kind == y.kind, diagnostic);
+               plan.Compare(x.lexeme, y.lexeme, diagnostic);
+             },
+             false);
        });
   rows(source->RowLocalDeclarations(), actual->RowLocalDeclarations(),
        [&](const auto& a, const auto& b) {
@@ -603,11 +631,13 @@ void VerifyDeformationReload(const Operation& operation, Stats& stats,
            plan.Compare(std::as_bytes(*a.projected_components),
                         std::as_bytes(*b.projected_components), diagnostic,
                         sizeof(std::uint32_t));
-         rows(a.authored_components, b.authored_components,
-              [&](const auto& x, const auto& y) {
-                plan.Require(x.kind == y.kind, diagnostic);
-                plan.Compare(x.lexeme, y.lexeme, diagnostic);
-              });
+         rows(
+             a.authored_components, b.authored_components,
+             [&](const auto& x, const auto& y) {
+               plan.Require(x.kind == y.kind, diagnostic);
+               plan.Compare(x.lexeme, y.lexeme, diagnostic);
+             },
+             false);
        });
   plan.Run(stats);
   observation.predicates.affecting_animation = true;
@@ -631,15 +661,29 @@ void VerifyProvenance(const Operation& operation, InspectionState& state,
                        request.source_corners.size(),
                Location(Stage::kProvenance, Code::kSourceProvenance));
   maps.Run(stats);
-  state.faces.assign(request.source_faces.begin(), request.source_faces.end());
-  state.corners.assign(request.source_corners.begin(),
-                       request.source_corners.end());
+  state.faces.reserve(request.source_faces.size());
+  for (const auto face : request.source_faces) {
+    operation.Reference();
+    state.faces.push_back(face);
+    operation.Bytes(sizeof(face));
+  }
+  state.corners.reserve(request.source_corners.size());
+  for (const auto corner : request.source_corners) {
+    operation.Reference();
+    state.corners.push_back(corner);
+    operation.Bytes(sizeof(corner));
+  }
   state.original_corners.resize(request.source_corners.size());
   Provenance check{operation, state};
+  const auto provenance_extent =
+      ReferenceExtent(operation, request.source_corners.size(), 3,
+                      gltf_detail::CheckedProduct(request.source_corners.size(),
+                                                  sizeof(GltfSourceCorner)));
   RunRanges(operation,
             gltf_detail::CheckedProduct(request.source_corners.size(),
                                         sizeof(GltfSourceCorner)),
-            Provenance::Check, &check, stats, sizeof(GltfSourceCorner));
+            Provenance::Check, &check, stats, sizeof(GltfSourceCorner),
+            &provenance_extent);
   const auto binding = request.output.ChangedBinding();
   bool valid = !operation.changed && !binding;
   if (operation.changed && binding) {
