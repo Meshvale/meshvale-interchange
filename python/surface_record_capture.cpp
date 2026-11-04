@@ -324,7 +324,17 @@ SharedSurfaceIngress::SharedSurfaceIngress(
   Capacity<BufferSlot>(limits.max_buffer_views);
   buffers_.resize(Host(limits.max_buffer_views));
 }
-SharedSurfaceIngress::~SharedSurfaceIngress() = default;
+SharedSurfaceIngress::~SharedSurfaceIngress() {
+  // The observation outlives this owner. Partial staging may never reach the
+  // state admitted by ReleaseBufferStorage; release its actual live payload
+  // here as well, without changing the cumulative allocation/copy facts.
+  for (auto& slot : buffers_) {
+    if (auto* storage = std::exchange(slot.staging, nullptr)) {
+      alloc::AllocationContext::Deallocate(storage);
+      reached_.active_staging_payload_bytes -= slot.bytes;
+    }
+  }
+}
 const alloc::AllocationContext& SharedSurfaceIngress::Bridge() const noexcept {
   return bridge_;
 }
