@@ -104,16 +104,21 @@ void AdmitDeformationRotations(AssetState& state) {
                       0,
                       std::nullopt,
                       true};
+  // Every valid DOM node is below NodeCount; keep the cursor payload
+  // initialized even when the table or its next row is absent.
+  const auto missing_source_row = doc.NodeCount();
   auto source_row =
-      table ? doc.FirstReferenceChild(*table) : std::optional<std::size_t>{};
+      table ? doc.FirstReferenceChild(*table).value_or(missing_source_row)
+            : missing_source_row;
   for (std::size_t index = 0; index < state.nodes.size();
-       ++index, source_row = doc.NextReferenceSibling(*source_row)) {
+       ++index, source_row = doc.NextReferenceSibling(source_row)
+                                 .value_or(missing_source_row)) {
     const auto& node = state.nodes[index];
     doc.ReferenceVisit();
     state.allocation.Checkpoint();
-    if (!source_row || node.table_index != index)
+    if (source_row == missing_source_row || node.table_index != index)
       Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kGraphRelationship);
-    const auto row = *source_row;
+    const auto row = source_row;
     const auto rotation = FindMember(doc, row, kRotation);
     auto& source = state.node_rotation_storage[node.table_index];
     if (!rotation) {

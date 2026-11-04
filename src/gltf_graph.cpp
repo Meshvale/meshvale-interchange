@@ -283,15 +283,21 @@ void BuildGraph(AssetState& state) {
   state.nodes.reserve(static_cast<std::size_t>(count));
   state.children.reserve(static_cast<std::size_t>(count));
   std::uint64_t edges = 0;
-  auto source_row = node_table ? doc.FirstReferenceChild(*node_table)
-                               : std::optional<std::size_t>{};
+  // Every valid DOM node is below NodeCount; keep the cursor payload
+  // initialized even when the table or its next row is absent.
+  const auto missing_source_row = doc.NodeCount();
+  auto source_row =
+      node_table
+          ? doc.FirstReferenceChild(*node_table).value_or(missing_source_row)
+          : missing_source_row;
   for (std::uint64_t index = 0; index < count;
-       ++index, source_row = doc.NextReferenceSibling(*source_row)) {
+       ++index, source_row = doc.NextReferenceSibling(source_row)
+                                 .value_or(missing_source_row)) {
     doc.ReferenceVisit();
     state.allocation.Checkpoint();
-    if (!source_row)
+    if (source_row == missing_source_row)
       Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreReference);
-    const auto source = *source_row;
+    const auto source = source_row;
     Reference(doc, source, kMesh, kMeshes);
     Reference(doc, source, kSkin, kSkins);
     Reference(doc, source, kCamera, kCameras);
