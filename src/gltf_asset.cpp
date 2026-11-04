@@ -73,16 +73,20 @@ std::optional<std::size_t> FindMember(const JsonSnapshot& document,
                                       std::string_view key) {
   if (document.Kind(object) != JsonKind::kObject) return std::nullopt;
   for (auto child = document.FirstChild(object); child;
-       child = document.NextSibling(*child))
+       child = document.NextSibling(*child)) {
+    document.ReferenceVisit();
     if (document.Key(*child) == key) return child;
+  }
   return std::nullopt;
 }
 std::optional<std::size_t> ChildAt(const JsonSnapshot& document,
                                    std::size_t array, std::uint64_t ordinal) {
   if (document.Kind(array) != JsonKind::kArray) return std::nullopt;
   auto child = document.FirstChild(array);
+  if (child) document.ReferenceVisit();
   while (child && ordinal != 0) {
     child = document.NextSibling(*child);
+    if (child) document.ReferenceVisit();
     --ordinal;
   }
   return child;
@@ -90,8 +94,10 @@ std::optional<std::size_t> ChildAt(const JsonSnapshot& document,
 std::uint64_t ChildCount(const JsonSnapshot& document, std::size_t node) {
   std::uint64_t count = 0;
   for (auto child = document.FirstChild(node); child;
-       child = document.NextSibling(*child))
+       child = document.NextSibling(*child)) {
+    document.ReferenceVisit();
     ++count;
+  }
   return count;
 }
 const std::shared_ptr<const AssetState>& Access::Owner(
@@ -108,13 +114,16 @@ const AssetState& Access::State(const GltfAsset& asset) {
   return *asset.owner_;
 }
 const PrimitiveRecord* Access::PrimitiveRecordFor(
-    const GltfAsset& asset, const GltfPrimitiveHandle& primitive) {
+    const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
+    void (*reference)(void*), void* reference_state) {
   if (asset.owner_ != primitive.owner_)
     Fail(GltfStatus::kForeignOwner, GltfDiagnosticCode::kForeignOwner);
-  for (const auto& record : State(asset).primitives)
+  for (const auto& record : State(asset).primitives) {
+    if (reference) reference(reference_state);
     if (record.mesh_index == primitive.mesh_ &&
         record.primitive_index == primitive.primitive_)
       return &record;
+  }
   return nullptr;
 }
 GltfAsset Access::MakeAsset(std::shared_ptr<const AssetState> state) {

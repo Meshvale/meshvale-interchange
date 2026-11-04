@@ -61,8 +61,9 @@ State::State(const GltfAsset& source, const GltfPrimitiveHandle& selected,
 const State& Access::Get(const GltfDeformationProof& proof) noexcept {
   return *proof.owner_;
 }
-GltfDeformationProof Access::MakeProof(std::shared_ptr<const State> state) {
-  if (!state || !state->facts.complete ||
+GltfDeformationProof Access::MakeProof(std::shared_ptr<State> state) {
+  if (state) state->facts.complete = false;
+  if (!state ||
       state->asset.AdmissionProfile() !=
           GltfAdmissionProfile::kRetainedCoreDeformationV1 ||
       state->facts.status != GltfStatus::kAccepted || !state->facts.numeric ||
@@ -84,9 +85,13 @@ GltfDeformationProof Access::MakeProof(std::shared_ptr<const State> state) {
        state->values != GltfValueRequest::kRawAndNormalized))
     gltf_detail::Fail(GltfStatus::kInvalidSelection,
                       GltfDiagnosticCode::kInvalidSelection);
-  if (!gltf_detail::Access::PrimitiveRecordFor(state->asset, state->primitive))
+  if (!gltf_detail::Access::PrimitiveRecordFor(
+          state->asset, state->primitive, DeformationReference, state.get()))
     gltf_detail::Fail(GltfStatus::kInvalidSelection,
                       GltfDiagnosticCode::kInvalidSelection);
+  state->allocation.Checkpoint();
+  state->facts.phase = GltfDeformationPhase::kComplete;
+  state->facts.complete = true;
   return GltfDeformationProof(std::move(state));
 }
 }  // namespace meshvale::interchange::gltf_deformation_detail

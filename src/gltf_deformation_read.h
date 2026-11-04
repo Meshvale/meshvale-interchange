@@ -13,6 +13,7 @@ inline constexpr GltfNormativeRevision kDeformationRevision{
     "1c84b58ba3338be4731ea546fa4138dcbb93d42d",
     "aeaab65b1291d722ee610db247ae43c575ed63e1"};
 void ValidateDeformationConfiguration(const GltfDeformationPolicy& policy);
+void DeformationReadReference(void* state);
 // The already bounded reader owns state and projected words. This operation
 // retains original source views and checks actual authored node rotations.
 void AdmitDeformationRotations(AssetState& state);

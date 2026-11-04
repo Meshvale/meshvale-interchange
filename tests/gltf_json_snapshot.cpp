@@ -416,6 +416,72 @@ void Dump(const char* path) {
     std::cout << kRecordTerminator;
   }
 }
+void LexicalReferences() {
+  ExecutionContext context({2, 1, 1 << 20});
+  {
+    auto captured = CaptureJsonSnapshot(R"({"a":{},"b":{}})", Limits(),
+                                        AllocationContext(context, {}));
+    Require(captured.snapshot.has_value(), "reference source capture");
+    auto& document = *captured.snapshot;
+    std::size_t visits = 0;
+    auto visit = [](void* state) { ++*static_cast<std::size_t*>(state); };
+    auto unchanged = document;
+    {
+      JsonReferenceScope references(document, visit, &visits);
+      (void)document.FirstChild(0);
+      Require(visits == 0, "ordinary DOM access does not relabel scalar work");
+      auto child = document.FirstReferenceChild(0);
+      Require(child && visits == 1, "explicit reference has one actual owner");
+      auto copy = document;
+      auto assigned = unchanged;
+      assigned = document;
+      auto moved = std::move(copy);
+      auto move_assigned = unchanged;
+      move_assigned = std::move(assigned);
+      (void)moved.FirstReferenceChild(0);
+      (void)move_assigned.FirstReferenceChild(0);
+      std::thread reader([&] {
+        for (std::size_t i = 0; i < 32; ++i)
+          (void)unchanged.FirstReferenceChild(0);
+      });
+      reader.join();
+      Require(visits == 1,
+              "copy/move and retained concurrent owner never borrow callback");
+      child = document.NextReferenceSibling(*child);
+      Require(child && visits == 2, "each repeated structural visit counts");
+      Require(!document.NextReferenceSibling(*child) && visits == 2,
+              "absent next record does not invent a source visit");
+    }
+    (void)document.FirstReferenceChild(0);
+    Require(visits == 2 && document.Original() == unchanged.Original(),
+            "scope removes callback without changing snapshot identity");
+    std::size_t nested_visits = 0;
+    {
+      JsonReferenceScope outer(document, visit, &visits);
+      {
+        JsonReferenceScope inner(document, visit, &nested_visits);
+        document.ReferenceVisit();
+      }
+      document.ReferenceVisit();
+    }
+    document.ReferenceVisit();
+    Require(visits == 3 && nested_visits == 1,
+            "nested scope restores its original owner then detaches");
+    struct Refusal {};
+    try {
+      JsonReferenceScope references(
+          document, [](void*) { throw Refusal{}; }, nullptr);
+      (void)document.FirstReferenceChild(0);
+      Require(false, "typed callback refusal must propagate");
+    } catch (const Refusal&) {
+    }
+    (void)document.FirstReferenceChild(0);
+    Require(document.Original() == unchanged.Original(),
+            "exception unwind detaches callback from retained owner");
+  }
+  Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
+          "reference wrapper adds no payload or worker ownership");
+}
 }  // namespace
 int main(int argc, char** argv) {
   constexpr int kDumpArgumentCount = 3;
@@ -433,6 +499,7 @@ int main(int argc, char** argv) {
     MalformedConstructionBoundaries();
     SharedPayloadContention();
     ConcurrentOwners();
+    LexicalReferences();
     std::cout << "Owned JSON retention, guards, limits, fault/cancel and "
                  "shared ledger passed\n";
     return 0;

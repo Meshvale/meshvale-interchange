@@ -103,23 +103,23 @@ void ReferenceArray(const JsonSnapshot& doc, std::size_t node,
                     std::string_view key, std::string_view table) {
   const auto array = FindMember(doc, node, key);
   if (!array) return;
-  for (auto child = doc.FirstChild(*array); child;
-       child = doc.NextSibling(*child))
+  for (auto child = doc.FirstReferenceChild(*array); child;
+       child = doc.NextReferenceSibling(*child))
     (void)TableRow(doc, table, ReadExactUnsigned(doc, *child));
 }
 void PrimitiveReferences(const JsonSnapshot& doc, std::size_t primitive) {
   Reference(doc, primitive, kIndices, kAccessors);
   Reference(doc, primitive, kMaterial, kMaterials);
   const auto attributes = FindMember(doc, primitive, kAttributes);
-  for (auto child = doc.FirstChild(*attributes); child;
-       child = doc.NextSibling(*child))
+  for (auto child = doc.FirstReferenceChild(*attributes); child;
+       child = doc.NextReferenceSibling(*child))
     (void)TableRow(doc, kAccessors, ReadExactUnsigned(doc, *child));
   const auto targets = FindMember(doc, primitive, kTargets);
   if (targets)
-    for (auto target = doc.FirstChild(*targets); target;
-         target = doc.NextSibling(*target))
-      for (auto child = doc.FirstChild(*target); child;
-           child = doc.NextSibling(*child))
+    for (auto target = doc.FirstReferenceChild(*targets); target;
+         target = doc.NextReferenceSibling(*target))
+      for (auto child = doc.FirstReferenceChild(*target); child;
+           child = doc.NextReferenceSibling(*child))
         (void)TableRow(doc, kAccessors, ReadExactUnsigned(doc, *child));
 }
 void OtherReferences(AssetState& state) {
@@ -127,8 +127,8 @@ void OtherReferences(AssetState& state) {
   Reference(doc, 0, kScene, kScenes);
   const auto accessors = FindMember(doc, 0, kAccessors);
   if (accessors)
-    for (auto row = doc.FirstChild(*accessors); row;
-         row = doc.NextSibling(*row)) {
+    for (auto row = doc.FirstReferenceChild(*accessors); row;
+         row = doc.NextReferenceSibling(*row)) {
       state.allocation.Checkpoint();
       Reference(doc, *row, kBufferView, kBufferViews);
       const auto sparse = FindMember(doc, *row, kSparse);
@@ -142,7 +142,8 @@ void OtherReferences(AssetState& state) {
     }
   const auto views = FindMember(doc, 0, kBufferViews);
   if (views)
-    for (auto row = doc.FirstChild(*views); row; row = doc.NextSibling(*row)) {
+    for (auto row = doc.FirstReferenceChild(*views); row;
+         row = doc.NextReferenceSibling(*row)) {
       state.allocation.Checkpoint();
       const auto buffer = TableRow(doc, kBuffers, *Index(doc, *row, kBuffer));
       const auto bytes = *Index(doc, buffer, kByteLength);
@@ -153,7 +154,8 @@ void OtherReferences(AssetState& state) {
     }
   const auto skins = FindMember(doc, 0, kSkins);
   if (skins)
-    for (auto row = doc.FirstChild(*skins); row; row = doc.NextSibling(*row)) {
+    for (auto row = doc.FirstReferenceChild(*skins); row;
+         row = doc.NextReferenceSibling(*row)) {
       state.allocation.Checkpoint();
       Reference(doc, *row, kSkeleton, kNodes);
       Reference(doc, *row, kInverseBindMatrices, kAccessors);
@@ -161,18 +163,18 @@ void OtherReferences(AssetState& state) {
     }
   const auto animations = FindMember(doc, 0, kAnimations);
   if (animations)
-    for (auto animation = doc.FirstChild(*animations); animation;
-         animation = doc.NextSibling(*animation)) {
+    for (auto animation = doc.FirstReferenceChild(*animations); animation;
+         animation = doc.NextReferenceSibling(*animation)) {
       const auto samplers = *FindMember(doc, *animation, kSamplers);
-      for (auto row = doc.FirstChild(samplers); row;
-           row = doc.NextSibling(*row)) {
+      for (auto row = doc.FirstReferenceChild(samplers); row;
+           row = doc.NextReferenceSibling(*row)) {
         state.allocation.Checkpoint();
         Reference(doc, *row, kInput, kAccessors);
         Reference(doc, *row, kOutput, kAccessors);
       }
       const auto channels = *FindMember(doc, *animation, kChannels);
-      for (auto row = doc.FirstChild(channels); row;
-           row = doc.NextSibling(*row)) {
+      for (auto row = doc.FirstReferenceChild(channels); row;
+           row = doc.NextReferenceSibling(*row)) {
         const auto sampler = *Index(doc, *row, kSampler);
         if (!ChildAt(doc, samplers, sampler))
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreReference);
@@ -181,15 +183,15 @@ void OtherReferences(AssetState& state) {
     }
   const auto textures = FindMember(doc, 0, kTextures);
   if (textures)
-    for (auto row = doc.FirstChild(*textures); row;
-         row = doc.NextSibling(*row)) {
+    for (auto row = doc.FirstReferenceChild(*textures); row;
+         row = doc.NextReferenceSibling(*row)) {
       Reference(doc, *row, kSource, kImages);
       Reference(doc, *row, kSampler, kSamplers);
     }
   const auto materials = FindMember(doc, 0, kMaterials);
   if (materials)
-    for (auto row = doc.FirstChild(*materials); row;
-         row = doc.NextSibling(*row)) {
+    for (auto row = doc.FirstReferenceChild(*materials); row;
+         row = doc.NextReferenceSibling(*row)) {
       const auto pbr = FindMember(doc, *row, kPbrMetallicRoughness);
       for (const auto key : kTextureRoles) {
         const auto direct = FindMember(doc, *row, key);
@@ -208,8 +210,8 @@ GltfCapabilityReason Capability(const AssetState& state,
     return GltfCapabilityReason::kPrimitiveMode;
   const auto attributes = *FindMember(doc, primitive.json_node, kAttributes);
   bool unknown = false;
-  for (auto channel = doc.FirstChild(attributes); channel;
-       channel = doc.NextSibling(*channel)) {
+  for (auto channel = doc.FirstReferenceChild(attributes); channel;
+       channel = doc.NextReferenceSibling(*channel)) {
     const auto key = doc.Key(*channel);
     if (key.starts_with(kJointPrefix) || key.starts_with(kWeightPrefix))
       return GltfCapabilityReason::kJointWeightChannels;
@@ -227,27 +229,32 @@ GltfCapabilityReason Capability(const AssetState& state,
   bool extension = false;
   for (std::size_t node = 0; node < state.guard_rules.size(); ++node) {
     state.allocation.Checkpoint();
+    doc.ReferenceVisit();
     if (GuardPath(state.guard_rules[node]).ends_with(kExtensionsPathSuffix) &&
         ChildCount(doc, node) != 0)
       extension = true;
   }
   const auto node_table = FindMember(doc, 0, kNodes);
   // The first reason has profile priority independent of authored use order.
-  for (std::size_t use = 0; use < state.nodes.size(); ++use)
+  for (std::size_t use = 0; use < state.nodes.size(); ++use) {
+    doc.ReferenceVisit();
     if (state.nodes[use].mesh == primitive.mesh_index &&
         FindMember(doc, *ChildAt(doc, *node_table, use), kWeights))
       return GltfCapabilityReason::kMorphBinding;
+  }
   for (std::size_t use = 0; use < state.nodes.size(); ++use) {
+    doc.ReferenceVisit();
     if (state.nodes[use].mesh != primitive.mesh_index) continue;
     if (state.nodes[use].skin) return GltfCapabilityReason::kSkinBinding;
     for (std::optional<std::uint64_t> ancestor = use; ancestor;
          ancestor = state.nodes[*ancestor].parent) {
+      doc.ReferenceVisit();
       if (animation_table)
-        for (auto animation = doc.FirstChild(*animation_table); animation;
-             animation = doc.NextSibling(*animation)) {
+        for (auto animation = doc.FirstReferenceChild(*animation_table);
+             animation; animation = doc.NextReferenceSibling(*animation)) {
           const auto channels = *FindMember(doc, *animation, kChannels);
-          for (auto channel = doc.FirstChild(channels); channel;
-               channel = doc.NextSibling(*channel)) {
+          for (auto channel = doc.FirstReferenceChild(channels); channel;
+               channel = doc.NextReferenceSibling(*channel)) {
             const auto target = *FindMember(doc, *channel, kTarget);
             if (Index(doc, target, kNode) != ancestor) continue;
             const auto path =
@@ -276,9 +283,15 @@ void BuildGraph(AssetState& state) {
   state.nodes.reserve(static_cast<std::size_t>(count));
   state.children.reserve(static_cast<std::size_t>(count));
   std::uint64_t edges = 0;
-  for (std::uint64_t index = 0; index < count; ++index) {
+  auto source_row = node_table ? doc.FirstReferenceChild(*node_table)
+                               : std::optional<std::size_t>{};
+  for (std::uint64_t index = 0; index < count;
+       ++index, source_row = doc.NextReferenceSibling(*source_row)) {
+    doc.ReferenceVisit();
     state.allocation.Checkpoint();
-    const auto source = *ChildAt(doc, *node_table, index);
+    if (!source_row)
+      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreReference);
+    const auto source = *source_row;
     Reference(doc, source, kMesh, kMeshes);
     Reference(doc, source, kSkin, kSkins);
     Reference(doc, source, kCamera, kCameras);
@@ -286,8 +299,8 @@ void BuildGraph(AssetState& state) {
     state.children.emplace_back(Allocator<std::uint64_t>(state.allocation));
     const auto children = FindMember(doc, source, kChildren);
     if (children)
-      for (auto child = doc.FirstChild(*children); child;
-           child = doc.NextSibling(*child)) {
+      for (auto child = doc.FirstReferenceChild(*children); child;
+           child = doc.NextReferenceSibling(*child)) {
         if (edges == state.limits.max_graph_edges)
           Fail(GltfStatus::kUnsupportedProfile,
                GltfDiagnosticCode::kLimitExceeded);
@@ -318,7 +331,7 @@ void BuildGraph(AssetState& state) {
       node.authored_transform_mask = GltfLocalTransformLayout::kAuthoredMatrix;
       for (std::uint64_t i = 0; i < node.local_transform_bits.size(); ++i)
         node.local_transform_bits[i] =
-            ProjectFloatBits(state, *ChildAt(doc, *matrix, i));
+            ProjectFloatBits(state, *ChildAt(JsonSnapshot(doc), *matrix, i));
     } else {
       for (std::size_t field = 0; field < kTrs.size(); ++field) {
         const auto array = FindMember(doc, source, kTrs[field]);
@@ -333,17 +346,22 @@ void BuildGraph(AssetState& state) {
     }
     state.nodes.push_back(node);
   }
-  for (const auto& node : state.nodes)
+  for (const auto& node : state.nodes) {
+    doc.ReferenceVisit();
     for (const auto child : node.children) {
+      doc.ReferenceVisit();
       if (state.nodes[child].parent)
         Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kGraphRelationship);
       state.nodes[child].parent = node.table_index;
     }
+  }
   for (const auto& node : state.nodes) {
+    doc.ReferenceVisit();
     state.allocation.Checkpoint();
     auto ancestor = node.parent;
     std::uint64_t walked = 0;
     while (ancestor) {
+      doc.ReferenceVisit();
       if (++walked > count)
         Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kGraphRelationship);
       ancestor = state.nodes[*ancestor].parent;
@@ -352,12 +370,13 @@ void BuildGraph(AssetState& state) {
   const auto mesh_table = FindMember(doc, 0, kMeshes);
   if (mesh_table) {
     std::uint64_t mesh_index = 0;
-    for (auto mesh = doc.FirstChild(*mesh_table); mesh;
-         mesh = doc.NextSibling(*mesh), ++mesh_index) {
+    for (auto mesh = doc.FirstReferenceChild(*mesh_table); mesh;
+         mesh = doc.NextReferenceSibling(*mesh), ++mesh_index) {
       const auto primitives = *FindMember(doc, *mesh, kPrimitives);
       std::uint64_t primitive_index = 0;
-      for (auto primitive = doc.FirstChild(primitives); primitive;
-           primitive = doc.NextSibling(*primitive), ++primitive_index) {
+      for (auto primitive = doc.FirstReferenceChild(primitives); primitive;
+           primitive = doc.NextReferenceSibling(*primitive),
+                ++primitive_index) {
         state.allocation.Checkpoint();
         PrimitiveReferences(doc, *primitive);
         if (state.primitives.size() >= state.limits.max_table_rows)
@@ -369,8 +388,10 @@ void BuildGraph(AssetState& state) {
       }
     }
   }
-  for (auto& primitive : state.primitives)
+  for (auto& primitive : state.primitives) {
+    doc.ReferenceVisit();
     primitive.capability = Capability(state, primitive);
+  }
   const auto scene_table = FindMember(doc, 0, kScenes);
   if (!scene_table) return;
   const auto scene_count = ChildCount(doc, *scene_table);
@@ -378,14 +399,14 @@ void BuildGraph(AssetState& state) {
   state.scenes.reserve(static_cast<std::size_t>(scene_count));
   OwnedVector<std::uint64_t> stack{Allocator<std::uint64_t>(state.allocation)};
   std::uint64_t scene_index = 0;
-  for (auto scene = doc.FirstChild(*scene_table); scene;
-       scene = doc.NextSibling(*scene), ++scene_index) {
+  for (auto scene = doc.FirstReferenceChild(*scene_table); scene;
+       scene = doc.NextReferenceSibling(*scene), ++scene_index) {
     state.roots.emplace_back(Allocator<std::uint64_t>(state.allocation));
     ReferenceArray(doc, *scene, kNodes, kNodes);
     const auto roots = FindMember(doc, *scene, kNodes);
     if (roots)
-      for (auto node = doc.FirstChild(*roots); node;
-           node = doc.NextSibling(*node)) {
+      for (auto node = doc.FirstReferenceChild(*roots); node;
+           node = doc.NextReferenceSibling(*node)) {
         const auto index = ReadExactUnsigned(doc, *node);
         if (state.nodes[index].parent)
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kGraphRelationship);
@@ -399,18 +420,25 @@ void BuildGraph(AssetState& state) {
     while (!stack.empty()) {
       state.allocation.Checkpoint();
       const auto node = stack.back();
+      doc.ReferenceVisit();
       stack.pop_back();
       const auto& view = state.nodes[node];
       if (view.mesh)
         for (std::size_t ordinal = 0; ordinal < state.primitives.size();
-             ++ordinal)
+             ++ordinal) {
+          doc.ReferenceVisit();
           if (state.primitives[ordinal].mesh_index == *view.mesh) {
             if (state.instances.size() >= state.limits.max_instances)
               Fail(GltfStatus::kUnsupportedProfile,
                    GltfDiagnosticCode::kLimitExceeded);
             state.instances.push_back({scene_index, node, ordinal});
           }
-      stack.insert(stack.end(), view.children.rbegin(), view.children.rend());
+        }
+      for (auto child = view.children.rbegin(); child != view.children.rend();
+           ++child) {
+        doc.ReferenceVisit();
+        stack.push_back(*child);
+      }
     }
   }
 }

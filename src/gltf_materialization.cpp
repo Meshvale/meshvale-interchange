@@ -654,6 +654,16 @@ GltfMaterializationResult TestMaterializeGltfPrimitive(
                   limits.materialization.max_new_requested_bytes)),
           static_cast<std::size_t>(limits.inspection.max_new_requested_bytes));
     }
+    auto reference = [&] {
+      if (!observation) return;
+      auto& count = observation->counts.relationship_steps;
+      if (count == deformation->limits.max_relationship_steps)
+        Reject(GltfMaterializationStatus::kLimitExceeded,
+               GltfMaterializationDiagnosticCode::kDeformation);
+      ++count;
+      if (count % deformation->work.max_relationship_block == 0)
+        descriptors.Checkpoint();
+    };
     Vector<geometry::AttributeMaterializationInput> attributes{
         gltf_detail::Allocator<geometry::AttributeMaterializationInput>(
             descriptors)};
@@ -676,6 +686,7 @@ GltfMaterializationResult TestMaterializeGltfPrimitive(
     const auto vertex_count = channels.front().element_count;
     bool position_seen = false;
     for (std::size_t ordinal = 0; ordinal < channels.size(); ++ordinal) {
+      reference();
       if (ordinal % work.cancellation_block_scalars == 0)
         allocation.Checkpoint();
       const auto& channel = channels[ordinal];
@@ -765,12 +776,14 @@ GltfMaterializationResult TestMaterializeGltfPrimitive(
     if (proof) {
       const auto& catalog = gltf_deformation_detail::Access::Get(*proof);
       for (const auto& morph : catalog.morph_channels) {
+        reference();
         allocation.Checkpoint();
         if (morph.mesh != proof->Primitive().MeshIndex() ||
             morph.primitive != proof->Primitive().PrimitiveIndex())
           continue;
         const gltf_deformation_detail::AccessorStorage* source = nullptr;
         for (const auto& value : catalog.accessor_storage) {
+          reference();
           allocation.Checkpoint();
           if (value.source.index == morph.delta_accessor) source = &value;
         }

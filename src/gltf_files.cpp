@@ -599,6 +599,7 @@ struct Capture {
     const auto buffers = allocation::FindMember(document, 0, kBuffers);
     const auto count = buffers ? allocation::ChildCount(document, *buffers) : 0;
     for (std::uint64_t index = 0; index < count; ++index) {
+      document.ReferenceVisit();
       state.allocation.Checkpoint();
       const auto row = *allocation::ChildAt(document, *buffers, index);
       if (allocation::FindMember(document, row, kUri)) continue;
@@ -650,6 +651,7 @@ struct Capture {
     if (operation.options.extensions ==
         GltfExtensionFilePolicy::kRejectOpaqueExtensions) {
       for (std::size_t node = 0; node < document.NodeCount(); ++node) {
+        document.ReferenceVisit();
         operation.state.allocation.Checkpoint();
         const auto key = document.Key(node);
         if ((key == kExtensions || key == kExtensionsUsed ||
@@ -668,6 +670,7 @@ struct Capture {
       if (!table) continue;
       const auto count = allocation::ChildCount(document, *table);
       for (std::uint64_t i = 0; i < count; ++i) {
+        document.ReferenceVisit();
         operation.state.allocation.Checkpoint();
         const auto item = allocation::ChildAt(document, *table, i);
         const auto uri =
@@ -693,6 +696,7 @@ struct Capture {
       }
     }
     for (const auto path : operation.options.opaque_source_files) {
+      document.ReferenceVisit();
       auto admitted = detail::PortablePath(path, operation.state.allocation,
                                            operation.limits.files);
       operation.Add(admitted);
@@ -700,6 +704,7 @@ struct Capture {
     std::sort(operation.state.records.begin(), operation.state.records.end(),
               [](const auto& a, const auto& b) { return a.path < b.path; });
     for (std::size_t i = 0; i < operation.state.records.size(); ++i) {
+      document.ReferenceVisit();
       if (operation.state.records[i].path == operation.entry)
         operation.state.entry = i;
       else
@@ -710,9 +715,13 @@ struct Capture {
     if (operation.container_binding)
       operation.bindings.push_back(*operation.container_binding);
     for (const auto& binding : operation.plan) {
-      const auto file = std::find_if(
-          operation.state.records.begin(), operation.state.records.end(),
-          [&](const auto& record) { return record.path == binding.path; });
+      document.ReferenceVisit();
+      const auto file =
+          std::find_if(operation.state.records.begin(),
+                       operation.state.records.end(), [&](const auto& record) {
+                         document.ReferenceVisit();
+                         return record.path == binding.path;
+                       });
       operation.bindings.push_back({binding.kind, binding.index, file->bytes});
     }
     return operation.bindings;

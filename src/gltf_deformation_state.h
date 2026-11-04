@@ -67,13 +67,25 @@ struct State {
   GltfDeformationObservation facts;
 };
 struct ValidationResult {
-  std::shared_ptr<const State> proof;
+  // Pending private storage. Extraction finishes its source facade before
+  // setting complete and publishing a const proof.
+  std::shared_ptr<State> proof;
   GltfDiagnostic diagnostic;
   GltfDeformationObservation observation;
 };
+void DeformationReference(void* state);
+struct ReferenceWork {
+  GltfDeformationObservation& observation;
+  const GltfDeformationPolicy& policy;
+  const gltf_detail::AllocationContext& allocation;
+};
+void DeformationPreludeReference(void* work);
+void ValidateDeformationPreflight(const GltfExtractionRequest& request);
 struct Access {
+  // Finish private mutable storage only after charging final source-owner
+  // validation; complete and immutable publication belong to this seam.
   [[nodiscard]] static GltfDeformationProof MakeProof(
-      std::shared_ptr<const State> state);
+      std::shared_ptr<State> state);
   [[nodiscard]] static const State& Get(
       const GltfDeformationProof& proof) noexcept;
 };
@@ -85,6 +97,8 @@ struct Access {
     const GltfExtractionRequest& request,
     const gltf_detail::AllocationContext& complete_allocation,
     const GltfExtractionLimits& limits,
-    const gltf_detail::NativeExecutionOptions* execution);
+    const gltf_detail::NativeExecutionOptions* execution,
+    bool pending_facade = false,
+    const GltfDeformationObservation* preflight = nullptr);
 }  // namespace meshvale::interchange::gltf_deformation_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_DEFORMATION_STATE_H_

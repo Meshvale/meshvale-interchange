@@ -256,6 +256,7 @@ void CheckMetadataRelationships(AssetState& state) {
   if (accessors)
     for (auto row = doc.FirstChild(*accessors); row;
          row = doc.NextSibling(*row)) {
+      doc.ReferenceVisit();
       state.allocation.Checkpoint();
       const auto shape = doc.String(*FindMember(doc, *row, kTypeKey));
       std::uint64_t width = 0;
@@ -266,7 +267,10 @@ void CheckMetadataRelationships(AssetState& state) {
       for (const auto key : kBoundKeys) {
         const auto bound = FindMember(doc, *row, key);
         if (!bound) continue;
-        if (ChildCount(doc, *bound) != width)
+        // Bounds have a fixed accessor width. Scalar/component parsing is not
+        // R.
+        const auto scalar_doc = doc;
+        if (ChildCount(scalar_doc, *bound) != width)
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreArrayLength);
         for (auto number = doc.FirstChild(*bound); number;
              number = doc.NextSibling(*number)) {
@@ -293,14 +297,16 @@ void CheckMetadataRelationships(AssetState& state) {
       const auto maximum = FindMember(doc, *row, kBoundKeys[1]);
       if (minimum && maximum)
         for (std::uint64_t i = 0; i < width; ++i)
-          if (CompareDecimal(doc.Number(*ChildAt(doc, *minimum, i)),
-                             doc.Number(*ChildAt(doc, *maximum, i))) > 0)
+          if (CompareDecimal(
+                  doc.Number(*ChildAt(JsonSnapshot(doc), *minimum, i)),
+                  doc.Number(*ChildAt(JsonSnapshot(doc), *maximum, i))) > 0)
             Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreRange);
     }
   const auto cameras = FindMember(doc, 0, kCamerasKey);
   if (cameras)
     for (auto row = doc.FirstChild(*cameras); row;
          row = doc.NextSibling(*row)) {
+      doc.ReferenceVisit();
       const auto type = doc.String(*FindMember(doc, *row, kTypeKey));
       const auto block_node = FindMember(doc, *row, type);
       if (!block_node)

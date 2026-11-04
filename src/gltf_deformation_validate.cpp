@@ -370,13 +370,7 @@ class Catalog {
   void Freeze();
 
  private:
-  void Relationship() {
-    auto& n = s_.facts.counts.relationship_steps;
-    n = Add(n, 1);
-    Limit(n, s_.policy.limits.max_relationship_steps);
-    if (n % s_.policy.work.max_relationship_block == 0)
-      s_.allocation.Checkpoint();
-  }
+  void Relationship() { DeformationReference(&s_); }
   std::uint64_t Count(std::string_view table) {
     auto rows = Member(d_, 0, table);
     return rows ? CountChildren(d_, *rows) : 0;
@@ -721,6 +715,7 @@ void Catalog::Defaults(std::size_t row, GltfMorphWeightOwner owner,
 void Catalog::Meshes() {
   mesh_targets_.resize(Host(Count(kMeshesField)));
   for (std::uint64_t m = 0; m < mesh_targets_.size(); ++m) {
+    Relationship();
     auto mesh = Row(d_, kMeshesField, m);
     auto table = Required(d_, mesh, kPrimitivesField);
     std::uint64_t p = 0;
@@ -778,6 +773,7 @@ void Catalog::Meshes() {
       Limit(Mul(set_count, kLanes), s_.policy.limits.max_lanes_per_vertex);
       Require(!set_count || max_set == set_count - 1);
       for (std::uint64_t set = 0; set < set_count; ++set) {
+        Relationship();
         const GltfDeformationAccessorUseView* j = nullptr;
         const GltfDeformationAccessorUseView* w = nullptr;
         for (const auto& use : uses_) {
@@ -821,7 +817,8 @@ void Catalog::Meshes() {
         mesh_targets_[Host(m)] = info.targets;
         std::uint64_t t = 0;
         for (auto target = d_.FirstChild(*targets); target;
-             target = d_.NextSibling(*target), ++t)
+             target = d_.NextSibling(*target), ++t) {
+          Relationship();
           for (auto a = d_.FirstChild(*target); a; a = d_.NextSibling(*a)) {
             Relationship();
             auto semantic = d_.Key(*a);
@@ -849,6 +846,7 @@ void Catalog::Meshes() {
             Limit(s_.morph_channels.size(),
                   s_.policy.limits.max_morph_channels);
           }
+        }
       }
       s_.morphs.push_back({m, p, targets.has_value(), info.targets, {}});
       (void)first_channel;
@@ -892,6 +890,7 @@ void Catalog::Skins() {
   s_.joint_storage.reserve(Host(count));
   s_.skins.reserve(Host(count));
   for (std::uint64_t i = 0; i < count; ++i) {
+    Relationship();
     auto skin = Row(d_, kSkinsField, i);
     gd::OwnedVector<std::uint64_t> joints{
         gd::Allocator<std::uint64_t>(s_.descriptors)};
@@ -930,7 +929,8 @@ void Catalog::Skins() {
   s_.facts.counts.skin_rows = count;
 }
 void Catalog::Users() {
-  const auto* selected = gd::Access::PrimitiveRecordFor(s_.asset, s_.primitive);
+  const auto* selected = gd::Access::PrimitiveRecordFor(
+      s_.asset, s_.primitive, DeformationReference, &s_);
   s_.facts.counts.node_rows = source_.nodes.size();
   Limit(source_.nodes.size(), s_.policy.limits.max_node_rows);
   selected_nodes_.resize(source_.nodes.size());
@@ -944,9 +944,13 @@ void Catalog::Users() {
       Relationship();
       if (primitive.mesh != *node.mesh) continue;
       bool reachable = false;
-      for (const auto& scene : source_.scenes)
-        for (auto root : scene.roots)
+      for (const auto& scene : source_.scenes) {
+        Relationship();
+        for (auto root : scene.roots) {
+          Relationship();
           if (Ancestor(root, node.table_index)) reachable = true;
+        }
+      }
       auto ancestors = Ancestors(node.table_index);
       gd::OwnedVector<std::uint64_t> joint_ancestors{
           gd::Allocator<std::uint64_t>(s_.descriptors)};
@@ -956,6 +960,7 @@ void Catalog::Users() {
           Relationship();
           auto a = Ancestors(joint);
           for (auto n : a) {
+            Relationship();
             bool present = false;
             for (auto old : joint_ancestors) {
               Relationship();
@@ -979,8 +984,10 @@ void Catalog::Users() {
           primitive.ordinal == selected->primitive_index) {
         MarkAncestors(node.table_index);
         if (instantiated)
-          for (auto joint : s_.joint_storage[Host(*node.skin)])
+          for (auto joint : s_.joint_storage[Host(*node.skin)]) {
+            Relationship();
             MarkAncestors(joint);
+          }
       }
     }
   }
@@ -988,7 +995,8 @@ void Catalog::Users() {
 }
 
 void Catalog::Animations() {
-  const auto* selected = gd::Access::PrimitiveRecordFor(s_.asset, s_.primitive);
+  const auto* selected = gd::Access::PrimitiveRecordFor(
+      s_.asset, s_.primitive, DeformationReference, &s_);
   bool selected_has_targets = false;
   for (const auto& primitive : primitives_) {
     Relationship();
@@ -998,6 +1006,7 @@ void Catalog::Animations() {
   }
   std::uint64_t samplers = 0;
   for (std::uint64_t a = 0; a < Count(kAnimationsField); ++a) {
+    Relationship();
     auto animation = Row(d_, kAnimationsField, a);
     auto table = Required(d_, animation, kSamplersField);
     samplers = Add(samplers, CountChildren(d_, table));
@@ -1150,6 +1159,7 @@ void Catalog::CheckSharedViews() {
   gd::OwnedVector<Kind> kinds{gd::Allocator<Kind>(s_.descriptors)};
   kinds.reserve(s_.accessor_storage.size());
   for (std::size_t i = 0; i < s_.accessor_storage.size(); ++i) {
+    Relationship();
     std::optional<Kind> kind;
     for (const auto& use : uses_) {
       Relationship();
@@ -1168,6 +1178,7 @@ void Catalog::CheckSharedViews() {
     kinds.push_back(*kind);
   }
   for (std::size_t i = 0; i < s_.accessor_storage.size(); ++i) {
+    Relationship();
     const auto& a = s_.accessor_storage[i].source;
     if (!a.base) continue;
     for (std::size_t j = 0; j < i; ++j) {
@@ -1189,6 +1200,7 @@ void Catalog::Build() {
   s_.declaration_names.reserve(request_.deformation_row_local.size());
   s_.declarations.reserve(request_.deformation_row_local.size());
   for (const auto& declaration : request_.deformation_row_local) {
+    Relationship();
     s_.allocation.Checkpoint();
     gd::OwnedVector<char> name{gd::Allocator<char>(s_.descriptors)};
     name.reserve(declaration.name.size());
@@ -1198,8 +1210,10 @@ void Catalog::Build() {
     }
     s_.declaration_names.push_back(std::move(name));
   }
-  for (const auto& name : s_.declaration_names)
+  for (const auto& name : s_.declaration_names) {
+    Relationship();
     s_.declarations.push_back({{name.data(), name.size()}});
+  }
   Meshes();
   Skins();
   Users();
@@ -1219,8 +1233,10 @@ void Catalog::Build() {
   // before binary decoding. A later decode failure retains expected/zero facts.
   s_.facts.weight_sums.emplace();
   for (const auto& primitive : primitives_) {
+    Relationship();
     bool floating = false;
-    for (std::size_t set = 0; set < primitive.sets; ++set)
+    for (std::size_t set = 0; set < primitive.sets; ++set) {
+      Relationship();
       for (const auto& accessor : s_.accessor_storage) {
         Relationship();
         if (accessor.source.index ==
@@ -1228,11 +1244,13 @@ void Catalog::Build() {
             accessor.source.component_type == Type::kFloat32)
           floating = true;
       }
+    }
     if (floating)
       s_.facts.weight_sums->floating_rows_expected =
           Add(s_.facts.weight_sums->floating_rows_expected, primitive.rows);
   }
   for (auto& accessor : s_.accessor_storage) {
+    Relationship();
     if (accessor.source.component_type != Type::kFloat32) continue;
     std::uint64_t constrained = 0;
     for (const auto& use : uses_) {
@@ -1272,6 +1290,7 @@ void Catalog::Decode() {
       },
       this};
   for (std::size_t index = 0; index < s_.accessor_storage.size(); ++index) {
+    Relationship();
     auto& storage = s_.accessor_storage[index];
     s_.allocation.Checkpoint();
     auto scalars = Mul(storage.source.count, Width(storage.source));
@@ -1306,6 +1325,7 @@ void Catalog::Decode() {
   // Existing allocator/STL value-initialization is an admitted indivisible
   // preparation boundary, not a copied/admitted row or an invented B count.
   for (auto& storage : s_.accessor_storage) {
+    Relationship();
     s_.allocation.Checkpoint();
     auto result = gd::PrepareAccessorDecode(storage.source, false, clipped,
                                             s_.decoded, &preparation);
@@ -1315,6 +1335,7 @@ void Catalog::Decode() {
   }
   RunTasks(scalar_plan, byte_plan, true);
   for (auto& storage : s_.accessor_storage) {
+    Relationship();
     s_.allocation.Checkpoint();
     const auto accessor = Row(d_, kAccessorsField, storage.source.index);
     for (auto key :
@@ -1603,6 +1624,7 @@ void Catalog::InfluenceRow(const Primitive& primitive, std::uint64_t row,
     throw gd::AdmissionFailure(gd::AdmissionCode::kInvalidObject);
   };
   for (std::size_t set = 0; set < primitive.sets; ++set) {
+    Reference(partial, work);
     const auto& pair = s_.influences[primitive.first_set + set];
     if (storage_for(pair.weights_accessor).source.component_type ==
         Type::kFloat32)
@@ -1610,6 +1632,7 @@ void Catalog::InfluenceRow(const Primitive& primitive, std::uint64_t row,
   }
   if (floating) Gate(partial, *work.partition, work.caller);
   for (std::size_t set = 0; set < primitive.sets; ++set) {
+    Reference(partial, work);
     partial.facts.location.set = set;
     const auto& pair = s_.influences[primitive.first_set + set];
     const auto& weights = storage_for(pair.weights_accessor);
@@ -1635,6 +1658,7 @@ void Catalog::InfluenceRow(const Primitive& primitive, std::uint64_t row,
         // pruning, sorting or accumulator keyed by a guessed palette size.
         for (std::size_t previous_set = 0; previous_set <= set;
              ++previous_set) {
+          Reference(partial, work);
           const auto& earlier =
               s_.influences[primitive.first_set + previous_set];
           const auto& earlier_weights = storage_for(earlier.weights_accessor);
@@ -2058,7 +2082,11 @@ void Catalog::PlanRoles() {
     const auto search =
         Mul(Add(Mul(lanes, lanes), Mul(lanes, kInfluenceLinearLookupPasses)),
             Add(s_.accessor_storage.size(), 1));
-    task({TaskKind::kInfluence, i, 0, p.rows, Add(search, Mul(lanes, lanes)),
+    constexpr std::uint64_t kInfluenceSetPasses = 2;
+    const auto set_visits =
+        Add(Mul(kInfluenceSetPasses, p.sets), Mul(lanes, p.sets));
+    task({TaskKind::kInfluence, i, 0, p.rows,
+          Add(Add(search, Mul(lanes, lanes)), set_visits),
           Add(Mul(kInfluencePairSourceBytes, Mul(lanes, lanes)),
               Mul(kInfluenceLaneSourceBytes, lanes))});
   }
@@ -2085,6 +2113,7 @@ void Catalog::Execute() {
   // The source/bounds phase is joined. Every required allocation is still
   // admitted under the same decoded sibling/complete parent before role jobs.
   for (auto& storage : s_.accessor_storage) {
+    Relationship();
     s_.allocation.Checkpoint();
     if (request_.values == GltfValueRequest::kRawAndNormalized &&
         storage.source.normalized) {
@@ -2263,6 +2292,7 @@ void Catalog::Freeze() {
   // vector object or a temporary row/decoder result.
   s_.accessors.reserve(s_.accessor_storage.size());
   for (auto& a : s_.accessor_storage) {
+    Relationship();
     s_.allocation.Checkpoint();
     std::optional<GltfSparseProvenance> sparse;
     if (a.source.sparse) {
@@ -2288,49 +2318,80 @@ void Catalog::Freeze() {
          Raw(a.decoded.raw, a.decoded.float_words), state,
          a.decoded.normalized});
   }
-  for (std::size_t i = 0; i < s_.skins.size(); ++i)
+  for (std::size_t i = 0; i < s_.skins.size(); ++i) {
+    Relationship();
     s_.skins[i].joints = s_.joint_storage[i];
+  }
   for (std::size_t i = 0; i < s_.users.size(); ++i) {
+    Relationship();
     s_.users[i].ancestor_nodes = s_.ancestors[i];
     s_.users[i].joint_ancestor_nodes = s_.joint_ancestors[i];
   }
   std::size_t first = 0;
   for (auto& morph : s_.morphs) {
+    Relationship();
     auto end = first;
-    while (end < s_.morph_channels.size() &&
-           s_.morph_channels[end].mesh == morph.mesh &&
-           s_.morph_channels[end].primitive == morph.primitive)
+    while (end < s_.morph_channels.size()) {
+      Relationship();
+      if (s_.morph_channels[end].mesh != morph.mesh ||
+          s_.morph_channels[end].primitive != morph.primitive)
+        break;
       ++end;
+    }
     morph.channels = std::span(s_.morph_channels).subspan(first, end - first);
     first = end;
   }
-  for (std::size_t i = 0; i < s_.defaults.size(); ++i)
+  for (std::size_t i = 0; i < s_.defaults.size(); ++i) {
+    Relationship();
     s_.defaults[i].authored_values = s_.defaults_storage[i];
+  }
 }
 
 }  // namespace
+
+void DeformationReference(void* opaque) {
+  auto& state = *static_cast<State*>(opaque);
+  ReferenceWork work{state.facts, state.policy, state.allocation};
+  DeformationPreludeReference(&work);
+}
+void DeformationPreludeReference(void* opaque) {
+  auto& work = *static_cast<ReferenceWork*>(opaque);
+  auto& count = work.observation.counts.relationship_steps;
+  count = Add(count, 1);
+  Limit(count, work.policy.limits.max_relationship_steps);
+  if (count % work.policy.work.max_relationship_block == 0)
+    work.allocation.Checkpoint();
+}
+void ValidateDeformationPreflight(const GltfExtractionRequest& request) {
+  gd::ValidateDeformationConfiguration(request.deformation);
+  ValidateDeclarations(request);
+}
 
 ValidationResult ValidateDeformation(
     const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
     const GltfExtractionRequest& request,
     const gd::AllocationContext& complete_allocation,
     const GltfExtractionLimits& limits,
-    const gd::NativeExecutionOptions* execution) {
+    const gd::NativeExecutionOptions* execution, bool pending_facade,
+    const GltfDeformationObservation* preflight) {
   ValidationResult result{{}, gd::AcceptedDiagnostic(), {}};
   std::shared_ptr<State> state;
   std::optional<gd::AllocationContext> scope;
   auto& observation = result.observation;
+  if (preflight) observation = *preflight;
   observation.work = request.deformation.work;
   try {
-    gd::ValidateDeformationConfiguration(request.deformation);
+    ValidateDeformationPreflight(request);
     if ((request.triangles != GltfTriangleRequest::kRequireTriangles &&
          request.triangles != GltfTriangleRequest::kConvertStripOrFan) ||
         (request.values != GltfValueRequest::kRaw &&
          request.values != GltfValueRequest::kRawAndNormalized))
       gd::Fail(GltfStatus::kInvalidRequest,
                GltfDiagnosticCode::kInvalidRequest);
-    ValidateDeclarations(request);
-    if (!gd::Access::PrimitiveRecordFor(asset, primitive))
+    ReferenceWork references{observation, request.deformation,
+                             complete_allocation};
+    if (!gd::Access::PrimitiveRecordFor(
+            asset, primitive, DeformationPreludeReference, &references))
       gd::Fail(GltfStatus::kForeignOwner, GltfDiagnosticCode::kForeignOwner);
     if (request.processing_profile !=
             GltfProcessingProfile::kDeformationRetainedTrianglesV1 ||
@@ -2372,10 +2433,11 @@ ValidationResult ValidateDeformation(
       catalog.Execute();
       catalog.Freeze();
     }
-    state->facts.phase = GltfDeformationPhase::kComplete;
     scope->Checkpoint();
-    state->facts.complete = true;
-    state->facts.phase = GltfDeformationPhase::kComplete;
+    if (!pending_facade) {
+      state->facts.complete = true;
+      state->facts.phase = GltfDeformationPhase::kComplete;
+    }
     state->facts.status = GltfStatus::kAccepted;
     state->facts.diagnostic = gd::AcceptedDiagnostic();
     state->facts.new_requested_bytes = scope->OperationActiveBytes();

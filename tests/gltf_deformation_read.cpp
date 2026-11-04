@@ -258,6 +258,54 @@ void DeclarationProfiles(const geo::ExecutionContext& context) {
           !refused.deformation->numeric && !refused.deformation->quaternions,
       "tiny real deformation owner cap refuses before projection/helper");
 }
+void RelationshipLimits(const geo::ExecutionContext& context) {
+  // Independent source-pass ledger (metadata, graph, declared relationships,
+  // node-rotation references, resources, projection). Fixed scalar arrays
+  // contribute no R; projection counts references separately from byte output.
+  struct Case {
+    std::string_view source;
+    std::array<std::uint64_t, 6> visits;
+  };
+  constexpr std::array<Case, 3> kCases{{
+      {R"({"asset":{"version":"2.0"}})", {10, 10, 4, 1, 2, 2}},
+      {R"({"asset":{"version":"2.0"},"nodes":[{}]})", {19, 25, 8, 4, 4, 4}},
+      {R"({"asset":{"version":"2.0"},"nodes":[{},{}]})", {22, 30, 8, 6, 4, 5}},
+  }};
+  for (const auto& test : kCases) {
+    std::uint64_t expected = 0;
+    for (const auto visits : test.visits) expected += visits;
+    auto request = kRequest;
+    request.deformation.limits.max_relationship_steps = expected;
+    {
+      const auto result = mv::ReadGltfAssetCapped(
+          Bytes(test.source), {}, request, kRead, kWork, context);
+      Require(result.asset && result.deformation &&
+                  result.deformation->complete &&
+                  result.deformation->counts.relationship_steps == expected,
+              "independent full read R ledger passes at inclusive cap");
+    }
+    --request.deformation.limits.max_relationship_steps;
+    const auto refused = mv::ReadGltfAssetCapped(
+        Bytes(test.source), {}, request, kRead, kWork, context);
+    Require(
+        !refused.asset && refused.deformation &&
+            !refused.deformation->complete &&
+            refused.diagnostic.code == mv::GltfDiagnosticCode::kLimitExceeded &&
+            refused.deformation->counts.relationship_steps == expected - 1,
+        "unchanged source refuses one relationship below actual total");
+    const auto legacy =
+        mv::ReadGltfAssetCapped(Bytes(test.source), {}, kRead, kWork, context);
+    Require(legacy.asset && !legacy.deformation,
+            "legacy source retains its own work interpretation");
+  }
+  auto tiny = kRequest;
+  tiny.deformation.limits.max_relationship_steps = 1;
+  const auto refused = mv::ReadGltfAssetCapped(Bytes(kCases.back().source), {},
+                                               tiny, kRead, kWork, context);
+  Require(!refused.asset && refused.deformation &&
+              refused.diagnostic.code == mv::GltfDiagnosticCode::kLimitExceeded,
+          "two actual node visits cannot fit relationship cap one");
+}
 }  // namespace
 int main(int argc, char** argv) {
   try {
@@ -288,6 +336,7 @@ int main(int argc, char** argv) {
         MatrixInputs(std::filesystem::path(argv[1]), context);
         RotationSources(context);
         DeclarationProfiles(context);
+        RelationshipLimits(context);
       }
     }
     Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
