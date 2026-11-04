@@ -138,18 +138,36 @@ void RunRange(const ExecutionContext& context,
               const GltfTopologyWriteWorkPolicy& work, std::size_t count,
               std::size_t scalar_bytes, RangeOperation operation, void* state,
               std::stop_token stop, GltfTopologyWriteExecutionStats& stats,
-              const NativeWorkerBackend& backend) {
+              const NativeWorkerBackend& backend,
+              const gltf_detail::DeformationWork* deformation,
+              const gltf_detail::DeformationRangeExtent* extent) {
   allocation.Checkpoint();
   if (count == 0) return;
-  const auto bytes = CheckedProduct(count, scalar_bytes);
+  if ((deformation != nullptr) != (extent != nullptr))
+    throw AdmissionFailure(AdmissionCode::kInvalidObject);
+  const auto bytes =
+      extent ? extent->bytes : CheckedProduct(count, scalar_bytes);
   const auto target_scalars =
       std::max<std::size_t>(1, work.partition_bytes / scalar_bytes);
   auto jobs = count / target_scalars + (count % target_scalars != 0 ? 1 : 0);
   jobs = std::min<std::size_t>(jobs, work.max_jobs);
-  auto workers =
-      bytes >= work.parallel_min_bytes && jobs >= kMinimumParallelWorkers
-          ? TryReserveWorkers(context, jobs)
-          : WorkerLease();
+  auto eligible = bytes >= work.parallel_min_bytes;
+  if (deformation) {
+    const auto& policy = deformation->Policy();
+    const auto scalar_work = deformation->ScalarWork(*extent);
+    const auto scalar_jobs = scalar_work / policy.partition_scalars +
+                             (scalar_work % policy.partition_scalars != 0);
+    const auto byte_jobs =
+        bytes / policy.partition_bytes + (bytes % policy.partition_bytes != 0);
+    jobs = static_cast<std::size_t>(std::min<std::uint64_t>(
+        {count, policy.max_jobs,
+         std::max<std::uint64_t>(1, std::max(scalar_jobs, byte_jobs))}));
+    eligible = scalar_work >= policy.parallel_min_scalars ||
+               bytes >= policy.parallel_min_bytes;
+  }
+  auto workers = eligible && jobs >= kMinimumParallelWorkers
+                     ? TryReserveWorkers(context, jobs)
+                     : WorkerLease();
   if (workers.Count() == 0) {
     ++stats.planned_jobs;
     ++stats.caller_jobs;

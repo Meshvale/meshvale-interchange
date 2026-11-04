@@ -37,6 +37,7 @@
 #include "gltf_materialization_test_internal.h"
 #if defined(MESHVALE_TEST_DEFORMATION_OUTPUT)
 #include "gltf_allocation.h"
+#include "gltf_deformation_write_test.h"
 #include "gltf_workflow_support_internal.h"
 #endif
 #include "gltf_numerical_profile.h"
@@ -973,6 +974,9 @@ int main(int argc, char** argv) {
       return 0;
     }
     geo::ExecutionContext context({kWorkerBudget, 1, kRootBytes});
+#if defined(MESHVALE_TEST_DEFORMATION_OUTPUT)
+    ExerciseDeformationWriterBudgets(argv[1], context);
+#endif
     for (const auto name :
          {"d04-dense-float-0-2-5", "weights-linear", "d03-three-float-u16",
           "d03-cross-width-one-unit-low", "10-same-stream-linear-max-value"})

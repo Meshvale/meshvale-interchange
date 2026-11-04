@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "gltf_allocation.h"
+#include "gltf_deformation_work.h"
 #include "gltf_json_snapshot.h"
 #include "gltf_topology_write_internal.h"
 
@@ -44,11 +45,13 @@ class Scanner {
   Scanner(const gltf_detail::JsonSnapshot& document,
           const gltf_detail::AllocationContext& allocation,
           const GltfTopologyWriteLimits& limits,
-          const GltfTopologyWriteWorkPolicy& work)
+          const GltfTopologyWriteWorkPolicy& work,
+          gltf_detail::DeformationWork* deformation)
       : document_(document),
         allocation_(allocation),
         limits_(limits),
         work_(work),
+        deformation_(deformation),
         text_(document.Original()),
         spans_(gltf_detail::Allocator<LexicalSpan>(allocation)),
         stack_(gltf_detail::Allocator<Frame>(allocation)) {}
@@ -61,6 +64,7 @@ class Scanner {
     while (!stack_.empty()) {
       Space();
       auto& frame = stack_.back();
+      if (deformation_) deformation_->Reference();
       const auto kind = document_.Kind(frame.node);
       const auto closing =
           kind == JsonKind::kObject ? kObjectClose : kArrayClose;
@@ -86,6 +90,7 @@ class Scanner {
       const auto child = *frame.next_child;
       const auto parent = frame.node;
       frame.next_child = document_.NextSibling(child);
+      if (frame.next_child && deformation_) deformation_->Reference();
       frame.phase = FramePhase::kDelimiter;
       Value(child, parent);
     }
@@ -98,6 +103,7 @@ class Scanner {
  private:
   char Peek() const {
     if (position_ == text_.size()) InvalidLexical(position_);
+    if (deformation_) deformation_->Bytes(1);
     return text_[position_];
   }
   char Take() {
@@ -112,9 +118,12 @@ class Scanner {
     return value;
   }
   void Space() {
-    while (position_ < text_.size() &&
-           kJsonWhitespace.find(text_[position_]) != std::string_view::npos)
+    while (position_ < text_.size()) {
+      if (deformation_) deformation_->Bytes(1);
+      if (kJsonWhitespace.find(text_[position_]) == std::string_view::npos)
+        break;
       Take();
+    }
   }
   void String() {
     if (Take() != kStringQuote) InvalidLexical(position_);
@@ -127,6 +136,10 @@ class Scanner {
     }
   }
   void Value(std::size_t node, std::optional<std::size_t> parent) {
+    if (deformation_) {
+      deformation_->Reference();
+      if (parent) deformation_->Reference();
+    }
     if (node != next_node_ || node >= spans_.size() ||
         document_.Parent(node) != parent)
       InvalidLexical(position_);
@@ -142,12 +155,14 @@ class Scanner {
                GltfTopologyWriteStage::kLexicalPlanning,
                GltfTopologyWriteDiagnosticCode::kCountLimit);
       stack_.push_back({node, document_.FirstChild(node)});
+      if (stack_.back().next_child && deformation_) deformation_->Reference();
       return;
     }
     if (kind == JsonKind::kString) {
       String();
     } else {
       while (position_ < text_.size()) {
+        if (deformation_) deformation_->Bytes(1);
         const auto c = text_[position_];
         if (c == kEntrySeparator || c == kArrayClose || c == kObjectClose ||
             kJsonWhitespace.find(c) != std::string_view::npos)
@@ -173,6 +188,7 @@ class Scanner {
   const gltf_detail::AllocationContext& allocation_;
   const GltfTopologyWriteLimits& limits_;
   const GltfTopologyWriteWorkPolicy& work_;
+  gltf_detail::DeformationWork* deformation_;
   std::string_view text_;
   Vector<LexicalSpan> spans_;
   Vector<Frame> stack_;
@@ -185,7 +201,8 @@ Vector<LexicalSpan> BuildLexicalIndex(
     const gltf_detail::JsonSnapshot& document,
     const gltf_detail::AllocationContext& allocation,
     const GltfTopologyWriteLimits& limits,
-    const GltfTopologyWriteWorkPolicy& work) {
-  return Scanner(document, allocation, limits, work).Run();
+    const GltfTopologyWriteWorkPolicy& work,
+    gltf_detail::DeformationWork* deformation) {
+  return Scanner(document, allocation, limits, work, deformation).Run();
 }
 }  // namespace meshvale::interchange::gltf_topology_write_detail

@@ -11,6 +11,7 @@
 #include <stop_token>
 
 #include "gltf_allocation.h"
+#include "gltf_deformation_work.h"
 #include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_topology_write_detail {
@@ -26,6 +27,8 @@ void RunRange(const geometry::ExecutionContext& context,
               const GltfTopologyWriteWorkPolicy& work, std::size_t count,
               std::size_t element_bytes, RangeOperation operation, void* state,
               std::stop_token stop, GltfTopologyWriteExecutionStats& stats,
-              const NativeWorkerBackend& backend);
+              const NativeWorkerBackend& backend,
+              const gltf_detail::DeformationWork* deformation = nullptr,
+              const gltf_detail::DeformationRangeExtent* extent = nullptr);
 }  // namespace meshvale::interchange::gltf_topology_write_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_GLTF_TOPOLOGY_WRITE_WORKERS_H_

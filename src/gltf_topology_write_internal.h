@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "gltf_allocation.h"
+#include "gltf_deformation_work.h"
 #include "gltf_json_snapshot.h"
 #include "gltf_topology_write_workers.h"
 
@@ -54,7 +55,8 @@ struct LexicalSpan {
     const gltf_detail::JsonSnapshot& document,
     const gltf_detail::AllocationContext& allocation,
     const GltfTopologyWriteLimits& limits,
-    const GltfTopologyWriteWorkPolicy& work);
+    const GltfTopologyWriteWorkPolicy& work,
+    gltf_detail::DeformationWork* deformation = nullptr);
 [[nodiscard]] GltfTopologyWriteResult WriteWithBackend(
     const GltfTopologyWriteRequest& request,
     const GltfTopologyWriteLimits& limits,
