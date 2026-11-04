@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | SURFACE-PYTHON-001 |
-| Version | 0.1.1 |
+| Version | 0.1.2 |
 | Status | Unimplemented development contract; names and examples below are not available functions |
 | Owner | Proposed `meshvale_interchange.surface_files` module |
 
@@ -336,9 +336,11 @@ native work after pinning inputs; do not access Python containers from workers.
 
 `SurfaceResult` has read-only `complete`, `terminal_phase`, `phase_states`, `ingress`,
 `materialization`, `source_inspection`, `triangulation`, `catalog_read`, `encode`,
-`inspection`, `publication`, `output`, `verified` and `bundle` properties.
+`output_capture`, `inspection`, `publication`, `output`, `verified` and `bundle`
+properties.
 The phase names are `ingress`, `materialization`, `source-inspection`,
-`triangulation`, `catalog-read`, `encode`, `inspection`, `publication`, `complete`.
+`triangulation`, `catalog-read`, `encode`, `output-capture`, `inspection`,
+`publication`, `complete`.
 `phase_states` is an immutable mapping over those phase names (excluding
 `complete`) with `"not-called"`, `"returned"` or `"threw"` values after a run.
 It distinguishes an uncalled phase from a called native operation that threw
@@ -370,8 +372,36 @@ enum ordinals are not a new wire schema. The owners are:
 | triangulation | ChargedTriangulationResult status/diagnostic/facts and genuine charged owner/maps |
 | catalog_read | GltfReadResult diagnostic, optional genuine catalog and only actual optional observations |
 | encode | SurfaceEncodeResult status/diagnostic/optional SurfaceFacts and output |
+| output_capture | Binding-owned, distinct charged copies of the actual encoded member bytes; actual copy/allocation/join observations, separate from native inspection |
 | inspection | SurfaceInspectionResult status/diagnostic/optional SurfaceFacts and independent actual-byte proof |
 | publication | SurfaceFilePublicationResult outcome/diagnostic/cleanup/SurfaceFileFacts and optional committed owner |
+
+`output_capture` is `None` until encoding succeeds and member capture is entered.
+Its nullable `status` is `"captured"`, `"limit-exceeded"`, `"budget-exceeded"`
+or `"canceled"`. The observation exposes `allocated_payload_bytes`,
+`allocated_request_bytes`, `active_payload_bytes`, `copied_bytes`,
+`byte_checkpoints`, `planned_jobs`, `launched_workers`, `joined_workers` and
+`caller_jobs`. The three allocation/live counters describe only the contiguous
+copied member-byte staging block. Its request bytes include that block's actual
+allocator overhead. Member descriptors, job records and worker scratch are also
+charged through the same bridge/root; they are outside these three counters,
+which are not total phase or bridge allocations. Cumulative allocation/copy work
+is distinct from live member-byte storage. Freeing the
+temporary capture storage after the independent inspector joins makes live
+payload zero without erasing completed or partial work. Returned inspection
+proofs retain their own genuine native backing.
+
+Expected capture refusal sets `"output-capture"` to `"returned"`, retains the
+actual native `allocation_code` and `allocation_provenance` enum names when
+available, and leaves native inspection and publication `None`/`"not-called"`.
+Only actual operation-cap denial maps to `"limit-exceeded"`; actual root-ledger
+denial maps to `"budget-exceeded"`. Neither is a successful independent proof.
+Unrelated exceptions set this binding phase to `"threw"`, retain reached copy
+work with `status=None`, and propagate without relabeling arithmetic, invalid
+objects or genuine allocation failure. A throwing native inspector instead
+leaves output capture `"returned"`/`"captured"` and inspection `"threw"`.
+Every launched copy worker joins before either outcome. No member-capture
+exception or refusal can discard the earlier genuine encoded output.
 
 `output` retains genuine SurfaceOutput even if a later phase fails, keeping its
 original/triangulated native owners alive. It exposes `encoding`,

@@ -242,7 +242,7 @@ def _freeze_preset(value, template):
 
 def _preset_template():
     document = json.loads(files(__package__).joinpath("_surface_file_presets.json").read_text(encoding="utf-8"))
-    if document["schema"] != "meshvale.surface-python-presets/1" or document["contract"] != "SURFACE-PYTHON-001/0.1.1":
+    if document["schema"] != "meshvale.surface-python-presets/1" or document["contract"] != "SURFACE-PYTHON-001/0.1.2":
         raise RuntimeError("packaged surface preset contract mismatch")
     return document["presets"]["bounded"]
 
