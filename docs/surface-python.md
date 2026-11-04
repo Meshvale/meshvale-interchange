@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | SURFACE-PYTHON-001 |
-| Version | 0.1.0 |
+| Version | 0.1.1 |
 | Status | Unimplemented development contract; names and examples below are not available functions |
 | Owner | Proposed `meshvale_interchange.surface_files` module |
 
@@ -39,6 +39,18 @@ publication. `run` is synchronous and single-use, including after refusal or
 exception; a second call raises `RuntimeError`. Preparation has no mesh input,
 file reads, stage creation or export. No public per-phase executor, mutable
 native handle, proof constructor or generic exporter framework is introduced.
+
+Preparation creates the Python operation/result holders before admitting native
+workspace. If valid configuration reaches a bridge request limit or root payload
+budget denial, it returns an already finished operation with the corresponding
+ingress `"limit-exceeded"` or `"budget-exceeded"` observation at
+`"prepare.workspace"`. No source was supplied, captured or validated and no native
+delegate was called. Inspect `operation.result`; `run` on this finished operation
+raises the ordinary state `RuntimeError` before inspecting arguments. Genuine
+Python or native allocation failure can raise `MemoryError` during preparation,
+in which case no operation is returned. A ready operation follows normal run
+validation and cancellation ordering. Preparation does not act on a stopped
+external cancellation source.
 
 `preset` is the explicit name `"bounded"` from the
 [complete finite worksheet](surface-python-presets.json), or an immutable
@@ -293,7 +305,8 @@ operation = prepare_surface(
     cancellation=None, publication=None,
 )
 held_result = operation.result  # Reachable before any native commit.
-result = operation.run(record, catalog=None)
+result = (operation.run(record, catalog=None)
+          if operation.state == "ready" else held_result)
 assert result is held_result
 print(result.complete, result.terminal_phase, result.phase_states)
 if result.encode is not None:
@@ -340,6 +353,13 @@ Ingress observation records status (`captured`, `limit-exceeded`, `budget-exceed
 or `canceled`), nullable first offending field/row, admitted buffer/descriptor/
 staging byte counts and actually reached copy/stop work. Representation exceptions
 leave only reached ingress observations; no native capture status is invented.
+Ingress also covers actual preparation workspace admission. Its expected resource
+refusal sets ingress to `"returned"`, with zero source/export/copy counters and
+all delegate properties `None`/`"not-called"`. Bridge request-cap denial retains
+its native operation-limit provenance; root payload denial is a distinct budget
+outcome. Checked arithmetic failures and unexpected allocation/logic exceptions
+are never relabelled as either normal refusal. During run, the same distinction
+retains actual partial ingress counters rather than the preparation zeros.
 Native phase values expose their native public enum names as strings (for example
 `kSuccess`), exact diagnostics, nullable observations and actual execution counts;
 enum ordinals are not a new wire schema. The owners are:

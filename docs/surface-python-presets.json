@@ -1,6 +1,6 @@
 {
   "schema": "meshvale.surface-python-presets/1",
-  "contract": "SURFACE-PYTHON-001/0.1.0",
+  "contract": "SURFACE-PYTHON-001/0.1.1",
   "status": "unimplemented-contract",
   "presets": {
     "bounded": {
