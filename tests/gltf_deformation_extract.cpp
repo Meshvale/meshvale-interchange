@@ -37,10 +37,15 @@
 #include "gltf_materialization_test_internal.h"
 #if defined(MESHVALE_TEST_DEFORMATION_OUTPUT)
 #include "gltf_allocation.h"
+#include "gltf_deformation_work.h"
+#include "gltf_deformation_write_test.h"
 #include "gltf_workflow_support_internal.h"
 #endif
 #include "gltf_numerical_profile.h"
 #include "gltf_operation_workers.h"
+#if defined(MESHVALE_TEST_DEFORMATION_FILES)
+#include "gltf_deformation_inspection_test.h"
+#endif
 #if defined(_MSC_VER) && defined(_M_X64)
 #include <xmmintrin.h>
 #endif
@@ -522,6 +527,18 @@ void PredicateFailureControls(const mv::GltfTopologyOutputInspection& verified,
   work.max_jobs = kPolicy.work.max_jobs;
   detail::Operation operation{partial,    kInspection, work, context,
                               allocation, {},          {},   &observation};
+  mv::gltf_detail::DeformationWork owning_work(
+      kPolicy, observation, allocation,
+      [](void*, mv::gltf_detail::DeformationWorkRefusal reason) {
+        detail::Fail(
+            detail::Status::kLimitExceeded, detail::Stage::kAdmission,
+            reason ==
+                    mv::gltf_detail::DeformationWorkRefusal::kRelationshipLimit
+                ? detail::Code::kCountLimit
+                : detail::Code::kConfigurationExtent);
+      },
+      nullptr);
+  operation.deformation_work = &owning_work;
   detail::Stats stats;
   bool mismatch = false;
   try {
@@ -973,6 +990,12 @@ int main(int argc, char** argv) {
       return 0;
     }
     geo::ExecutionContext context({kWorkerBudget, 1, kRootBytes});
+#if defined(MESHVALE_TEST_DEFORMATION_OUTPUT)
+    ExerciseDeformationWriterBudgets(argv[1], context);
+#endif
+#if defined(MESHVALE_TEST_DEFORMATION_FILES)
+    RunDeformationInspectionControls(argv[1]);
+#endif
     for (const auto name :
          {"d04-dense-float-0-2-5", "weights-linear", "d03-three-float-u16",
           "d03-cross-width-one-unit-low", "10-same-stream-linear-max-value"})

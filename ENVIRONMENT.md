@@ -197,7 +197,7 @@ These configured requirements are not completed execution evidence.
 
 ## Explicit native materialization profiles
 
-The [repository workflow](.github/workflows/repository-checks.yml) selects explicit
+The [repository workflow](https://github.com/Meshvale/meshvale-interchange/blob/82e955bdce6671ce4d1a930124c3b2a551dd81ff/.github/workflows/repository-checks.yml) selects explicit
 Geometry and Interchange materialization test profiles. Every native build passes
 `MESHVALE_INTERCHANGE_MATERIALIZATION_TEST_PROFILE=qualified` or `unsupported`;
 the installed examples use the same value. The

@@ -2,6 +2,7 @@
 #include <meshvale/interchange/gltf_workflow_support.h>
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -17,6 +18,7 @@
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
 #include "gltf_deformation_read.h"
+#include "gltf_deformation_work.h"
 #include "gltf_direct_translation.h"
 #include "gltf_numerical_profile.h"
 #include "gltf_workflow_support_internal.h"
@@ -69,6 +71,7 @@ GltfTopologyOutputInspection Access::Make(
   return GltfTopologyOutputInspection(std::move(state));
 }
 namespace {
+constexpr std::size_t kMinimumParallelJobs = 2;
 struct Slot {
   std::exception_ptr exception;
   std::optional<Diagnostic> diagnostic;
@@ -80,14 +83,38 @@ struct Team {
   std::size_t bytes;
   std::size_t width;
   std::span<Slot> slots;
+  gltf_detail::DeformationWork* deformation;
+  std::size_t unit_bytes;
+  std::span<gltf_detail::DeformationWorkCounters> counters;
 };
+std::pair<std::size_t, std::size_t> RangeBounds(const Team& team,
+                                                std::size_t ordinal) {
+  std::size_t begin = 0;
+  std::size_t end = 0;
+  if (team.deformation) {
+    const auto units = 1 + (team.bytes - 1) / team.unit_bytes;
+    const auto base = units / team.slots.size();
+    const auto extra = units % team.slots.size();
+    const auto first = ordinal * base + std::min(ordinal, extra);
+    begin = first * team.unit_bytes;
+    const auto count = base + (ordinal < extra ? 1 : 0);
+    end = begin + std::min(team.bytes - begin, count * team.unit_bytes);
+  } else {
+    begin = ordinal * team.width;
+    end = begin + std::min(team.width, team.bytes - begin);
+  }
+  return {begin, end};
+}
 void CheckRange(void* opaque, std::size_t ordinal) noexcept {
   auto& team = *static_cast<Team*>(opaque);
   auto& slot = team.slots[ordinal];
-  const auto begin = ordinal * team.width;
-  const auto end = begin + std::min(team.width, team.bytes - begin);
+  const auto [begin, end] = RangeBounds(team, ordinal);
   try {
-    slot.diagnostic = team.check(team.state, begin, end, false);
+    std::optional<gltf_detail::DeformationWork::Local> local;
+    if (team.deformation)
+      local.emplace(*team.deformation, team.counters[ordinal]);
+    slot.diagnostic =
+        team.check(team.state, begin, end, false, local ? &*local : nullptr);
   } catch (const gltf_detail::AdmissionFailure& failure) {
     if (failure.Code() == gltf_detail::AdmissionCode::kCanceled)
       slot.canceled = true;
@@ -224,23 +251,55 @@ void Identity(const GltfTopologyOutputInspectionRequest& request,
 namespace {
 void RunRangesImpl(const Operation& operation, std::size_t bytes,
                    RangeCheck check, void* state, Stats& stats,
-                   std::size_t unit_bytes) {
+                   std::size_t unit_bytes,
+                   const gltf_detail::DeformationRangeExtent* extent) {
   if (bytes == 0) return;
-  const auto desired = std::min<std::size_t>(
+  auto desired = std::min<std::size_t>(
       operation.work.max_jobs,
       1 + (bytes - 1) /
               static_cast<std::size_t>(operation.work.partition_bytes));
+  bool eligible = bytes >= operation.work.parallel_min_bytes;
   const auto units = 1 + (bytes - 1) / unit_bytes;
+  if (operation.deformation_work) {
+    const auto& policy = operation.deformation_work->Policy();
+    const gltf_detail::DeformationRangeExtent byte_extent{0, 0, 0, bytes};
+    const auto& bound = extent ? *extent : byte_extent;
+    const auto scalar = operation.deformation_work->ScalarWork(bound);
+    const auto scalar_jobs = scalar / policy.partition_scalars +
+                             (scalar % policy.partition_scalars != 0);
+    const auto byte_jobs = bound.bytes / policy.partition_bytes +
+                           (bound.bytes % policy.partition_bytes != 0);
+    eligible = scalar >= policy.parallel_min_scalars ||
+               bound.bytes >= policy.parallel_min_bytes;
+    desired = static_cast<std::size_t>(std::min<std::uint64_t>(
+        {units, policy.max_jobs,
+         std::max<std::uint64_t>(1, std::max(scalar_jobs, byte_jobs))}));
+    if (!eligible) desired = 1;
+  }
   const auto width =
       gltf_detail::CheckedProduct(1 + (units - 1) / desired, unit_bytes);
-  const auto jobs = 1 + (bytes - 1) / width;
+  const auto jobs =
+      operation.deformation_work ? desired : 1 + (bytes - 1) / width;
   Vector<Slot> slots{gltf_detail::Allocator<Slot>(operation.allocation)};
   slots.resize(jobs);
-  Team team{check, state, bytes, width, slots};
+  Vector<gltf_detail::DeformationWorkCounters> counters{
+      gltf_detail::Allocator<gltf_detail::DeformationWorkCounters>(
+          operation.allocation)};
+  if (operation.deformation_work) counters.resize(jobs);
+  Team team{check,      state,   bytes,
+            width,      slots,   operation.deformation_work,
+            unit_bytes, counters};
+  auto merge = [&] {
+    if (!operation.deformation_work) return;
+    for (const auto& partial : counters)
+      operation.deformation_work->Merge(partial);
+    operation.deformation_work->CheckMerged();
+  };
   stats.planned_jobs += jobs;
-  auto lease = bytes >= operation.work.parallel_min_bytes
-                   ? geometry::TryReserveWorkers(operation.context, jobs)
-                   : geometry::WorkerLease();
+  const bool parallel =
+      eligible && (!operation.deformation_work || jobs >= kMinimumParallelJobs);
+  auto lease = parallel ? geometry::TryReserveWorkers(operation.context, jobs)
+                        : geometry::WorkerLease();
   if (lease.Count()) {
     gltf_detail::OperationWorkerStats actual;
     try {
@@ -250,6 +309,7 @@ void RunRangesImpl(const Operation& operation, std::size_t bytes,
     } catch (...) {
       stats.launched_workers += actual.launched;
       stats.joined_workers += actual.joined;
+      merge();
       throw;
     }
     stats.launched_workers += actual.launched;
@@ -264,6 +324,7 @@ void RunRangesImpl(const Operation& operation, std::size_t bytes,
       CheckRange(&team, ordinal);
     }
   }
+  merge();
   for (const auto& slot : slots)
     if (slot.exception) std::rethrow_exception(slot.exception);
   std::optional<std::size_t> first;
@@ -273,10 +334,15 @@ void RunRangesImpl(const Operation& operation, std::size_t bytes,
     if (!first && slots[ordinal].diagnostic) first = ordinal;
   }
   if (first) {
-    const auto begin = *first * width;
-    const auto end = begin + std::min(width, bytes - begin);
-    const auto diagnostic =
-        canceled ? check(state, 0, end, true) : slots[*first].diagnostic;
+    const auto end = RangeBounds(team, *first).second;
+    auto diagnostic = slots[*first].diagnostic;
+    if (canceled) {
+      std::optional<gltf_detail::DeformationWork::FinalizeMismatchPrefix>
+          prefix;
+      if (operation.deformation_work)
+        prefix.emplace(*operation.deformation_work);
+      diagnostic = check(state, 0, end, true, nullptr);
+    }
     if (diagnostic)
       throw Failure(MismatchStatus(diagnostic->stage), *diagnostic);
   }
@@ -285,7 +351,8 @@ void RunRangesImpl(const Operation& operation, std::size_t bytes,
 }
 }  // namespace
 void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
-               void* state, Stats& stats, std::size_t unit_bytes) {
+               void* state, Stats& stats, std::size_t unit_bytes,
+               const gltf_detail::DeformationRangeExtent* extent) {
   const auto before = stats;
   auto observe = [&] {
     if (!operation.deformation) return;
@@ -301,7 +368,7 @@ void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
                                 stats.joined_workers - before.joined_workers);
   };
   try {
-    RunRangesImpl(operation, bytes, check, state, stats, unit_bytes);
+    RunRangesImpl(operation, bytes, check, state, stats, unit_bytes, extent);
   } catch (...) {
     observe();
     throw;
@@ -311,6 +378,7 @@ void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
 BytePlan::BytePlan(const Operation& operation)
     : operation_(operation),
       checks_(gltf_detail::Allocator<ByteCheck>(operation.allocation)) {}
+void BytePlan::Reference() { operation_.Reference(); }
 void BytePlan::Reset() {
   checks_.clear();
   bytes_ = 0;
@@ -364,34 +432,42 @@ void BytePlan::Checkpoint() {
   }
 }
 void BytePlan::FinalizeKnownFailure() {
-  const auto earlier = Check(this, 0, known_prefix_, true);
+  std::optional<gltf_detail::DeformationWork::FinalizeMismatchPrefix> prefix;
+  if (operation_.deformation_work) prefix.emplace(*operation_.deformation_work);
+  const auto earlier = Check(this, 0, known_prefix_, true, nullptr);
   if (earlier) throw Failure(MismatchStatus(earlier->stage), *earlier);
   // If cancellation refused the plan record itself, its borrowed spans still
   // permit allocation-free validation of the earlier common byte prefix.
   if (known_pending_) {
+    operation_.Reference();
     const auto& pending = *known_pending_;
     const auto common =
         std::min(pending.expected.size(), pending.actual.size());
-    for (std::size_t byte = 0; byte < common; ++byte)
+    for (std::size_t byte = 0; byte < common; ++byte) {
+      operation_.Bytes(1);
       if (pending.expected[byte] != pending.actual[byte]) {
         const auto diagnostic =
             ByteLocation(pending.diagnostic, byte, pending.scalar_bytes);
         throw Failure(MismatchStatus(diagnostic.stage), diagnostic);
       }
+    }
   }
   throw Failure(MismatchStatus(known_failure_->stage), *known_failure_);
 }
-std::optional<Diagnostic> BytePlan::Check(void* opaque, std::size_t begin,
-                                          std::size_t end, bool finalizing) {
+std::optional<Diagnostic> BytePlan::Check(
+    void* opaque, std::size_t begin, std::size_t end, bool finalizing,
+    gltf_detail::DeformationWork::Local* local) {
   auto& plan = *static_cast<BytePlan*>(opaque);
   auto current =
       std::upper_bound(plan.checks_.begin(), plan.checks_.end(), begin,
-                       [](std::size_t position, const ByteCheck& check) {
+                       [&](std::size_t position, const ByteCheck& check) {
+                         plan.operation_.Reference(local);
                          return position < check.prefix;
                        });
   if (current != plan.checks_.begin()) --current;
   for (; current != plan.checks_.end() && current->prefix < end; ++current) {
-    if (!finalizing) plan.operation_.allocation.Checkpoint();
+    plan.operation_.Reference(local);
+    plan.operation_.Checkpoint(finalizing);
     const auto common =
         std::min(current->expected.size(), current->actual.size());
     const auto local_begin =
@@ -400,7 +476,8 @@ std::optional<Diagnostic> BytePlan::Check(void* opaque, std::size_t begin,
     for (auto byte = local_begin; byte < local_end; ++byte) {
       if (!finalizing &&
           byte % plan.operation_.work.cancellation_block_bytes == 0)
-        plan.operation_.allocation.Checkpoint();
+        plan.operation_.Checkpoint(finalizing);
+      plan.operation_.Bytes(1, local);
       if (current->expected[byte] == current->actual[byte]) continue;
       return ByteLocation(current->diagnostic, byte, current->scalar_bytes);
     }
@@ -412,7 +489,19 @@ std::optional<Diagnostic> BytePlan::Check(void* opaque, std::size_t begin,
 }
 void BytePlan::Run(Stats& stats) {
   try {
-    RunRanges(operation_, bytes_, Check, this, stats);
+    gltf_detail::DeformationRangeExtent extent;
+    if (operation_.deformation_work) {
+      auto& owner = *operation_.deformation_work;
+      extent.relationships = owner.Multiply(
+          owner.Policy().max_jobs,
+          owner.Add(std::bit_width(checks_.size()), checks_.size()));
+      for (const auto& check : checks_) {
+        operation_.Reference();
+        extent.bytes = owner.Add(
+            extent.bytes, std::min(check.expected.size(), check.actual.size()));
+      }
+    }
+    RunRanges(operation_, bytes_, Check, this, stats, 1, &extent);
   } catch (const gltf_detail::AdmissionFailure& failure) {
     if (failure.Code() == gltf_detail::AdmissionCode::kCanceled &&
         known_failure_)
@@ -469,11 +558,24 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
                  : Code::kConfigurationExtent);
       }
     }
-    AdmitInputs(request, limits, work, stop);
+    if (!deformation) AdmitInputs(request, limits, work, stop);
     auto context = request.source.Mesh().ShareExecutionContext();
-    Identity(request, context);
+    if (!deformation) Identity(request, context);
     const gltf_detail::AllocationContext root(context, stop,
                                               options.allocation_backend);
+    std::optional<gltf_detail::DeformationWork> deformation_work;
+    if (deformation)
+      deformation_work.emplace(
+          *deformation, *result.deformation, root,
+          [](void* state, gltf_detail::DeformationWorkRefusal) {
+            Fail(Status::kLimitExceeded, *static_cast<Stage*>(state),
+                 Code::kCountLimit);
+          },
+          &stage);
+    if (deformation) {
+      AdmitInputs(request, limits, work, stop, &*deformation_work);
+      Identity(request, context);
+    }
     if (complete_parent && (!complete_parent->HasRequestLimit() ||
                             !complete_parent->SharesExecutionBudget(root)))
       Fail(Status::kForeignBudget, Stage::kAdmission, Code::kForeignBudget);
@@ -512,6 +614,9 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
                         stop,
                         {options.worker_backend, options.observer},
                         result.deformation ? &*result.deformation : nullptr};
+    operation.deformation_work =
+        deformation_work ? &*deformation_work : nullptr;
+    if (deformation_work) deformation_work->SetAllocation(allocation);
     const auto* proof = gltf_detail::Access::ExtractionTranslation(
         request.source.SourceExtraction());
     const auto* reload_proof =
@@ -634,6 +739,8 @@ GltfTopologyOutputInspectionResult InspectGltfTopologyOutputForTest(
               ? GltfStatus::kBudgetExceeded
           : result.status == Status::kInvalidConfiguration
               ? GltfStatus::kInvalidLimits
+          : result.status == Status::kLimitExceeded
+              ? GltfStatus::kUnsupportedProfile
               : GltfStatus::kResourceBindingMismatch;
       result.deformation->diagnostic.status = result.deformation->status;
       result.deformation->diagnostic.code =

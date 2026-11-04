@@ -68,6 +68,17 @@ void ValidateDeformationConfiguration(const GltfDeformationPolicy& policy) {
            GltfDiagnosticCode::kLimitNotRepresentable);
   }
 }
+void DeformationReadReference(void* opaque) {
+  auto& state = *static_cast<AssetState*>(opaque);
+  if (!state.deformation_read) return;
+  auto& count = state.deformation_read->counts.relationship_steps;
+  const auto& policy = state.read_request.deformation;
+  if (count == policy.limits.max_relationship_steps)
+    Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kLimitExceeded);
+  ++count;
+  if (count % policy.work.max_relationship_block == 0)
+    state.deformation_allocation.Checkpoint();
+}
 void AdmitDeformationRotations(AssetState& state) {
   auto& observation = *state.deformation_read;
   observation.phase = GltfDeformationPhase::kDeclarations;
@@ -93,9 +104,21 @@ void AdmitDeformationRotations(AssetState& state) {
                       0,
                       std::nullopt,
                       true};
-  for (const auto& node : state.nodes) {
+  // Every valid DOM node is below NodeCount; keep the cursor payload
+  // initialized even when the table or its next row is absent.
+  const auto missing_source_row = doc.NodeCount();
+  auto source_row =
+      table ? doc.FirstReferenceChild(*table).value_or(missing_source_row)
+            : missing_source_row;
+  for (std::size_t index = 0; index < state.nodes.size();
+       ++index, source_row = doc.NextReferenceSibling(source_row)
+                                 .value_or(missing_source_row)) {
+    const auto& node = state.nodes[index];
+    doc.ReferenceVisit();
     state.allocation.Checkpoint();
-    const auto row = *ChildAt(doc, *table, node.table_index);
+    if (source_row == missing_source_row || node.table_index != index)
+      Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kGraphRelationship);
+    const auto row = source_row;
     const auto rotation = FindMember(doc, row, kRotation);
     auto& source = state.node_rotation_storage[node.table_index];
     if (!rotation) {

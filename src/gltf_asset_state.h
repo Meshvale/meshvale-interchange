@@ -105,7 +105,8 @@ struct Access {
       const GltfPrimitiveHandle& primitive) noexcept;
   [[nodiscard]] static const AssetState& State(const GltfAsset& asset);
   [[nodiscard]] static const PrimitiveRecord* PrimitiveRecordFor(
-      const GltfAsset& asset, const GltfPrimitiveHandle& primitive);
+      const GltfAsset& asset, const GltfPrimitiveHandle& primitive,
+      void (*reference)(void*) = nullptr, void* reference_state = nullptr);
   [[nodiscard]] static GltfAsset MakeAsset(
       std::shared_ptr<const AssetState> state);
   [[nodiscard]] static GltfPrimitiveHandle MakePrimitive(

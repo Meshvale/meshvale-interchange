@@ -16,6 +16,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#include <latch>
 #include <mutex>
 #include <new>
 #include <optional>
@@ -24,6 +25,7 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -590,10 +592,22 @@ struct AllocationCounter {
 };
 void HybridCardinalityAndWork(const std::filesystem::path& directory,
                               const geo::ExecutionContext& context) {
-  auto read = ReadLiteral("catalog-many-nodes", directory, context);
+  constexpr std::size_t kAuthoredNodes = 8192;
+  // The literal has only node0={mesh:0}; all other nodes are empty, with no
+  // children/ancestors. All fixed tables have at most three rows. Independent
+  // pass bounds: metadata3N+1024, graph8N+1024, declarations2N+512,
+  // rotations2N+256, resources256, projection2N+1024. This loose32N+4096
+  // bound excludes the old repeated ordinal scans and uses no reported total.
+  constexpr std::uint64_t kSourceNodePassBound = 32;
+  constexpr std::uint64_t kFixedReferenceBound = 4096;
+  auto read_request = kRequest;
+  read_request.deformation.limits.max_relationship_steps =
+      kSourceNodePassBound * kAuthoredNodes + kFixedReferenceBound;
+  const auto input = File(directory / "catalog-many-nodes.gltf");
+  auto read = mv::ReadGltfAssetCapped(std::as_bytes(std::span(input)), {},
+                                      read_request, kRead, kCopyWork, context);
   Require(read.asset.has_value(),
           "larger independently admitted read node table");
-  constexpr std::size_t kAuthoredNodes = 8192;
   auto request = kExtract;
   request.deformation.limits.max_node_rows = 1;
   auto public_limited = mv::ExtractGltfPrimitiveCapped(
@@ -1366,7 +1380,7 @@ void MemoryBoundaryControls(const std::filesystem::path& directory,
               "real numeric and copied-source facts survive actual "
               "request-byte refusal");
           if (test.member == &BoundaryLimits::max_decoded_bytes) {
-            Require(facts.phase == mv::GltfDeformationPhase::kComplete &&
+            Require(facts.phase == mv::GltfDeformationPhase::kAssociation &&
                         facts.predicates.source_admission == true &&
                         facts.predicates.influences == true &&
                         facts.predicates.bindings == true &&
@@ -1512,11 +1526,103 @@ constexpr std::string_view kExpectedKey = " independently-required=";
 constexpr std::uint64_t kAddedUserVisits = 1;
 constexpr std::uint64_t kAddedGuardVisits = 1;
 constexpr std::uint64_t kAddedSourcePlanningVisits = 1;
-// Frozen RED measurements are used only for correction reconciliation, not
-// as an independent absolute all-visits oracle or a new cap selection.
-constexpr std::array<std::uint64_t, 2> kFrozenReported{245, 247};
-constexpr std::array<std::uint64_t, 2> kMissingPlanningRecords{6, 7};
+// Independent whole-public-call transcript, derived from the literal source
+// order and every actual helper/pass before running this source generation.
+// Read and materialization are separate owning calls, never summed here.
+struct Phase {
+  std::string_view name;
+  std::array<std::uint64_t, 2> visits;
+};
+constexpr std::array<Phase, 14> kPhaseLedger{{
+    {"preflight", {2, 2}},
+    {"meshes", {134, 134}},
+    {"skins", {8, 8}},
+    {"users", {15, 16}},
+    {"guard inventory", {39, 40}},
+    {"animations", {10, 10}},
+    {"shared views", {11, 11}},
+    {"expected domains", {3, 3}},
+    {"role planning", {18, 19}},
+    {"decode", {23, 23}},
+    {"execute", {3, 3}},
+    {"freeze associations", {5, 5}},
+    {"extraction facade", {15, 15}},
+    {"final proof ownership", {1, 1}},
+}};
+constexpr std::uint64_t Expected(std::size_t source) {
+  std::uint64_t total = 0;
+  for (const auto& phase : kPhaseLedger) total += phase.visits[source];
+  return total;
+}
 }  // namespace r_planning
+void ConcurrentRetainedExtraction(const std::filesystem::path& directory,
+                                  const geo::ExecutionContext& context,
+                                  std::uint64_t expected_relationships) {
+  auto read = ReadLiteral("boundary-minimal", directory, context);
+  Require(read.asset.has_value(),
+          "shared immutable source for concurrent calls");
+  const auto primitive = *read.asset->Primitive(0);
+  const auto baseline = context.ActiveTrackedPayload();
+  const auto input = File(directory / "boundary-minimal.gltf");
+  auto request = kExtract;
+  request.deformation.work.max_jobs = 1;
+  constexpr std::size_t kConcurrentCalls = 2;
+  constexpr std::size_t kRepeatedCalls = 16;
+  std::latch ready(kConcurrentCalls);
+  std::latch start(1);
+  std::array<std::exception_ptr, kConcurrentCalls> errors{};
+  std::array<std::jthread, kConcurrentCalls> threads;
+  // Declared after the joining owners so a launch exception first releases
+  // any started thread rather than leaving it blocked while unwinding.
+  struct StartGate {
+    std::latch& start;
+    bool released = false;
+    ~StartGate() {
+      if (!released) start.count_down();
+    }
+    void Release() {
+      start.count_down();
+      released = true;
+    }
+  } gate{start};
+  for (std::size_t i = 0; i < threads.size(); ++i) {
+    threads[i] = std::jthread([&, i] {
+      ready.count_down();
+      start.wait();
+      try {
+        for (std::size_t repeat = 0; repeat < kRepeatedCalls; ++repeat) {
+          const auto result = mv::ExtractGltfPrimitiveCapped(
+              *read.asset, primitive, request, kExtraction, {});
+          Require(result.extraction && result.deformation &&
+                      result.deformation->complete &&
+                      result.deformation->counts.relationship_steps ==
+                          expected_relationships,
+                  "concurrent calls retain independent exact R ownership");
+        }
+      } catch (...) {
+        errors[i] = std::current_exception();
+      }
+    });
+  }
+  ready.wait();
+  gate.Release();
+  for (std::size_t repeat = 0; repeat < kRepeatedCalls; ++repeat) {
+    const auto independent =
+        mv::ReadGltfAssetCapped(std::as_bytes(std::span(input)), {}, kRequest,
+                                kRead, kCopyWork, context);
+    Require(independent.asset && independent.deformation &&
+                independent.deformation->complete &&
+                independent.asset->Nodes().size() == 1,
+            "independent readers retain their own lexical adapter");
+  }
+  for (auto& thread : threads) thread.join();
+  for (const auto& error : errors)
+    if (error) std::rethrow_exception(error);
+  Require(read.asset->Nodes().size() == 1 && read.asset->Nodes()[0].mesh == 0 &&
+              context.ActiveWorkers() == 0 &&
+              context.ActiveTrackedPayload() == baseline,
+          "concurrent calls leave retained source and original ledger intact");
+}
 void PlanningVisitRegression(const std::filesystem::path& directory,
                              const geo::ExecutionContext& context) {
   constexpr std::array<std::string_view, 2> names{
@@ -1531,6 +1637,8 @@ void PlanningVisitRegression(const std::filesystem::path& directory,
       const auto baseline = context.ActiveTrackedPayload();
       auto request = kExtract;
       request.deformation.work.max_jobs = 1;
+      const auto expected = r_planning::Expected(i);
+      request.deformation.limits.max_relationship_steps = expected;
       {
         auto result = mv::ExtractGltfPrimitiveCapped(
             *read.asset, *read.asset->Primitive(0), request, kExtraction, {});
@@ -1539,6 +1647,14 @@ void PlanningVisitRegression(const std::filesystem::path& directory,
                 "both otherwise identical inputs genuinely reach complete "
                 "public extraction");
         observed[i] = result.deformation->counts.relationship_steps;
+        Require(observed[i] == expected &&
+                    result.extraction->DeformationFacts() &&
+                    result.extraction->DeformationFacts()
+                            ->counts.relationship_steps == expected &&
+                    result.extraction->Deformation()
+                            ->Facts()
+                            .counts.relationship_steps == expected,
+                "exact inclusive R cap agrees in result, extraction and proof");
         Require(result.extraction->Deformation()->Users().size() == 1 &&
                     result.extraction->Deformation()->Accessors().size() == 1 &&
                     result.extraction->Deformation()->Animations().empty() &&
@@ -1553,6 +1669,23 @@ void PlanningVisitRegression(const std::filesystem::path& directory,
       }
       Require(context.ActiveTrackedPayload() == baseline,
               "paired public result releases original-ledger owner");
+      --request.deformation.limits.max_relationship_steps;
+      {
+        const auto refused = mv::ExtractGltfPrimitiveCapped(
+            *read.asset, *read.asset->Primitive(0), request, kExtraction, {});
+        Require(!refused.extraction && refused.deformation &&
+                    !refused.deformation->complete &&
+                    refused.diagnostic.status ==
+                        mv::GltfStatus::kUnsupportedProfile &&
+                    refused.diagnostic.code ==
+                        mv::GltfDiagnosticCode::kLimitExceeded &&
+                    refused.deformation->counts.relationship_steps == expected,
+                "one-below cap refuses actual final proof reference; partial "
+                "count retained without publishing complete owner");
+      }
+      Require(context.ActiveTrackedPayload() == baseline &&
+                  context.ActiveWorkers() == 0,
+              "final-reference refusal releases every pending original owner");
     }
     Require(context.ActiveTrackedPayload() == 0 && context.ActiveWorkers() == 0,
             "paired source and proof release all original ledger charges");
@@ -1566,11 +1699,7 @@ void PlanningVisitRegression(const std::filesystem::path& directory,
   Require(observed[1] - observed[0] == required,
           "every independently enumerated added planning visit is metered, "
           "including filtered source nodes");
-  for (std::size_t i = 0; i < observed.size(); ++i)
-    Require(observed[i] == r_planning::kFrozenReported[i] +
-                               r_planning::kMissingPlanningRecords[i],
-            "exact source correction adds only six/seven independently "
-            "enumerated planning records");
+  ConcurrentRetainedExtraction(directory, context, r_planning::Expected(0));
 }
 }  // namespace
 int main(int argc, char** argv) {

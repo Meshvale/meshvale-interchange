@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -10,6 +11,7 @@
 #include <variant>
 
 #include "gltf_asset_state.h"
+#include "gltf_deformation_work.h"
 #include "gltf_workflow_support_internal.h"
 
 namespace meshvale::interchange::gltf_workflow_support_detail {
@@ -20,31 +22,37 @@ std::size_t Scalars(const Variant& values) {
   return std::visit([](const auto& view) { return view.size(); }, values);
 }
 void AdmitMesh(geometry::MeshReadView mesh,
-               const GltfTopologyOutputInspectionLimits& limits) {
+               const GltfTopologyOutputInspectionLimits& limits,
+               gltf_detail::DeformationWork* deformation) {
   Count(mesh.positions.size() / kPositionComponents, limits.max_vertices);
   Count(Add(mesh.attributes.size(), 1), limits.max_channels);
   auto scalars = mesh.positions.size();
   std::size_t descriptors = 0;
   for (const auto& attribute : mesh.attributes) {
+    if (deformation) deformation->Reference();
     scalars = Add(scalars, Scalars(attribute.values));
     if (attribute.offsets) scalars = Add(scalars, attribute.offsets->size());
     if (attribute.present) scalars = Add(scalars, attribute.present->size());
     descriptors =
         Add(descriptors, Add(attribute.name.size(), attribute.semantic.size()));
-    for (const auto& metadata : attribute.metadata)
+    for (const auto& metadata : attribute.metadata) {
+      if (deformation) deformation->Reference();
       descriptors =
           Add(descriptors, Add(metadata.key.size(), metadata.value.size()));
+    }
     Count(scalars, limits.max_attribute_scalars);
     Count(descriptors, limits.max_descriptor_bytes);
   }
   Count(scalars, limits.max_attribute_scalars);
 }
 void AdmitExtraction(const GltfPrimitiveExtraction& extraction,
-                     const GltfTopologyOutputInspectionLimits& limits) {
+                     const GltfTopologyOutputInspectionLimits& limits,
+                     gltf_detail::DeformationWork* deformation) {
   Count(extraction.Channels().size(), limits.max_channels);
   std::size_t scalars = 0;
   std::size_t descriptors = 0;
   for (const auto& channel : extraction.Channels()) {
+    if (deformation) deformation->Reference();
     Count(channel.element_count, limits.max_vertices);
     scalars = Add(scalars, Scalars(channel.raw));
     scalars = Add(scalars, channel.normalized_values.size());
@@ -57,11 +65,13 @@ void AdmitExtraction(const GltfPrimitiveExtraction& extraction,
   }
 }
 void AdmitResources(std::span<const GltfResourceView> resources,
-                    const GltfTopologyOutputInspectionLimits& limits) {
+                    const GltfTopologyOutputInspectionLimits& limits,
+                    gltf_detail::DeformationWork* deformation) {
   Count(resources.size(), limits.max_resources);
   std::size_t bytes = 0;
   std::size_t descriptors = 0;
   for (const auto& resource : resources) {
+    if (deformation) deformation->Reference();
     bytes = Add(bytes, resource.bytes.size());
     descriptors = Add(descriptors, resource.authored_uri.size());
     Count(bytes, limits.max_resource_bytes);
@@ -69,14 +79,17 @@ void AdmitResources(std::span<const GltfResourceView> resources,
   }
 }
 void AdmitDocument(const GltfAsset& asset,
-                   const GltfTopologyOutputInspectionLimits& limits) {
+                   const GltfTopologyOutputInspectionLimits& limits,
+                   gltf_detail::DeformationWork* deformation) {
   Count(asset.OriginalJson().size(), limits.max_json_bytes);
   const auto& document = gltf_detail::Access::State(asset).document;
   Count(document.NodeCount(), limits.max_json_nodes);
   for (std::size_t node = 0; node < document.NodeCount(); ++node) {
+    if (deformation) deformation->Reference();
     std::size_t depth = 1;
     for (auto parent = document.Parent(node); parent;
          parent = document.Parent(*parent)) {
+      if (deformation) deformation->Reference();
       ++depth;
       Count(depth, limits.max_json_depth);
     }
@@ -85,7 +98,8 @@ void AdmitDocument(const GltfAsset& asset,
 void AdmitBundleCounts(std::span<const std::byte> bytes,
                        const GltfTopologyOutputInspectionLimits& limits,
                        const GltfTopologyOutputInspectionWorkPolicy& work,
-                       std::stop_token stop) {
+                       std::stop_token stop,
+                       gltf_detail::DeformationWork* deformation) {
   // An allocation-free escape-aware count pass admits the bundle's own
   // extents before identity checks and indexed growth. Syntax/structure
   // acceptance remains the later lexical phase's responsibility.
@@ -97,11 +111,13 @@ void AdmitBundleCounts(std::span<const std::byte> bytes,
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
   };
   const auto tick = [&](std::size_t position) {
+    if (deformation) deformation->Bytes(1);
     if (position % work.cancellation_block_bytes == 0 && stop.stop_requested())
       throw gltf_detail::AdmissionFailure(
           gltf_detail::AdmissionCode::kCanceled);
   };
   auto admit = [&](std::size_t node_depth) {
+    if (deformation) deformation->Reference();
     nodes = Add(nodes, 1);
     Count(nodes, limits.max_json_nodes);
     Count(node_depth, limits.max_json_depth);
@@ -160,8 +176,9 @@ void CompareValues(BytePlan& plan, const Variant& expected,
 struct Correspondence {
   const Operation& operation;
   enum class Pass { kFaces, kCorners, kShapes, kLoops } pass;
-  static std::optional<Diagnostic> Check(void* opaque, std::size_t begin,
-                                         std::size_t end, bool finalizing) {
+  static std::optional<Diagnostic> Check(
+      void* opaque, std::size_t begin, std::size_t end, bool finalizing,
+      gltf_detail::DeformationWork::Local* local) {
     const auto& self = *static_cast<Correspondence*>(opaque);
     const auto& operation = self.operation;
     const auto& request = operation.request;
@@ -171,15 +188,20 @@ struct Correspondence {
     const auto stop = 1 + (end - 1) / sizeof(geometry::index_t);
     auto candidate_face = static_cast<std::size_t>(
         std::upper_bound(candidate.face_offsets.begin(),
-                         candidate.face_offsets.end(), start) -
+                         candidate.face_offsets.end(), start,
+                         [&](std::size_t value, geometry::index_t offset) {
+                           operation.Reference(local);
+                           return value < offset;
+                         }) -
         candidate.face_offsets.begin() - 1);
     for (auto ordinal = start; ordinal < stop; ++ordinal) {
+      operation.Reference(local);
       if (!finalizing &&
           ordinal % std::max<std::size_t>(
                         1, operation.work.cancellation_block_bytes /
                                sizeof(geometry::index_t)) ==
               0)
-        operation.allocation.Checkpoint();
+        operation.Checkpoint(finalizing);
       switch (self.pass) {
         case Pass::kFaces:
           if (ordinal && request.source_faces[ordinal] <=
@@ -191,8 +213,10 @@ struct Correspondence {
                             ordinal);
           break;
         case Pass::kCorners:
-          while (ordinal >= candidate.face_offsets[candidate_face + 1])
+          while (ordinal >= candidate.face_offsets[candidate_face + 1]) {
+            operation.Reference(local);
             ++candidate_face;
+          }
           if (request.source_corners[ordinal] !=
               request.source_faces[candidate_face] * kTriangleCorners +
                   ordinal - candidate.face_offsets[candidate_face])
@@ -221,18 +245,19 @@ struct Correspondence {
 void AdmitInputs(const GltfTopologyOutputInspectionRequest& request,
                  const GltfTopologyOutputInspectionLimits& limits,
                  const GltfTopologyOutputInspectionWorkPolicy& work,
-                 std::stop_token stop) {
-  AdmitDocument(request.source.SourceAsset(), limits);
+                 std::stop_token stop,
+                 gltf_detail::DeformationWork* deformation) {
+  AdmitDocument(request.source.SourceAsset(), limits, deformation);
   Count(request.output.Json().size(), limits.max_json_bytes);
-  AdmitBundleCounts(request.output.Json(), limits, work, stop);
-  AdmitDocument(request.reloaded_asset, limits);
-  AdmitResources(request.source.SourceAsset().Resources(), limits);
-  AdmitResources(request.output.Resources(), limits);
-  AdmitResources(request.reloaded_asset.Resources(), limits);
-  AdmitMesh(request.source.Mesh().View(), limits);
-  AdmitMesh(request.candidate.Source().View(), limits);
-  AdmitExtraction(request.source.SourceExtraction(), limits);
-  AdmitExtraction(request.reloaded_extraction, limits);
+  AdmitBundleCounts(request.output.Json(), limits, work, stop, deformation);
+  AdmitDocument(request.reloaded_asset, limits, deformation);
+  AdmitResources(request.source.SourceAsset().Resources(), limits, deformation);
+  AdmitResources(request.output.Resources(), limits, deformation);
+  AdmitResources(request.reloaded_asset.Resources(), limits, deformation);
+  AdmitMesh(request.source.Mesh().View(), limits, deformation);
+  AdmitMesh(request.candidate.Source().View(), limits, deformation);
+  AdmitExtraction(request.source.SourceExtraction(), limits, deformation);
+  AdmitExtraction(request.reloaded_extraction, limits, deformation);
   const auto mesh = request.candidate.Source().View();
   Count(mesh.face_offsets.empty() ? 0 : mesh.face_offsets.size() - 1,
         limits.max_candidate_faces);
@@ -254,6 +279,7 @@ void VerifyGeometry(const Operation& operation, Stats& stats) {
   for (std::size_t ordinal = 0; ordinal < std::min(original.attributes.size(),
                                                    candidate.attributes.size());
        ++ordinal) {
+    operation.Reference();
     plan.Checkpoint();
     const auto& expected = original.attributes[ordinal];
     const auto& actual = candidate.attributes[ordinal];
@@ -280,6 +306,7 @@ void VerifyGeometry(const Operation& operation, Stats& stats) {
     for (std::size_t entry = 0;
          entry < std::min(expected.metadata.size(), actual.metadata.size());
          ++entry) {
+      operation.Reference();
       descriptor.element = entry;
       plan.Compare(expected.metadata[entry].key, actual.metadata[entry].key,
                    descriptor);
@@ -305,9 +332,20 @@ void VerifyCorrespondence(Operation& operation, Stats& stats) {
   Correspondence state{operation, Correspondence::Pass::kFaces};
   auto run = [&](Correspondence::Pass pass, std::size_t count) {
     state.pass = pass;
+    gltf_detail::DeformationRangeExtent extent;
+    if (operation.deformation_work) {
+      auto& owner = *operation.deformation_work;
+      extent.relationships = owner.Add(
+          count, owner.Multiply(
+                     owner.Policy().max_jobs,
+                     owner.Add(std::bit_width(candidate.face_offsets.size()),
+                               candidate.face_offsets.size())));
+    }
     RunRanges(operation,
               gltf_detail::CheckedProduct(count, sizeof(geometry::index_t)),
-              Correspondence::Check, &state, stats);
+              Correspondence::Check, &state, stats,
+              operation.deformation_work ? sizeof(geometry::index_t) : 1,
+              &extent);
   };
   run(Correspondence::Pass::kFaces, faces);
   run(Correspondence::Pass::kCorners, request.source_corners.size());

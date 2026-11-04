@@ -181,6 +181,7 @@ void ValidateSets(const JsonSnapshot& doc, std::size_t attributes,
   std::uint64_t count = 0, maximum = 0;
   for (auto child = doc.FirstChild(attributes); child;
        child = doc.NextSibling(*child)) {
+    doc.ReferenceVisit();
     if (const auto set = SetIndex(doc.Key(*child), prefix)) {
       ++count;
       maximum = std::max(maximum, *set);
@@ -499,8 +500,9 @@ OwnedRawValues CopyCatalogValues(const OwnedRawValues& values, bool float_words,
       values);
 }
 const gltf_deformation_detail::AccessorStorage& CatalogAccessor(
-    const gltf_deformation_detail::State& catalog, std::uint64_t index) {
+    gltf_deformation_detail::State& catalog, std::uint64_t index) {
   for (const auto& accessor : catalog.accessor_storage) {
+    gltf_deformation_detail::DeformationReference(&catalog);
     catalog.allocation.Checkpoint();
     if (accessor.source.index == index) return accessor;
   }
@@ -509,12 +511,14 @@ const gltf_deformation_detail::AccessorStorage& CatalogAccessor(
 }
 void CopyCatalogChannel(ChannelStorage& channel,
                         const gltf_deformation_detail::AccessorStorage& source,
-                        const AllocationContext& allocation) {
+                        const AllocationContext& allocation,
+                        gltf_deformation_detail::State& catalog) {
   channel.values.raw = CopyCatalogValues(
       source.decoded.raw, source.decoded.float_words, allocation);
   channel.values.base_stride = source.decoded.base_stride;
   channel.values.packed_sparse_step = source.decoded.packed_sparse_step;
   for (const auto destination : source.decoded.sparse_destinations) {
+    gltf_deformation_detail::DeformationReference(&catalog);
     allocation.Checkpoint();
     channel.values.sparse_destinations.push_back(destination);
   }
@@ -652,6 +656,7 @@ GltfExtractionResult ExtractPrimitive(
   using namespace gltf_detail;
   std::optional<GltfDirectTranslationObservation> translation_observation;
   std::optional<GltfDeformationObservation> deformation_observation;
+  std::shared_ptr<gltf_deformation_detail::State> pending_deformation;
   try {
     if ((request.triangles != GltfTriangleRequest::kRequireTriangles &&
          request.triangles != GltfTriangleRequest::kConvertStripOrFan) ||
@@ -683,7 +688,27 @@ GltfExtractionResult ExtractPrimitive(
         Fail(GltfStatus::kInvalidLimits,
              GltfDiagnosticCode::kLimitNotRepresentable);
     }
-    const auto* record = Access::PrimitiveRecordFor(asset, primitive);
+    std::optional<AllocationContext> preflight_allocation;
+    std::optional<gltf_deformation_detail::ReferenceWork> preflight_work;
+    if (deformation_requested) {
+      // Equal-owner public handles originate only from that immutable asset's
+      // records. Preserve the existing foreign-owner failure before admitting
+      // a policy or starting its actual source-selection scan.
+      if (Access::Owner(asset) != Access::Owner(primitive))
+        Fail(GltfStatus::kForeignOwner, GltfDiagnosticCode::kForeignOwner);
+      gltf_deformation_detail::ValidateDeformationPreflight(request);
+      deformation_observation.emplace();
+      deformation_observation->work = request.deformation.work;
+      preflight_allocation.emplace(Access::State(asset).context, stop, backend);
+      preflight_work.emplace(gltf_deformation_detail::ReferenceWork{
+          *deformation_observation, request.deformation,
+          *preflight_allocation});
+    }
+    const auto* record = Access::PrimitiveRecordFor(
+        asset, primitive,
+        preflight_work ? gltf_deformation_detail::DeformationPreludeReference
+                       : nullptr,
+        preflight_work ? &*preflight_work : nullptr);
     if (!record)
       Fail(GltfStatus::kInvalidSelection,
            GltfDiagnosticCode::kInvalidSelection);
@@ -699,7 +724,9 @@ GltfExtractionResult ExtractPrimitive(
     if (translated)
       ValidateDirectTranslationConfiguration(
           limits.direct_translation, state.work_policy.direct_translation);
-    AllocationContext allocation(state.context, stop, backend);
+    AllocationContext allocation =
+        preflight_allocation ? *preflight_allocation
+                             : AllocationContext(state.context, stop, backend);
     allocation.Checkpoint();
     std::shared_ptr<const DirectTranslationState> translation;
     auto ordinary_allowance = Host(limits.max_output_requested_bytes);
@@ -721,30 +748,30 @@ GltfExtractionResult ExtractPrimitive(
     // Full actual request admission is supplied by the operation allocator,
     // including rebound shared control storage and replacement overlap.
     allocation = allocation.WithRequestLimit(ordinary_allowance);
-    std::optional<GltfDeformationProof> deformation;
     if (deformation_requested) {
       auto validation = gltf_deformation_detail::ValidateDeformation(
-          asset, primitive, request, allocation, limits, execution);
+          asset, primitive, request, allocation, limits, execution, true,
+          &*deformation_observation);
       deformation_observation = validation.observation;
       if (!validation.proof)
         return {{},
                 validation.diagnostic,
                 translation_observation,
                 deformation_observation};
-      deformation = gltf_deformation_detail::Access::MakeProof(
-          std::move(validation.proof));
+      pending_deformation = std::move(validation.proof);
+      pending_deformation->facts.phase = GltfDeformationPhase::kAssociation;
     }
-    const auto* catalog =
-        deformation ? &gltf_deformation_detail::Access::Get(*deformation)
-                    : nullptr;
+    auto* catalog = pending_deformation.get();
     const auto descriptors = catalog ? catalog->descriptors : allocation;
     const auto decoded = catalog ? catalog->decoded : allocation;
     auto output = std::allocate_shared<ExtractionState>(
         Allocator<ExtractionState>(descriptors), Access::Owner(asset), *record,
         allocation, descriptors);
     output->translation = std::move(translation);
-    output->deformation = std::move(deformation);
-    const auto& doc = state.document;
+    auto doc = state.document;
+    JsonReferenceScope references(
+        doc, catalog ? gltf_deformation_detail::DeformationReference : nullptr,
+        catalog);
     const auto primitive_node = record->json_node;
     output->mode = OptionalUnsigned(doc, primitive_node, kMode, kTriangles);
     if ((output->mode == kTriangles &&
@@ -777,6 +804,7 @@ GltfExtractionResult ExtractPrimitive(
     output->channels.reserve(Host(ChildCount(doc, attributes)));
     for (auto child = doc.FirstChild(attributes); child;
          child = doc.NextSibling(*child)) {
+      doc.ReferenceVisit();
       allocation.Checkpoint();
       const auto index = ReadExactUnsigned(doc, *child);
       const auto* admitted =
@@ -807,7 +835,7 @@ GltfExtractionResult ExtractPrimitive(
       auto& channel = output->channel_storage.back();
       channel.set = set;
       if (admitted)
-        CopyCatalogChannel(channel, *admitted, decoded);
+        CopyCatalogChannel(channel, *admitted, decoded, *catalog);
       else
         DecodeChannel(channel, state, *inventory, request, limits, allocation,
                       stop, execution);
@@ -828,7 +856,7 @@ GltfExtractionResult ExtractPrimitive(
              GltfDiagnosticCode::kLimitExceeded, {}, kLimitRule);
       output->indices.emplace(decoded, std::move(source), kIndices);
       if (admitted)
-        CopyCatalogChannel(*output->indices, *admitted, decoded);
+        CopyCatalogChannel(*output->indices, *admitted, decoded, *catalog);
       else
         DecodeChannel(*output->indices, state, *inventory, request, limits,
                       allocation, stop, execution);
@@ -871,6 +899,7 @@ GltfExtractionResult ExtractPrimitive(
     output->triangles.resize(corners);
     output->corners.resize(corners);
     for (std::size_t corner = 0; corner < corners; ++corner) {
+      doc.ReferenceVisit();
       allocation.Checkpoint();
       auto source_corner = corner;
       if (output->mode != kTriangles) {
@@ -888,13 +917,20 @@ GltfExtractionResult ExtractPrimitive(
     }
     allocation.Checkpoint();
     if (deformation_observation) {
-      deformation_observation->new_requested_bytes =
-          output->deformation->NewRequestedBytes();
+      catalog->allocation.Checkpoint();
+      catalog->facts.new_requested_bytes =
+          catalog->allocation.OperationActiveBytes();
+      output->deformation =
+          gltf_deformation_detail::Access::MakeProof(pending_deformation);
+      deformation_observation = catalog->facts;
+      pending_deformation.reset();
       output->deformation_facts = deformation_observation;
     }
     return {Access::MakeExtraction(std::move(output)), AcceptedDiagnostic(),
             translation_observation, deformation_observation};
   } catch (const GltfFailure& failure) {
+    if (pending_deformation)
+      deformation_observation = pending_deformation->facts;
     if (deformation_observation) {
       deformation_observation->complete = false;
       deformation_observation->status = failure.Diagnostic().status;
@@ -905,6 +941,8 @@ GltfExtractionResult ExtractPrimitive(
             translation_observation,
             deformation_observation};
   } catch (const AdmissionFailure& failure) {
+    if (pending_deformation)
+      deformation_observation = pending_deformation->facts;
     GltfStatus status = GltfStatus::kUnsupportedProfile;
     GltfDiagnosticCode code = GltfDiagnosticCode::kLimitExceeded;
     switch (failure.Code()) {

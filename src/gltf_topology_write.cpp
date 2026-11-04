@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -31,6 +32,7 @@
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
 #include "gltf_deformation_read.h"
+#include "gltf_deformation_work.h"
 #include "gltf_direct_translation.h"
 #include "gltf_json_snapshot.h"
 #include "gltf_numerical_profile.h"
@@ -158,10 +160,12 @@ std::span<const std::byte> TextBytes(std::string_view text) {
 }
 void DescriptorCounts(geometry::MeshReadView view,
                       const GltfTopologyWriteLimits& limits,
-                      const AllocationContext& allocation) {
+                      const AllocationContext& allocation,
+                      gltf_detail::DeformationWork* work) {
   std::size_t scalars = 0;
   std::size_t descriptor_bytes = 0;
   for (const auto& attribute : view.attributes) {
+    if (work) work->Reference();
     allocation.Checkpoint();
     scalars = Add(scalars, Scalars(attribute.values), Stage::kAdmission);
     descriptor_bytes =
@@ -169,6 +173,7 @@ void DescriptorCounts(geometry::MeshReadView view,
     descriptor_bytes =
         Add(descriptor_bytes, attribute.semantic.size(), Stage::kAdmission);
     for (const auto& metadata : attribute.metadata) {
+      if (work) work->Reference();
       allocation.Checkpoint();
       descriptor_bytes =
           Add(descriptor_bytes, metadata.key.size(), Stage::kAdmission);
@@ -182,11 +187,12 @@ void DescriptorCounts(geometry::MeshReadView view,
 void ResourceCounts(std::span<const GltfResourceView> resources,
                     const GltfWriteLimits& limits, std::size_t added_bytes,
                     bool changed, const AllocationContext& allocation,
-                    Stage stage);
+                    Stage stage, gltf_detail::DeformationWork* work);
 void PhysicalCounts(const GltfTopologyWriteRequest& request,
                     const GltfTopologyWriteLimits& limits,
                     const gltf_detail::AssetState& asset,
-                    const AllocationContext& allocation) {
+                    const AllocationContext& allocation,
+                    gltf_detail::DeformationWork* work) {
   const auto source = request.source.Mesh().View();
   const auto candidate = request.candidate.Source().View();
   for (const auto view : {source, candidate}) {
@@ -194,7 +200,7 @@ void PhysicalCounts(const GltfTopologyWriteRequest& request,
           Stage::kAdmission);
     Bound(Add(view.attributes.size(), 1, Stage::kAdmission),
           limits.max_channels, Stage::kAdmission);
-    DescriptorCounts(view, limits, allocation);
+    DescriptorCounts(view, limits, allocation, work);
   }
   Bound(asset.document.Original().size(), limits.max_source_json_bytes,
         Stage::kAdmission);
@@ -215,7 +221,7 @@ void PhysicalCounts(const GltfTopologyWriteRequest& request,
                                    : 0;
   Bound(index_bytes, limits.max_index_bytes, Stage::kAdmission);
   ResourceCounts(asset.resources, limits.output, index_bytes, changed,
-                 allocation, Stage::kAdmission);
+                 allocation, Stage::kAdmission, work);
   if (!changed)
     Bound(asset.document.Original().size(), limits.output.max_json_bytes,
           Stage::kAdmission);
@@ -225,6 +231,7 @@ void PhysicalCounts(const GltfTopologyWriteRequest& request,
   std::size_t node = 0;
   std::size_t depth = 0;
   while (true) {
+    if (work) work->Reference();
     allocation.Checkpoint();
     const auto kind = asset.document.Kind(node);
     const bool container = kind == gltf_detail::JsonKind::kObject ||
@@ -232,28 +239,35 @@ void PhysicalCounts(const GltfTopologyWriteRequest& request,
     if (container)
       Bound(depth + 1, limits.max_source_json_depth, Stage::kAdmission);
     if (const auto child = asset.document.FirstChild(node)) {
+      if (work) work->Reference();
       ++depth;
       node = *child;
       continue;
     }
-    while (!asset.document.NextSibling(node)) {
+    auto sibling = asset.document.NextSibling(node);
+    if (sibling && work) work->Reference();
+    while (!sibling) {
       allocation.Checkpoint();
       const auto parent = asset.document.Parent(node);
       if (!parent) return;
+      if (work) work->Reference();
       node = *parent;
       --depth;
+      sibling = asset.document.NextSibling(node);
+      if (sibling && work) work->Reference();
     }
-    node = *asset.document.NextSibling(node);
+    node = *sibling;
   }
 }
 void ResourceCounts(std::span<const GltfResourceView> resources,
                     const GltfWriteLimits& limits, std::size_t added_bytes,
                     bool changed, const AllocationContext& allocation,
-                    Stage stage) {
+                    Stage stage, gltf_detail::DeformationWork* work) {
   Bound(Add(resources.size(), changed ? 1 : 0, stage), limits.max_resources,
         stage);
   std::size_t total = 0;
   for (const auto& resource : resources) {
+    if (work) work->Reference();
     allocation.Checkpoint();
     Bound(resource.bytes.size(), limits.max_resource_bytes, stage);
     total = Add(total, resource.bytes.size(), stage);
@@ -272,9 +286,27 @@ struct Session {
   const NativeWorkerBackend& backend;
   GltfTopologyWriteExecution& execution;
   GltfDeformationObservation* deformation = nullptr;
+  gltf_detail::DeformationWork* deformation_work = nullptr;
+  void Reference(gltf_detail::DeformationWork::Local* local = nullptr) {
+    if (!deformation_work) return;
+    if (local)
+      local->Reference();
+    else
+      deformation_work->Reference();
+  }
+  void Bytes(std::uint64_t count,
+             gltf_detail::DeformationWork::Local* local = nullptr) {
+    if (!deformation_work) return;
+    if (local)
+      local->Bytes(count);
+    else
+      deformation_work->Bytes(count);
+  }
   template <class Function>
-  void Run(std::size_t count, std::size_t width, Function& operation,
-           GltfTopologyWriteExecutionStats& stats) {
+  void Run(
+      std::size_t count, std::size_t width, Function& operation,
+      GltfTopologyWriteExecutionStats& stats,
+      const gltf_detail::DeformationRangeExtent* supplied_extent = nullptr) {
     const auto before = stats;
     auto observe = [&] {
       if (!deformation) return;
@@ -293,11 +325,61 @@ struct Session {
                                   stats.joined_workers - before.joined_workers,
                                   Stage::kVerification);
     };
+    if (deformation_work) {
+      using Counters = gltf_detail::DeformationWorkCounters;
+      Vector<Counters> partials{Allocator<Counters>(allocation)};
+      const auto capacity =
+          std::min<std::size_t>(count, deformation_work->Policy().max_jobs);
+      partials.resize(capacity);
+      std::atomic<std::size_t> entered{0};
+      struct Task {
+        Function& operation;
+        gltf_detail::DeformationWork& owner;
+        Vector<Counters>& partials;
+        std::atomic<std::size_t>& entered;
+      } task{operation, *deformation_work, partials, entered};
+      auto invoke = [](void* opaque, std::size_t begin, std::size_t end) {
+        auto& task = *static_cast<Task*>(opaque);
+        const auto slot = task.entered.fetch_add(1, std::memory_order_relaxed);
+        if (slot >= task.partials.size())
+          throw AdmissionFailure(AdmissionCode::kInvalidObject);
+        gltf_detail::DeformationWork::Local local(task.owner,
+                                                  task.partials[slot]);
+        if constexpr (std::is_invocable_v<Function&, std::size_t, std::size_t,
+                                          gltf_detail::DeformationWork::Local*>)
+          task.operation(begin, end, &local);
+        else
+          task.operation(begin, end);
+      };
+      const gltf_detail::DeformationRangeExtent byte_extent{
+          0, 0, 0, deformation_work->Multiply(count, width)};
+      const auto& extent = supplied_extent ? *supplied_extent : byte_extent;
+      auto merge = [&] {
+        for (const auto& partial : partials) deformation_work->Merge(partial);
+        deformation_work->CheckMerged();
+        observe();
+      };
+      try {
+        RunRange(context, allocation, work, count, width, invoke, &task, stop,
+                 stats, backend, deformation_work, &extent);
+      } catch (...) {
+        merge();
+        throw;
+      }
+      merge();
+      return;
+    }
     try {
       RunRange(
           context, allocation, work, count, width,
           [](void* state, std::size_t begin, std::size_t end) {
-            (*static_cast<Function*>(state))(begin, end);
+            auto& operation = *static_cast<Function*>(state);
+            if constexpr (std::is_invocable_v<
+                              Function&, std::size_t, std::size_t,
+                              gltf_detail::DeformationWork::Local*>)
+              operation(begin, end, nullptr);
+            else
+              operation(begin, end);
           },
           &operation, stop, stats, backend);
     } catch (...) {
@@ -316,12 +398,36 @@ struct Session {
   // allocation/stop, to obtain the same first diagnostic as complete traversal.
   template <class Different>
   std::optional<std::size_t> Find(std::size_t count, std::size_t width,
-                                  Different different) {
+                                  Different different,
+                                  bool reference_records = true,
+                                  std::uint64_t reference_bound = 1) {
     std::atomic<std::size_t> first{kNoDifference};
-    auto scan = [&](std::size_t begin, std::size_t end) {
+    auto evaluate = [&](std::size_t i,
+                        gltf_detail::DeformationWork::Local* local) {
+      if (deformation_work) {
+        if (reference_records) {
+          if (local)
+            local->Reference();
+          else
+            deformation_work->Reference();
+        } else {
+          if (local)
+            local->Bytes(width);
+          else
+            deformation_work->Bytes(width);
+        }
+      }
+      if constexpr (std::is_invocable_v<Different&, std::size_t,
+                                        gltf_detail::DeformationWork::Local*>)
+        return different(i, local);
+      else
+        return different(i);
+    };
+    auto scan = [&](std::size_t begin, std::size_t end,
+                    gltf_detail::DeformationWork::Local* local) {
       for (auto i = begin; i < end; ++i) {
         Check(i - begin, width);
-        if (different(i)) {
+        if (evaluate(i, local)) {
           auto known = first.load(std::memory_order_relaxed);
           while (i < known && !first.compare_exchange_weak(
                                   known, i, std::memory_order_relaxed)) {
@@ -331,13 +437,28 @@ struct Session {
       }
     };
     try {
-      Run(count, width, scan, execution.verification);
+      gltf_detail::DeformationRangeExtent extent;
+      if (deformation_work) {
+        if (reference_records)
+          extent.relationships =
+              deformation_work->Multiply(count, reference_bound);
+        else
+          extent.bytes = deformation_work->Multiply(count, width);
+      }
+      Run(count, width, scan, execution.verification, &extent);
     } catch (const AdmissionFailure& failure) {
       const auto known = first.load(std::memory_order_relaxed);
       if (failure.Code() != AdmissionCode::kCanceled || known == kNoDifference)
         throw;
-      for (std::size_t i = 0; i <= known; ++i)
-        if (different(i)) return i;
+      if (deformation_work) {
+        gltf_detail::DeformationWork::FinalizeMismatchPrefix finalizing(
+            *deformation_work);
+        for (std::size_t i = 0; i <= known; ++i)
+          if (evaluate(i, nullptr)) return i;
+      } else {
+        for (std::size_t i = 0; i <= known; ++i)
+          if (evaluate(i, nullptr)) return i;
+      }
       throw;
     }
     const auto mismatch = first.load(std::memory_order_relaxed);
@@ -346,8 +467,10 @@ struct Session {
   template <class Different>
   void Verify(std::size_t count, std::size_t width, Different different,
               Status status, Code code, std::optional<index_t> attribute = {},
-              std::size_t diagnostic_divisor = 1) {
-    const auto mismatch = Find(count, width, different);
+              std::size_t diagnostic_divisor = 1, bool reference_records = true,
+              std::uint64_t reference_bound = 1) {
+    const auto mismatch =
+        Find(count, width, different, reference_records, reference_bound);
     if (mismatch)
       Reject(status, Stage::kVerification, code, attribute,
              static_cast<index_t>(*mismatch / diagnostic_divisor));
@@ -362,7 +485,7 @@ struct Session {
     Verify(
         source.size(), 1,
         [&](std::size_t i) { return source[i] != candidate[i]; },
-        Status::kPreservationMismatch, code, attribute, scalar_bytes);
+        Status::kPreservationMismatch, code, attribute, scalar_bytes, false);
   }
   void SameText(std::string_view source, std::string_view candidate,
                 std::optional<index_t> attribute) {
@@ -382,6 +505,7 @@ void VerifyAttributes(geometry::MeshReadView source,
     Reject(Status::kPreservationMismatch, Stage::kVerification,
            Code::kChannelCount);
   for (std::size_t ordinal = 0; ordinal < source.attributes.size(); ++ordinal) {
+    session.Reference();
     session.allocation.Checkpoint();
     const auto& a = source.attributes[ordinal];
     const auto& b = candidate.attributes[ordinal];
@@ -402,6 +526,7 @@ void VerifyAttributes(geometry::MeshReadView source,
       session.SameBytes(std::as_bytes(*a.present), std::as_bytes(*b.present),
                         Code::kAttributeDescriptor, index);
     for (std::size_t metadata = 0; metadata < a.metadata.size(); ++metadata) {
+      session.Reference();
       session.allocation.Checkpoint();
       session.SameText(a.metadata[metadata].key, b.metadata[metadata].key,
                        index);
@@ -637,9 +762,12 @@ struct Plan {
   std::size_t output_size = 0;
 };
 Splice& At(Plan& plan, std::size_t begin, std::size_t end,
-           const AllocationContext& allocation) {
-  for (auto& splice : plan.splices)
+           const AllocationContext& allocation,
+           gltf_detail::DeformationWork* work) {
+  for (auto& splice : plan.splices) {
+    if (work) work->Reference();
     if (splice.begin == begin && splice.end == end) return splice;
+  }
   plan.splices.emplace_back(begin, end, allocation);
   return plan.splices.back();
 }
@@ -657,6 +785,7 @@ std::size_t TableCount(const gltf_detail::JsonSnapshot& document,
   std::size_t count = 0;
   for (auto child = document.FirstChild(*table); child;
        child = document.NextSibling(*child)) {
+    document.ReferenceVisit();
     allocation.Checkpoint();
     count = Add(count, 1, Stage::kLexicalPlanning);
   }
@@ -667,13 +796,15 @@ void TableRecord(Plan& plan, const gltf_detail::JsonSnapshot& document,
                  std::optional<std::size_t> table, std::size_t old_count,
                  std::string_view member,
                  std::initializer_list<std::string_view> record,
-                 const AllocationContext& allocation) {
+                 const AllocationContext& allocation,
+                 gltf_detail::DeformationWork* work) {
+  if (work) work->Reference();
   const auto insertion = table ? spans[*table].closing : spans.front().closing;
-  auto& splice = At(plan, insertion, insertion, allocation);
+  auto& splice = At(plan, insertion, insertion, allocation, work);
   if (table) {
     if (old_count) Append(splice, {kComma});
   } else {
-    if (document.FirstChild(0) || !splice.fragments.empty())
+    if (document.FirstReferenceChild(0) || !splice.fragments.empty())
       Append(splice, {kComma});
     Append(splice, {member});
   }
@@ -681,9 +812,13 @@ void TableRecord(Plan& plan, const gltf_detail::JsonSnapshot& document,
   if (!table) Append(splice, {kArrayEnd});
 }
 void Segments(Plan& plan, std::string_view original,
-              const AllocationContext& allocation) {
+              const AllocationContext& allocation,
+              gltf_detail::DeformationWork* work) {
   std::sort(plan.splices.begin(), plan.splices.end(),
-            [](const Splice& a, const Splice& b) { return a.begin < b.begin; });
+            [&](const Splice& a, const Splice& b) {
+              if (work) work->Reference();
+              return a.begin < b.begin;
+            });
   auto add = [&](std::span<const std::byte> bytes) {
     if (bytes.empty()) return;
     plan.segments.push_back({plan.output_size, bytes});
@@ -692,13 +827,17 @@ void Segments(Plan& plan, std::string_view original,
   };
   std::size_t previous = 0;
   for (const auto& splice : plan.splices) {
+    if (work) work->Reference();
     allocation.Checkpoint();
     if (splice.begin < previous || splice.end < splice.begin ||
         splice.end > original.size())
       Reject(Status::kSourceContractFailure, Stage::kLexicalPlanning,
              Code::kLexicalSource);
     add(TextBytes(original.substr(previous, splice.begin - previous)));
-    for (const auto fragment : splice.fragments) add(TextBytes(fragment));
+    for (const auto fragment : splice.fragments) {
+      if (work) work->Reference();
+      add(TextBytes(fragment));
+    }
     previous = splice.end;
   }
   add(TextBytes(original.substr(previous)));
@@ -706,8 +845,12 @@ void Segments(Plan& plan, std::string_view original,
 void MakePlan(Plan& plan, const GltfTopologyWriteRequest& request,
               const gltf_detail::AssetState& asset,
               std::span<const LexicalSpan> spans, BundleState& output,
-              const AllocationContext& allocation) {
-  const auto& document = asset.document;
+              const AllocationContext& allocation,
+              gltf_detail::DeformationWork* work) {
+  auto document = asset.document;
+  gltf_detail::JsonReferenceScope references(
+      document,
+      work ? gltf_detail::DeformationWork::ReferenceCallback : nullptr, work);
   if (document.Kind(0) != gltf_detail::JsonKind::kObject)
     Reject(Status::kSourceContractFailure, Stage::kLexicalPlanning,
            Code::kLexicalSource);
@@ -718,7 +861,8 @@ void MakePlan(Plan& plan, const GltfTopologyWriteRequest& request,
   const auto view_count = TableCount(document, views, allocation);
   const auto accessor_count = TableCount(document, accessors, allocation);
   const auto* primitive = gltf_detail::Access::PrimitiveRecordFor(
-      request.source.SourceAsset(), request.source.SourcePrimitive());
+      request.source.SourceAsset(), request.source.SourcePrimitive(),
+      work ? gltf_detail::DeformationWork::ReferenceCallback : nullptr, work);
   if (!primitive || primitive->json_node >= spans.size() ||
       document.Kind(primitive->json_node) != gltf_detail::JsonKind::kObject)
     Reject(Status::kSourceContractFailure, Stage::kLexicalPlanning,
@@ -745,34 +889,36 @@ void MakePlan(Plan& plan, const GltfTopologyWriteRequest& request,
   TableRecord(
       plan, document, spans, buffers, buffer_count, kBuffersMember,
       {kBufferStart, plan.byte_length.View(), kBufferUri, uri, kBufferEnd},
-      allocation);
+      allocation, work);
   TableRecord(plan, document, spans, views, view_count, kViewsMember,
               {kViewStart, plan.buffer_ordinal.View(), kViewLength,
                plan.byte_length.View(), kObjectEnd},
-              allocation);
+              allocation, work);
   TableRecord(plan, document, spans, accessors, accessor_count,
               kAccessorsMember,
               {kAccessorStart, plan.view_ordinal.View(), kAccessorCount,
                plan.corner_count.View(), kAccessorEnd},
-              allocation);
+              allocation, work);
   if (indices) {
     auto& splice =
-        At(plan, spans[*indices].begin, spans[*indices].end, allocation);
+        At(plan, spans[*indices].begin, spans[*indices].end, allocation, work);
     Append(splice, {plan.accessor_ordinal.View()});
   } else {
     auto& splice = At(plan, spans[primitive->json_node].closing,
-                      spans[primitive->json_node].closing, allocation);
-    if (document.FirstChild(primitive->json_node)) Append(splice, {kComma});
+                      spans[primitive->json_node].closing, allocation, work);
+    if (document.FirstReferenceChild(primitive->json_node))
+      Append(splice, {kComma});
     Append(splice, {kIndicesMember, plan.accessor_ordinal.View()});
   }
   if (request.source.SourceExtraction().SourceMode() != kTrianglesMode) {
     if (mode) {
-      auto& splice = At(plan, spans[*mode].begin, spans[*mode].end, allocation);
+      auto& splice =
+          At(plan, spans[*mode].begin, spans[*mode].end, allocation, work);
       Append(splice, {kTrianglesToken});
     } else {
       auto& splice = At(plan, spans[primitive->json_node].closing,
-                        spans[primitive->json_node].closing, allocation);
-      if (document.FirstChild(primitive->json_node) ||
+                        spans[primitive->json_node].closing, allocation, work);
+      if (document.FirstReferenceChild(primitive->json_node) ||
           !splice.fragments.empty())
         Append(splice, {kComma});
       Append(splice, {kModeMember});
@@ -794,38 +940,54 @@ void MakePlan(Plan& plan, const GltfTopologyWriteRequest& request,
                               output.indices.size,
                               buffer_count,
                               {}});
-  Segments(plan, document.Original(), allocation);
+  Segments(plan, document.Original(), allocation, work);
 }
 void EncodeIndices(const GltfTopologyWriteRequest& request, BundleState& output,
                    Session& session) {
   const auto source = request.source.SourceExtraction().TriangleIndices();
-  auto encode = [&](std::size_t begin, std::size_t end) {
+  auto encode = [&](std::size_t begin, std::size_t end,
+                    gltf_detail::DeformationWork::Local* local) {
     for (auto i = begin; i < end; ++i) {
       session.Check(i - begin, kIndexBytes);
+      session.Reference(local);
+      session.Reference(local);
       const auto value =
           source[static_cast<std::size_t>(request.source_corners[i])];
-      for (std::size_t byte = 0; byte < kIndexBytes; ++byte)
+      for (std::size_t byte = 0; byte < kIndexBytes; ++byte) {
+        session.Bytes(1, local);
         output.indices.data.get()[i * kIndexBytes + byte] =
             static_cast<std::byte>((value >> (byte * kBitsPerByte)) &
                                    kByteMask);
+      }
     }
   };
+  const gltf_detail::DeformationRangeExtent extent{
+      0, 0,
+      session.deformation_work
+          ? session.deformation_work->Multiply(request.source_corners.size(), 2)
+          : 0,
+      session.deformation_work ? session.deformation_work->Multiply(
+                                     request.source_corners.size(), kIndexBytes)
+                               : 0};
   session.Run(request.source_corners.size(), kIndexBytes, encode,
-              session.execution.index_encoding);
+              session.execution.index_encoding, &extent);
 }
 void EncodeBase64(BundleState& output, Session& session) {
   const auto input = output.indices.View();
   std::memcpy(output.uri.data.get(), kDataUriPrefix.data(),
               kDataUriPrefix.size());
+  session.Bytes(kDataUriPrefix.size());
   const auto groups = input.size() / kBase64InputGroup +
                       (input.size() % kBase64InputGroup != 0 ? 1 : 0);
-  auto encode = [&](std::size_t begin, std::size_t end) {
+  auto encode = [&](std::size_t begin, std::size_t end,
+                    gltf_detail::DeformationWork::Local* local) {
     auto* destination =
         reinterpret_cast<char*>(output.uri.data.get()) + kDataUriPrefix.size();
     for (auto group = begin; group < end; ++group) {
       session.Check(group - begin, kBase64InputGroup);
       const auto offset = group * kBase64InputGroup;
       const auto count = std::min(kBase64InputGroup, input.size() - offset);
+      session.Bytes(count + kBase64OutputGroup, local);
       const auto first = std::to_integer<unsigned>(input[offset]);
       const auto second =
           count > 1 ? std::to_integer<unsigned>(input[offset + 1]) : 0;
@@ -853,18 +1015,27 @@ void EncodeBase64(BundleState& output, Session& session) {
                                     : kBase64Padding;
     }
   };
+  const gltf_detail::DeformationRangeExtent extent{
+      0, 0, 0,
+      session.deformation_work
+          ? session.deformation_work->Multiply(
+                groups, kBase64InputGroup + kBase64OutputGroup)
+          : 0};
   session.Run(groups, kBase64InputGroup, encode,
-              session.execution.base64_encoding);
+              session.execution.base64_encoding, &extent);
 }
 void CopyOutput(const Plan& plan, BundleState& output, Session& session) {
-  auto copy = [&](std::size_t begin, std::size_t end) {
+  auto copy = [&](std::size_t begin, std::size_t end,
+                  gltf_detail::DeformationWork::Local* local) {
     auto segment =
         std::upper_bound(plan.segments.begin(), plan.segments.end(), begin,
-                         [](std::size_t value, const CopySegment& part) {
+                         [&](std::size_t value, const CopySegment& part) {
+                           session.Reference(local);
                            return value < part.output_begin;
                          });
     if (segment != plan.segments.begin()) --segment;
     while (begin < end) {
+      session.Reference(local);
       session.allocation.Checkpoint();
       if (segment == plan.segments.end())
         Reject(Status::kSourceContractFailure, Stage::kOutputCopy,
@@ -875,36 +1046,66 @@ void CopyOutput(const Plan& plan, BundleState& output, Session& session) {
            static_cast<std::size_t>(session.work.cancellation_block_bytes)});
       std::memcpy(output.json.data.get() + begin,
                   segment->bytes.data() + offset, bytes);
+      session.Bytes(bytes, local);
       begin += bytes;
       if (offset + bytes == segment->bytes.size()) ++segment;
     }
   };
-  session.Run(output.json.size, 1, copy, session.execution.output_copy);
+  const gltf_detail::DeformationRangeExtent extent{
+      0, 0,
+      session.deformation_work
+          ? session.deformation_work->Multiply(
+                output.json.size, std::bit_width(plan.segments.size()) + 2)
+          : 0,
+      output.json.size};
+  session.Run(output.json.size, 1, copy, session.execution.output_copy,
+              &extent);
 }
 void CopyMaps(const GltfTopologyWriteRequest& request, BundleState& output,
               Session& session) {
   output.faces.resize(request.source_faces.size());
   output.corners.resize(request.source_corners.size());
   output.original_corners.resize(request.source_corners.size());
-  auto faces = [&](std::size_t begin, std::size_t end) {
+  auto faces = [&](std::size_t begin, std::size_t end,
+                   gltf_detail::DeformationWork::Local* local) {
     for (auto i = begin; i < end; ++i) {
       session.Check(i - begin, sizeof(index_t));
+      session.Reference(local);
       output.faces[i] = request.source_faces[i];
+      session.Bytes(sizeof(index_t), local);
     }
   };
+  const gltf_detail::DeformationRangeExtent face_extent{
+      0, 0, output.faces.size(),
+      session.deformation_work ? session.deformation_work->Multiply(
+                                     output.faces.size(), sizeof(index_t))
+                               : 0};
   session.Run(output.faces.size(), sizeof(index_t), faces,
-              session.execution.output_copy);
+              session.execution.output_copy, &face_extent);
   const auto provenance = request.source.SourceExtraction().SourceCorners();
-  auto corners = [&](std::size_t begin, std::size_t end) {
+  auto corners = [&](std::size_t begin, std::size_t end,
+                     gltf_detail::DeformationWork::Local* local) {
     for (auto i = begin; i < end; ++i) {
       session.Check(i - begin, sizeof(index_t) + sizeof(GltfSourceCorner));
+      session.Reference(local);
       output.corners[i] = request.source_corners[i];
+      session.Reference(local);
       output.original_corners[i] =
           provenance[static_cast<std::size_t>(request.source_corners[i])];
+      session.Bytes(sizeof(index_t) + sizeof(GltfSourceCorner), local);
     }
   };
+  const gltf_detail::DeformationRangeExtent corner_extent{
+      0, 0,
+      session.deformation_work
+          ? session.deformation_work->Multiply(output.corners.size(), 2)
+          : 0,
+      session.deformation_work ? session.deformation_work->Multiply(
+                                     output.corners.size(),
+                                     sizeof(index_t) + sizeof(GltfSourceCorner))
+                               : 0};
   session.Run(output.corners.size(), sizeof(index_t) + sizeof(GltfSourceCorner),
-              corners, session.execution.output_copy);
+              corners, session.execution.output_copy, &corner_extent);
 }
 }  // namespace
 
@@ -929,11 +1130,9 @@ void VerifyDeformationWrite(const GltfTopologyWriteRequest& request,
     Reject(Status::kSourceContractFailure, Stage::kVerification,
            Code::kDeformation);
   auto reference = [&] {
-    session.allocation.Checkpoint();
-    if (observation.counts.relationship_steps ==
-        policy.limits.max_relationship_steps)
-      Reject(Status::kLimitExceeded, Stage::kVerification, Code::kCountLimit);
-    ++observation.counts.relationship_steps;
+    if (!session.deformation_work)
+      throw AdmissionFailure(AdmissionCode::kInvalidObject);
+    session.deformation_work->Reference();
   };
   const auto candidate = request.candidate.Source().View();
   const auto associations = request.source.DeformationAssociations();
@@ -1100,9 +1299,22 @@ GltfTopologyWriteResult WriteWithBackend(
     }
     const auto context = request.source.Mesh().ShareExecutionContext();
     AllocationContext root(context, stop, allocation_backend);
+    std::optional<gltf_detail::DeformationWork> deformation_work;
+    if (deformation) {
+      deformation_work.emplace(
+          *deformation, *result.deformation, root,
+          [](void* state, gltf_detail::DeformationWorkRefusal reason) {
+            Reject(Status::kLimitExceeded, *static_cast<Stage*>(state),
+                   reason == gltf_detail::DeformationWorkRefusal::kSizeOverflow
+                       ? Code::kOutputExtent
+                       : Code::kCountLimit);
+          },
+          &stage);
+    }
     const auto& asset =
         gltf_detail::Access::State(request.source.SourceAsset());
-    PhysicalCounts(request, limits, asset, root);
+    PhysicalCounts(request, limits, asset, root,
+                   deformation_work ? &*deformation_work : nullptr);
     if (!geometry::SharesExecutionBudget(
             context, request.candidate.Source().ShareExecutionContext()) ||
         !geometry::SharesExecutionBudget(context, asset.context))
@@ -1116,7 +1328,9 @@ GltfTopologyWriteResult WriteWithBackend(
     }
     // Reader metadata leaves binary admission pending. The retained successful
     // extraction has already completed that proof without mutating its asset.
-    const auto capability = request.source.SourceAsset()
+    const auto capability =
+        deformation_proof ? GltfCapabilityReason::kBinaryAdmissionPending
+                          : request.source.SourceAsset()
                                 .Capability(request.source.SourcePrimitive())
                                 .reason;
     if (!translated && !deformation_proof &&
@@ -1126,7 +1340,10 @@ GltfTopologyWriteResult WriteWithBackend(
     const auto* proof = gltf_detail::Access::ExtractionTranslation(
         request.source.SourceExtraction());
     const auto* primitive = gltf_detail::Access::PrimitiveRecordFor(
-        request.source.SourceAsset(), request.source.SourcePrimitive());
+        request.source.SourceAsset(), request.source.SourcePrimitive(),
+        deformation_work ? gltf_detail::DeformationWork::ReferenceCallback
+                         : nullptr,
+        deformation_work ? &*deformation_work : nullptr);
     if (translated &&
         (!proof || !proof->facts.complete ||
          proof->facts.status != GltfStatus::kAccepted ||
@@ -1177,8 +1394,12 @@ GltfTopologyWriteResult WriteWithBackend(
                     stop,
                     worker_backend,
                     result.execution,
-                    result.deformation ? &*result.deformation : nullptr};
+                    result.deformation ? &*result.deformation : nullptr,
+                    deformation_work ? &*deformation_work : nullptr};
+    if (deformation_work) deformation_work->SetAllocation(descriptors);
     stage = Stage::kVerification;
+    if (result.deformation)
+      result.deformation->phase = GltfDeformationPhase::kCompare;
     const auto bad_face = session.Find(
         request.source_faces.size(), sizeof(index_t), [&](std::size_t i) {
           return request.source_faces[i] >= source_faces ||
@@ -1225,13 +1446,20 @@ GltfTopologyWriteResult WriteWithBackend(
                       Multiply(base64_groups, kBase64OutputGroup, stage), stage)
                 : 0;
     // Lexical ownership is independent even for exact no-op output.
+    if (result.deformation)
+      result.deformation->phase = GltfDeformationPhase::kAssociation;
     const auto spans =
-        BuildLexicalIndex(asset.document, descriptors, limits, selected_work);
+        BuildLexicalIndex(asset.document, descriptors, limits, selected_work,
+                          deformation_work ? &*deformation_work : nullptr);
     auto output = std::allocate_shared<BundleState>(
         Allocator<BundleState>(descriptors), request.source,
         complete_allocation, &descriptors);
     output->direct_translation = result.direct_translation;
-    output->resources.assign(asset.resources.begin(), asset.resources.end());
+    output->resources.reserve(asset.resources.size());
+    for (const auto& resource : asset.resources) {
+      if (deformation_work) deformation_work->Reference();
+      output->resources.push_back(resource);
+    }
     Plan plan(descriptors);
     if (changed) {
       output->indices.Allocate(index_bytes, bytes);
@@ -1241,18 +1469,23 @@ GltfTopologyWriteResult WriteWithBackend(
       stage = Stage::kBase64Encoding;
       EncodeBase64(*output, session);
       stage = Stage::kLexicalPlanning;
-      MakePlan(plan, request, asset, spans, *output, descriptors);
+      MakePlan(plan, request, asset, spans, *output, descriptors,
+               deformation_work ? &*deformation_work : nullptr);
     } else {
-      Segments(plan, asset.document.Original(), descriptors);
+      Segments(plan, asset.document.Original(), descriptors,
+               deformation_work ? &*deformation_work : nullptr);
     }
     Bound(plan.output_size, limits.output.max_json_bytes, stage);
     output->json.Allocate(plan.output_size, bytes);
     stage = Stage::kOutputCopy;
     CopyMaps(request, *output, session);
     CopyOutput(plan, *output, session);
-    if (result.deformation)
+    if (result.deformation) {
+      stage = Stage::kVerification;
+      result.deformation->phase = GltfDeformationPhase::kCompare;
       VerifyDeformationWrite(request, plan, *output, session, *deformation,
                              *result.deformation);
+    }
     stage = Stage::kPublication;
     allocation.Checkpoint();
     if (result.deformation) {

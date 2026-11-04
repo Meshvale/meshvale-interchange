@@ -17,6 +17,7 @@
 
 #include "gltf_allocation.h"
 #include "gltf_asset_state.h"
+#include "gltf_deformation_work.h"
 #include "gltf_operation_workers.h"
 
 namespace meshvale::interchange::gltf_workflow_support_detail {
@@ -88,14 +89,50 @@ struct Operation {
   gltf_detail::NativeExecutionOptions execution;
   GltfDeformationObservation* deformation = nullptr;
   bool changed = false;
+  gltf_detail::DeformationWork* deformation_work = nullptr;
+  void Reference(gltf_detail::DeformationWork::Local* local = nullptr) const {
+    if (!deformation_work) return;
+    if (local)
+      local->Reference();
+    else
+      deformation_work->Reference();
+  }
+  void Bytes(std::uint64_t count,
+             gltf_detail::DeformationWork::Local* local = nullptr) const {
+    if (!deformation_work) return;
+    if (local)
+      local->Bytes(count);
+    else
+      deformation_work->Bytes(count);
+  }
+  void Checkpoint(bool finalizing = false) const {
+    if (deformation_work)
+      deformation_work->Checkpoint();
+    else if (!finalizing)
+      allocation.Checkpoint();
+  }
+  static void ReferenceCallback(void* state) {
+    static_cast<const Operation*>(state)->Reference();
+  }
 };
-using RangeCheck = std::optional<Diagnostic> (*)(void*, std::size_t,
-                                                 std::size_t, bool);
+inline gltf_detail::DeformationRangeExtent ReferenceExtent(
+    const Operation& operation, std::uint64_t records,
+    std::uint64_t references_per_record = 1, std::uint64_t bytes = 0) {
+  return {0, 0,
+          operation.deformation_work ? operation.deformation_work->Multiply(
+                                           records, references_per_record)
+                                     : 0,
+          bytes};
+}
+using RangeCheck =
+    std::optional<Diagnostic> (*)(void*, std::size_t, std::size_t, bool,
+                                  gltf_detail::DeformationWork::Local*);
 // Callback ranges are disjoint and ordinal ordered. A finalization callback
 // ignores stop and allocates nothing; it checks only the prefix needed to find
 // the first failure after all native handles have joined.
 void RunRanges(const Operation& operation, std::size_t bytes, RangeCheck check,
-               void* state, Stats& stats, std::size_t unit_bytes = 1);
+               void* state, Stats& stats, std::size_t unit_bytes = 1,
+               const gltf_detail::DeformationRangeExtent* extent = nullptr);
 struct ByteCheck {
   std::span<const std::byte> expected;
   std::span<const std::byte> actual;
@@ -113,6 +150,7 @@ class BytePlan {
                Diagnostic diagnostic);
   void Require(bool condition, Diagnostic diagnostic);
   void Checkpoint();
+  void Reference();
   void Run(Stats& stats);
   // Reuse charged scratch only after a successful complete check. This clears
   // pending work, never observed facts or execution counters, between genuine
@@ -120,7 +158,8 @@ class BytePlan {
   void Reset();
 
  private:
-  static std::optional<Diagnostic> Check(void*, std::size_t, std::size_t, bool);
+  static std::optional<Diagnostic> Check(void*, std::size_t, std::size_t, bool,
+                                         gltf_detail::DeformationWork::Local*);
   [[noreturn]] void FinalizeKnownFailure();
   const Operation& operation_;
   Vector<ByteCheck> checks_;
@@ -135,7 +174,8 @@ Diagnostic Location(Stage stage, Code code,
 void AdmitInputs(const GltfTopologyOutputInspectionRequest& request,
                  const GltfTopologyOutputInspectionLimits& limits,
                  const GltfTopologyOutputInspectionWorkPolicy& work,
-                 std::stop_token stop);
+                 std::stop_token stop,
+                 gltf_detail::DeformationWork* deformation = nullptr);
 void VerifyGeometry(const Operation& operation, Stats& stats);
 void VerifyCorrespondence(Operation& operation, Stats& stats);
 void VerifyLexical(const Operation& operation, Stats& stats);

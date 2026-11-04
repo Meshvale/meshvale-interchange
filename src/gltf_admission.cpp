@@ -540,7 +540,12 @@ bool VersionSpelling(std::string_view value) {
 }
 void CheckRule(AssetState& state, std::size_t node, const CoreRule& rule,
                std::uint32_t rule_id) {
-  const auto& document = state.document;
+  // Intrinsically width-bounded numeric arrays are scalar work. Structural
+  // member/table/reference scans keep the actual call's R owner.
+  const auto scalar_document = state.document;
+  const auto& document = rule.kind == GuardKind::kArray && rule.max_items != 0
+                             ? scalar_document
+                             : state.document;
   const auto kind = document.Kind(node);
   const auto reject = [&](GltfDiagnosticCode code) {
     Fail(GltfStatus::kMalformed, code, std::nullopt, rule_id);
@@ -562,8 +567,10 @@ void CheckRule(AssetState& state, std::size_t node, const CoreRule& rule,
       if (rule.unique) {
         for (auto a = document.FirstChild(node); a;
              a = document.NextSibling(*a)) {
+          document.ReferenceVisit();
           for (auto b = document.NextSibling(*a); b;
                b = document.NextSibling(*b)) {
+            document.ReferenceVisit();
             if (document.Kind(*a) == JsonKind::kString &&
                 document.Kind(*b) == JsonKind::kString &&
                 document.String(*a) == document.String(*b))
@@ -700,15 +707,19 @@ void AdmitMetadata(AssetState& state) {
         ReadExactUnsigned(document, item.node) >
             state.limits.max_accessor_elements)
       Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kLimitExceeded);
+    const auto scalar_document = document;
+    const auto& count_document = rule.max_items ? scalar_document : document;
     if (rule.kind == GuardKind::kArray &&
-        ChildCount(document, item.node) > state.limits.max_table_rows)
+        ChildCount(count_document, item.node) > state.limits.max_table_rows)
       Fail(GltfStatus::kUnsupportedProfile, GltfDiagnosticCode::kLimitExceeded);
     if (rule.kind == GuardKind::kOpaque) continue;
     if (rule.key == kExtensionsKey) {
       for (auto child = document.FirstChild(item.node); child;
-           child = document.NextSibling(*child))
+           child = document.NextSibling(*child)) {
+        document.ReferenceVisit();
         if (document.Kind(*child) != JsonKind::kObject)
           Fail(GltfStatus::kMalformed, GltfDiagnosticCode::kCoreFieldType);
+      }
       continue;
     }
     if (rule.kind == GuardKind::kObject) {
@@ -723,6 +734,9 @@ void AdmitMetadata(AssetState& state) {
     const auto staged_start = pending.size();
     for (auto child = document.FirstChild(item.node); child;
          child = document.NextSibling(*child)) {
+      if (rule.kind == GuardKind::kObject ||
+          (rule.kind == GuardKind::kArray && rule.max_items == 0))
+        document.ReferenceVisit();
       state.allocation.Checkpoint();
       std::optional<std::uint32_t> wildcard;
       std::optional<std::uint32_t> selected;
@@ -797,6 +811,7 @@ OwnedVector<char> BuildCoreProjection(AssetState& state) {
         frame.next = document.FirstChild(frame.node);
       }
       while (kind == JsonKind::kObject && frame.next) {
+        document.ReferenceVisit();
         const auto rule = state.guard_rules[*frame.next];
         if (rule != kNoGuard && kCoreRules[rule].kind != GuardKind::kOpaque)
           break;
@@ -808,6 +823,11 @@ OwnedVector<char> BuildCoreProjection(AssetState& state) {
         continue;
       }
       const auto child = *frame.next;
+      if (kind == JsonKind::kArray) {
+        const auto rule = state.guard_rules[frame.node];
+        if (rule == kNoGuard || kCoreRules[rule].max_items == 0)
+          document.ReferenceVisit();
+      }
       if (frame.emitted) append(",");
       frame.emitted = true;
       if (kind == JsonKind::kObject) {

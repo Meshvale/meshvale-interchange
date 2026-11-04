@@ -264,18 +264,21 @@ void AdmitResources(AssetState& state,
     return kind == GltfResourceKind::kBuffer ? buffers : images;
   };
   for (std::size_t i = 0; i < supplied.size(); ++i) {
+    document.ReferenceVisit();
     const auto& binding = supplied[i];
     const auto rows = table(binding.kind);
     if (!rows || !ChildAt(document, *rows, binding.table_index))
       ResourceFailure(GltfStatus::kResourceBindingMismatch,
                       GltfDiagnosticCode::kExtraResource, binding.kind,
                       binding.table_index);
-    for (std::size_t previous = 0; previous < i; ++previous)
+    for (std::size_t previous = 0; previous < i; ++previous) {
+      document.ReferenceVisit();
       if (supplied[previous].kind == binding.kind &&
           supplied[previous].table_index == binding.table_index)
         ResourceFailure(GltfStatus::kResourceBindingMismatch,
                         GltfDiagnosticCode::kDuplicateResource, binding.kind,
                         binding.table_index);
+    }
   }
   constexpr std::array<GltfResourceKind, 2> kResourceOrder = {
       GltfResourceKind::kBuffer, GltfResourceKind::kImage};
@@ -285,15 +288,18 @@ void AdmitResources(AssetState& state,
     std::uint64_t index = 0;
     for (auto node = document.FirstChild(*rows); node;
          node = document.NextSibling(*node), ++index) {
+      document.ReferenceVisit();
       state.allocation.Checkpoint();
       const auto uri_node = FindMember(document, *node, kUriKey);
       const auto uri =
           uri_node ? document.String(*uri_node) : std::string_view{};
       const auto view = FindMember(document, *node, kBufferViewKey);
       const SuppliedGltfResource* binding = nullptr;
-      for (const auto& candidate : supplied)
+      for (const auto& candidate : supplied) {
+        document.ReferenceVisit();
         if (candidate.kind == kind && candidate.table_index == index)
           binding = &candidate;
+      }
       const auto length_node = FindMember(document, *node, kByteLengthKey);
       const auto logical =
           length_node ? ReadExactUnsigned(document, *length_node) : 0;
@@ -315,10 +321,12 @@ void AdmitResources(AssetState& state,
         const auto buffer_index = ReadExactUnsigned(
             document, *FindMember(document, *view_node, kBufferKey));
         const GltfResourceView* buffer = nullptr;
-        for (const auto& candidate : state.resources)
+        for (const auto& candidate : state.resources) {
+          document.ReferenceVisit();
           if (candidate.kind == GltfResourceKind::kBuffer &&
               candidate.table_index == buffer_index)
             buffer = &candidate;
+        }
         if (!buffer)
           ResourceFailure(GltfStatus::kMalformed,
                           GltfDiagnosticCode::kCoreReference, kind, index);

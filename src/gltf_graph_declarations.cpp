@@ -54,14 +54,17 @@ bool Ancestor(const AssetState& state, std::uint64_t candidate,
   for (std::optional<std::uint64_t> current = node; current;
        current = state.nodes[*current].parent) {
     state.allocation.Checkpoint();
+    state.document.ReferenceVisit();
     if (*current == candidate) return true;
   }
   return false;
 }
 bool InScene(const AssetState& state, const GltfSceneView& scene,
              std::uint64_t node) {
-  for (const auto root : scene.roots)
+  for (const auto root : scene.roots) {
+    state.document.ReferenceVisit();
     if (Ancestor(state, root, node)) return true;
+  }
   return false;
 }
 void Skins(const AssetState& state) {
@@ -69,16 +72,17 @@ void Skins(const AssetState& state) {
   const auto skins = FindMember(doc, 0, kSkins);
   if (!skins) return;
   std::uint64_t skin_index = 0;
-  for (auto skin = doc.FirstChild(*skins); skin;
-       skin = doc.NextSibling(*skin), ++skin_index) {
+  for (auto skin = doc.FirstReferenceChild(*skins); skin;
+       skin = doc.NextReferenceSibling(*skin), ++skin_index) {
     state.allocation.Checkpoint();
     const auto joints = *FindMember(doc, *skin, kJoints);
     auto common =
-        std::optional(ReadExactUnsigned(doc, *doc.FirstChild(joints)));
+        std::optional(ReadExactUnsigned(doc, *doc.FirstReferenceChild(joints)));
     while (common) {
+      doc.ReferenceVisit();
       bool covers = true;
-      for (auto joint = doc.FirstChild(joints); joint;
-           joint = doc.NextSibling(*joint))
+      for (auto joint = doc.FirstReferenceChild(joints); joint;
+           joint = doc.NextReferenceSibling(*joint))
         if (!Ancestor(state, *common, ReadExactUnsigned(doc, *joint))) {
           covers = false;
           break;
@@ -91,12 +95,15 @@ void Skins(const AssetState& state) {
       if (!Ancestor(state, ReadExactUnsigned(doc, *skeleton), *common))
         RelationshipFailure();
     for (const auto& node : state.nodes) {
+      doc.ReferenceVisit();
       state.allocation.Checkpoint();
       if (node.skin != skin_index) continue;
-      for (const auto& scene : state.scenes)
+      for (const auto& scene : state.scenes) {
+        doc.ReferenceVisit();
         if (InScene(state, scene, node.table_index) &&
             !InScene(state, scene, *common))
           RelationshipFailure();
+      }
     }
     if (const auto inverse = FindMember(doc, *skin, kInverseBindMatrices)) {
       const auto accessor =
@@ -116,12 +123,12 @@ void Morphs(const AssetState& state) {
   const auto meshes = FindMember(doc, 0, kMeshes);
   if (!meshes) return;
   std::uint64_t mesh_index = 0;
-  for (auto mesh = doc.FirstChild(*meshes); mesh;
-       mesh = doc.NextSibling(*mesh), ++mesh_index) {
+  for (auto mesh = doc.FirstReferenceChild(*meshes); mesh;
+       mesh = doc.NextReferenceSibling(*mesh), ++mesh_index) {
     std::optional<std::uint64_t> target_count;
     const auto primitives = *FindMember(doc, *mesh, kPrimitives);
-    for (auto primitive = doc.FirstChild(primitives); primitive;
-         primitive = doc.NextSibling(*primitive)) {
+    for (auto primitive = doc.FirstReferenceChild(primitives); primitive;
+         primitive = doc.NextReferenceSibling(*primitive)) {
       state.allocation.Checkpoint();
       const auto targets = FindMember(doc, *primitive, kTargets);
       const auto count = targets ? ChildCount(doc, *targets) : 0;
@@ -132,10 +139,10 @@ void Morphs(const AssetState& state) {
       target_count = count;
       if (!targets) continue;
       const auto attributes = *FindMember(doc, *primitive, kAttributes);
-      for (auto target = doc.FirstChild(*targets); target;
-           target = doc.NextSibling(*target))
-        for (auto channel = doc.FirstChild(*target); channel;
-             channel = doc.NextSibling(*channel)) {
+      for (auto target = doc.FirstReferenceChild(*targets); target;
+           target = doc.NextReferenceSibling(*target))
+        for (auto channel = doc.FirstReferenceChild(*target); channel;
+             channel = doc.NextReferenceSibling(*channel)) {
           state.allocation.Checkpoint();
           const auto semantic = doc.Key(*channel);
           const auto base = FindMember(doc, attributes, semantic);
@@ -161,6 +168,7 @@ void Morphs(const AssetState& state) {
       if (ChildCount(doc, *weights) != target_count.value_or(0))
         RelationshipFailure();
     for (const auto& node : state.nodes) {
+      doc.ReferenceVisit();
       state.allocation.Checkpoint();
       if (node.mesh != mesh_index) continue;
       const auto row = *ChildAt(doc, *node_table, node.table_index);
@@ -177,12 +185,12 @@ void Animations(const AssetState& state) {
   using Destination = std::pair<std::uint64_t, std::string_view>;
   OwnedVector<Destination> destinations{
       Allocator<Destination>(state.allocation)};
-  for (auto animation = doc.FirstChild(*animations); animation;
-       animation = doc.NextSibling(*animation)) {
+  for (auto animation = doc.FirstReferenceChild(*animations); animation;
+       animation = doc.NextReferenceSibling(*animation)) {
     destinations.clear();
     const auto channels = *FindMember(doc, *animation, kChannels);
-    for (auto channel = doc.FirstChild(channels); channel;
-         channel = doc.NextSibling(*channel)) {
+    for (auto channel = doc.FirstReferenceChild(channels); channel;
+         channel = doc.NextReferenceSibling(*channel)) {
       state.allocation.Checkpoint();
       const auto target = *FindMember(doc, *channel, kTarget);
       const auto target_node = FindMember(doc, target, kNode);
@@ -196,8 +204,10 @@ void Animations(const AssetState& state) {
            path != kWeights))
         RelationshipFailure();
       const Destination destination(node_index, path);
-      for (const auto& previous : destinations)
+      for (const auto& previous : destinations) {
+        doc.ReferenceVisit();
         if (previous == destination) RelationshipFailure();
+      }
       destinations.push_back(destination);
     }
   }

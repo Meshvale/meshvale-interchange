@@ -213,13 +213,21 @@ GltfReadResult ReadAsset(
       state->deformation_read->phase = GltfDeformationPhase::kDeclarations;
     }
     RawNumbers(*state);
-    AdmitMetadata(*state);
-    BuildGraph(*state);
-    CheckDeclaredGraphRelationships(*state);
-    if (state->deformation_read) AdmitDeformationRotations(*state);
-    if (provider) supplied_resources = provider(*state, provider_state);
-    AdmitResources(*state, supplied_resources, nullptr, nullptr, execution);
-    const auto projection = BuildCoreProjection(*state);
+    OwnedVector<char> projection{Allocator<char>(allocation)};
+    {
+      // State is still unpublished; callbacks cannot escape in a DOM copy.
+      JsonReferenceScope references(
+          state->document,
+          state->deformation_read ? DeformationReadReference : nullptr,
+          state.get());
+      AdmitMetadata(*state);
+      BuildGraph(*state);
+      CheckDeclaredGraphRelationships(*state);
+      if (state->deformation_read) AdmitDeformationRotations(*state);
+      if (provider) supplied_resources = provider(*state, provider_state);
+      AdmitResources(*state, supplied_resources, nullptr, nullptr, execution);
+      projection = BuildCoreProjection(*state);
+    }
     if (state->deformation_read) {
       auto& numeric = state->deformation_read->numeric;
       if (!numeric) numeric.emplace();
