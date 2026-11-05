@@ -55,6 +55,10 @@ struct RecordIngressWork {
 };
 struct RecordIngressObservation {
   std::optional<RecordIngressStatus> status;
+  // Populated only from an actually classified allocator refusal. A count or
+  // descriptor limit does not establish allocator code/provenance.
+  std::optional<gltf_detail::AdmissionCode> allocation_code;
+  std::optional<gltf_detail::AdmissionProvenance> allocation_provenance;
   std::optional<RecordIngressField> first_field;
   std::optional<std::uint64_t> first_row;
   std::uint64_t attempted_buffers = 0;
@@ -130,6 +134,11 @@ class SharedSurfaceIngress {
                             std::optional<std::uint64_t> row);
   void PreflightCheckpoint(std::stop_token external_stop,
                            std::uint64_t bytes = 0);
+  // After all record/catalog representation checks and before staging. Shares
+  // the caller's token without allocating a second stop state or replacing the
+  // admitted root/request cap. Preparation-time fixed-capacity allocators are
+  // unchanged; subsequent runtime storage uses Bridge().
+  void LinkStopToken(std::stop_token operation_stop);
   // GIL on entry/return. All source exports stay pinned while native copies
   // release the GIL. Actual helper joins precede expected or unexpected exits.
   void StageBuffers(const geometry::MeshMaterializationWorkPolicy&,

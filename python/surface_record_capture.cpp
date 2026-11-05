@@ -372,6 +372,8 @@ bool SharedSurfaceIngress::ClassifyAllocation(
     reached_.status = RecordIngressStatus::kLimitExceeded;
   else
     return false;
+  reached_.allocation_code = error.Code();
+  reached_.allocation_provenance = error.Provenance();
   First(*this, field, row);
   return true;
 }
@@ -389,6 +391,11 @@ void SharedSurfaceIngress::PreflightCheckpoint(std::stop_token stop,
     reached_.preflight_stop_observed |= stop.stop_requested();
     preflight_bytes_ = 0;
   }
+}
+void SharedSurfaceIngress::LinkStopToken(std::stop_token stop) {
+  if (staging_started_)
+    throw std::logic_error("surface stop linkage must precede staging");
+  bridge_ = bridge_.WithStopToken(stop);
 }
 void SharedSurfaceIngress::Checkpoint(std::stop_token stop) {
   ++reached_.byte_checkpoints;

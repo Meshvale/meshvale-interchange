@@ -91,6 +91,11 @@ class AllocationContext {
   [[nodiscard]] void* Allocate(std::size_t bytes, std::size_t alignment) const;
   // Nonallocating operation checkpoint; cleanup must never call it.
   void Checkpoint() const;
+  // Allocation-free token linkage on a live context. Retains the exact root,
+  // backend and existing request scopes; does not inspect/request/reset stop.
+  // Useful after complete binding preflight, whose representation checks must
+  // precede cancellation. Previously copied allocators keep their own token.
+  [[nodiscard]] AllocationContext WithStopToken(std::stop_token stop) const;
   // A new operation cap includes its charged accounting state, full aligned
   // block requests and overlapping replacements. Root ledger remains shared.
   // Calling on an already capped context is invalid. Actual backend exceptions
