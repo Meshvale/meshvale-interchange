@@ -17,6 +17,10 @@ module/console commands and ordered batches. Follow its
 [walkthrough](stl-file-walkthrough.md) for the independently selected native SDK
 and Python record-provider inputs.
 
+The [opt-in Surface interface](surface-python.md) covers polygon-to-surface
+encoding, inspection of the resulting bytes and optional directory publication.
+Its build instructions select the required native producer and feature flags.
+
 | Function | Result |
 |---|---|
 | `read_obj(obj, mtl=b"")` | `ObjImportResult(document, diagnostics)` |

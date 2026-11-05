@@ -4,27 +4,25 @@
 |---|---|
 | ID | SURFACE-PYTHON-001 |
 | Version | 0.1.3 |
-| Status | Unimplemented development contract; names and examples below are not available functions |
-| Owner | Proposed `meshvale_interchange.surface_files` module |
+| Status | Opt-in development interface |
+| Owner | `meshvale_interchange.surface_files` |
 
 This contract selects one owned operation for polygon-to-surface encoding,
 inspection of actual output bytes and optional verified publication. It covers
 the four encodings and two representations in [the native surface contract](surface-output.md),
 with its numerical, channel, material and resource restrictions. It adds no
 geometry algorithm, repair, normal generation, indexing, welding or coordinate
-transformation. Implementation and installed/platform qualification remain open.
-The names and worksheet below are proposals pending interface review.
+transformation.
 
 The native `MESHVALE_INTERCHANGE_SURFACE_OUTPUT` and
 `MESHVALE_INTERCHANGE_SURFACE_FILES` options remain opt-in and default `OFF`.
-The proposed Python module requires both targets and the ordinary GIL-enabled
-Python build. Enabling either native flag alone does not provide this interface.
+The Python module requires both targets and an ordinary GIL-enabled Python build.
 Existing [STL capture/rewrite](stl-files.md) remains a separate, broader codec
 operation: finite degenerate facets accepted there need not pass Surface admission.
 
 ## One prepared operation
 
-The proposed entry point is:
+Prepare an operation and supply an owned mesh record to its synchronous run.
 
 ```python
 operation = prepare_surface(
@@ -256,14 +254,13 @@ refusal, including attribute-free empty input. Explicit empty dense descriptors
 are a separate real zero-facet case. Masked or varying normals receive native
 shape/constant refusals, not mask clearing, filling, interpolation or averaging.
 
-The following complete example specifies the proposed interface; it has not run
-and cannot run until the module is implemented and qualified. The normal values
-are authored input. Exact64 ASCII positions select no position narrowing.
+This example encodes an annotated ASCII STL triangle and inspects the bytes in
+memory. The normal values are authored input. Exact64 ASCII positions retain
+their binary64 values.
 
 ```python
 from array import array
 
-# Proposed imports: unavailable in the current package.
 from meshvale_interchange.surface_files import (
     SurfaceChannel, SurfaceOptions, prepare_surface,
 )
@@ -542,6 +539,31 @@ limits/containment sums are not measured peaks or RSS. No independent Python poo
 new backend, hard cancellation latency or performance guarantee is selected.
 Future qualification must show real serial/multicore agreement and worker use,
 not infer parallel execution from configured thresholds.
+
+## Build and installation
+
+Use the [native build environment](../ENVIRONMENT.md#optional-verified-surface-files)
+with installed Geometry revision
+`5dd210b19d05bf651b853b8fdac398c7feceeba9` and the selected double-precision
+tinyobjloader. Build the Python Geometry wheel from
+`48298b24be7c132816fb5580d22d58bde61558d0` for the same interpreter. Set the
+prefix variables to the installed native dependencies and place that Geometry
+wheel beside the Interchange wheel in the candidate wheel directory.
+
+```sh
+python -m pip wheel . --no-deps --wheel-dir "$CANDIDATE_WHEELS" \
+  --config-settings=cmake.define.CMAKE_PREFIX_PATH="$GEOMETRY_PREFIX;$TINYOBJLOADER_PREFIX" \
+  --config-settings=cmake.define.MESHVALE_INTERCHANGE_SURFACE_OUTPUT=ON \
+  --config-settings=cmake.define.MESHVALE_INTERCHANGE_SURFACE_FILES=ON
+python -m pip install --no-index --find-links "$CANDIDATE_WHEELS" meshvale-interchange
+```
+
+In the selected Windows x64 Release and CPython 3.13 development cohort, the
+checkout and source-distribution wheels each passed 42 installed tests,
+including eight Surface tests. The ASCII STL example also completed in a fresh
+environment using the checkout wheel. See the
+[candidate workflow](../.github/workflows/surface-python-candidates.yml) for
+the configured hosted checks.
 
 ## Qualification and file-command continuation
 

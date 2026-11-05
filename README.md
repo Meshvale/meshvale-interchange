@@ -97,8 +97,8 @@ A separate inspector captures actual supplied member bytes, reloads the native
 view and verifies correspondence and sidecar storage before returning a proof.
 The [installed example](examples/consumer/surface_output.cpp) uses public
 headers and targets. Filesystem publication uses the separate optional target
-below. Python bindings, application commands, supported-platform acceptance and
-a stable release remain separate work.
+below. The [opt-in Python Surface interface](docs/surface-python.md) exposes the
+same encoding and inspection stages through a prepared operation.
 
 ### Verified surface directories
 
