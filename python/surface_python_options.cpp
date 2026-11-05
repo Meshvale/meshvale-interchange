@@ -353,6 +353,9 @@ class Mapping {
           "zero");
     return result;
   }
+  // Execution and parallel-threshold policies inherit native zero semantics;
+  // they are not positive resource caps or canonical inactive branches.
+  std::uint64_t Nonnegative(const char* key) const { return Extent(Get(key)); }
 
  private:
   nb::object value_;
@@ -921,9 +924,9 @@ SurfacePresetProjection ReadSurfacePreset(nb::handle values) {
   const Mapping execution(
       map.Get(kExecution),
       {kWorkerBudget, kMinimumParallelVertices, kTrackedPayloadBudgetBytes});
-  out.execution = {Host(execution.Number(kWorkerBudget)),
-                   Host(execution.Number(kMinimumParallelVertices)),
-                   Host(execution.Number(kTrackedPayloadBudgetBytes))};
+  out.execution = {Host(execution.Nonnegative(kWorkerBudget)),
+                   Host(execution.Nonnegative(kMinimumParallelVertices)),
+                   Host(execution.Nonnegative(kTrackedPayloadBudgetBytes))};
   const Mapping ingress(
       map.Get(kIngressLimits),
       {kMaxBufferViews, kMaxBufferBytes, kMaxTotalBufferBytes, kMaxAttributes,
@@ -959,7 +962,7 @@ SurfacePresetProjection ReadSurfacePreset(nb::handle values) {
                               {kMaxCornersPerFace, kMinimumParallelFaces});
   out.triangulation_options = {
       triangulation.Number(kMaxCornersPerFace),
-      Host(triangulation.Number(kMinimumParallelFaces))};
+      Host(triangulation.Nonnegative(kMinimumParallelFaces))};
   Valid(out.triangulation_options.max_corners_per_face >=
                 kTriangulationMinimumCorners &&
             out.triangulation_options.max_corners_per_face <=

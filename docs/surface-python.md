@@ -462,6 +462,12 @@ and store the actual outcome before propagating a pending Python exception.
 The worksheet lists every active native field and every canonical-zero inactive
 field for all four encodings. Representation and numeric policies remain explicit
 request choices; a preset never supplies loss acknowledgments or error tolerances.
+Custom worksheets preserve native execution policy zeros: `worker_budget=0`
+selects native hardware concurrency (at least one worker), zero parallel vertex
+or face thresholds remain zero, and `tracked_payload_budget_bytes=0` leaves no
+tracked payload capacity. The last choice can produce a genuine preparation
+budget refusal; it is not invalid configuration or an unlimited budget. Positive
+resource/work caps and canonical-zero inactive branches keep their own rules.
 `delegates.kind` is the JSON selector for the corresponding native variant, not
 an added native field. JSON glTF has all-zero unused GLB limits/work; glTF encode
 has all-zero glTF-read/STL work; STL has all-zero glTF/GLB work. Native inactive
