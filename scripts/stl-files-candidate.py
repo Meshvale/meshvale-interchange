@@ -766,7 +766,12 @@ def runtime_tests(args):
                 args.source / "docs/surface-python-presets.json").read_bytes():
             raise RuntimeError("Installed Surface preset differs from selected source")
     loader = unittest.TestLoader()
-    suite = loader.discover(str(args.source / "tests/python"), pattern="test_*.py")
+    # This owner qualifies exactly the unchanged OBJ/STL methods. Other opt-in
+    # modules have their own candidate runners and must not enter this OFF lane.
+    suite = unittest.TestSuite()
+    for module in PYTHON_TEST_COUNTS:
+        suite.addTests(loader.discover(str(args.source / "tests/python"),
+                                       pattern=module + ".py"))
     if loader.errors:
         write_json(args.evidence / "unittest-load-errors.json", loader.errors)
         raise RuntimeError("Actual test-module import failed: " + "\n".join(loader.errors))
