@@ -421,10 +421,27 @@ def copied_tests(args):
         raise RuntimeError("Actual copied Surface methods failed/skipped/incomplete")
 
 
+def resolver_sha256(archive):
+    # pip report v1 may carry the legacy singular hash, the mapping, or both.
+    values = []
+    if isinstance(archive, dict) and "hash" in archive:
+        legacy = archive["hash"]
+        algorithm, _, digest = legacy.partition("=") if isinstance(legacy, str) else ("", "", "")
+        values.append(digest if algorithm == "sha256" else None)
+    if isinstance(archive, dict) and "hashes" in archive:
+        mapped = archive["hashes"]
+        values.append(mapped.get("sha256") if isinstance(mapped, dict) else None)
+    if (not values or any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+                          for value in values)
+            or len(set(values)) != 1):
+        raise RuntimeError("Resolver report lacks a consistent SHA-256 archive hash")
+    return values[0]
+
+
 def audit_report(report, wheels):
     observed = json.loads(report.read_text(encoding="utf-8"))["install"]
     expected = {reference(wheel)["sha256"] for wheel in wheels}
-    hashes = {row["download_info"]["archive_info"]["hashes"]["sha256"] for row in observed}
+    hashes = {resolver_sha256(row["download_info"]["archive_info"]) for row in observed}
     names = {canonical(row["metadata"]["name"]) for row in observed}
     if len(observed) != 2 or hashes != expected or names != PRODUCTS:
         raise RuntimeError("Normal offline resolver did not select exactly the two audited wheels")
@@ -1080,7 +1097,25 @@ def self_check():
             assert "Missing original wheel payload RECORD row" in str(error)
         else:
             raise AssertionError("Joint payload+RECORD deletion escaped coverage")
-    print("Data-only controls passed: unchanged34/8, actual discovery, runtime alias/containment, joint payload/row deletion, complete source hold, generated version, runtime equality, nullable spawn refusal")
+    # Exercise both shapes observed in normal venv pip reports, with no install.
+    selected_hash = "c" * 64
+    alternate_hash = "d" * 64
+    assert resolver_sha256({"hash": "sha256=" + selected_hash}) == selected_hash
+    assert resolver_sha256({"hashes": {"sha256": selected_hash}}) == selected_hash
+    assert resolver_sha256({"hash": "sha256=" + selected_hash,
+                            "hashes": {"sha256": selected_hash}}) == selected_hash
+    invalid_hashes = ({}, {"hash": "sha512=" + selected_hash},
+                      {"hashes": {"sha256": selected_hash[:-1]}},
+                      {"hash": "sha256=" + selected_hash,
+                       "hashes": {"sha256": alternate_hash}})
+    for archive in invalid_hashes:
+        try:
+            resolver_sha256(archive)
+        except RuntimeError as error:
+            assert str(error) == "Resolver report lacks a consistent SHA-256 archive hash"
+        else:
+            raise AssertionError("Unusable resolver archive digest escaped qualification")
+    print("Data-only controls passed: unchanged34/8, actual discovery, runtime alias/containment, joint payload/row deletion, complete source hold, generated version, runtime equality, nullable spawn refusal, resolver SHA-256 formats")
 
 
 if __name__ == "__main__":
