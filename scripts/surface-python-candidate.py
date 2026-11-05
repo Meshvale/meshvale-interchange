@@ -286,6 +286,7 @@ def wheel_payload(wheel):
 
 def installed_payload(wheel, locate, runtime):
     """Expected coverage is derived from the wheel, never surviving installed rows."""
+    runtime = runtime.resolve(strict=True)
     payload, record = wheel_payload(wheel)
     record_file = locate(record)
     rows = list(csv.reader(io.StringIO(record_file.read_text(encoding="utf-8"))))
@@ -1059,7 +1060,18 @@ def self_check():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(value)
         locate = lambda name: site / name
-        installed_payload(wheel, locate, runtime)
+        runtime_alias = runtime / ".." / runtime.name
+        assert installed_payload(wheel, locate, runtime_alias)["original_payload_coverage"]
+        outside = temp / "outside" / member
+        outside.parent.mkdir(parents=True)
+        outside.write_bytes(data)
+        try:
+            installed_payload(wheel, lambda name: outside if name == member else locate(name),
+                              runtime_alias)
+        except RuntimeError as error:
+            assert str(error) == "Missing/outside-runtime original payload: " + member
+        else:
+            raise AssertionError("Original payload outside the runtime escaped containment")
         (site / member).unlink()
         (site / record).write_text(record + ",,\n", encoding="utf-8")
         try:
@@ -1068,7 +1080,7 @@ def self_check():
             assert "Missing original wheel payload RECORD row" in str(error)
         else:
             raise AssertionError("Joint payload+RECORD deletion escaped coverage")
-    print("Data-only controls passed: unchanged34/8, actual discovery, joint payload/row deletion, complete source hold, generated version, runtime equality, nullable spawn refusal")
+    print("Data-only controls passed: unchanged34/8, actual discovery, runtime alias/containment, joint payload/row deletion, complete source hold, generated version, runtime equality, nullable spawn refusal")
 
 
 if __name__ == "__main__":
