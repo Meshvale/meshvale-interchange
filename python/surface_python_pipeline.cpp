@@ -169,10 +169,10 @@ void RunCapturedSurface(SurfaceRecordCapture& record,
     const SurfaceFilePublicationOptions publish_options{
         publication->receipt_path, {}};
     Call(state, SurfaceNativePhase::kPublication, state.publication, [&] {
-      return PublishSurfaceBundle(*state.inspection->inspection,
-                                  publication->destination, publish_options,
-                                  format.publication_limits,
-                                  format.publication_work, stop);
+      return PublishSurfaceBundleNative(
+          *state.inspection->inspection, publication->destination,
+          publish_options, format.publication_limits, format.publication_work,
+          stop);
     });
     if (state.publication->outcome !=
             SurfaceFilePublicationOutcome::kPublished ||

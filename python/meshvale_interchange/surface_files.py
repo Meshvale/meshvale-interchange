@@ -4,7 +4,8 @@
 The native operation and installed qualification are still under development.
 These values do not materialize a mesh, create an inspection proof or publish.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from importlib import import_module
 from importlib.resources import files
 import json
 import math
@@ -202,6 +203,7 @@ class SurfaceCatalog:
 class SurfacePublication:
     destination: object
     receipt_path: str
+    _native_destination: object = field(init=False, repr=False)
 
     def __post_init__(self):
         destination = os.fspath(self.destination)
@@ -217,6 +219,8 @@ class SurfacePublication:
         _text(self.receipt_path)
         if not self.receipt_path or "\0" in self.receipt_path:
             raise ValueError("receipt path must be nonempty and contain no NUL")
+        native_destination = _surface_native()._surface_snapshot_destination(destination)
+        object.__setattr__(self, "_native_destination", native_destination)
 
 
 def _freeze_preset(value, template):
@@ -242,7 +246,7 @@ def _freeze_preset(value, template):
 
 def _preset_template():
     document = json.loads(files(__package__).joinpath("_surface_file_presets.json").read_text(encoding="utf-8"))
-    if document["schema"] != "meshvale.surface-python-presets/1" or document["contract"] != "SURFACE-PYTHON-001/0.1.2":
+    if document["schema"] != "meshvale.surface-python-presets/1" or document["contract"] != "SURFACE-PYTHON-001/0.1.3":
         raise RuntimeError("packaged surface preset contract mismatch")
     return document["presets"]["bounded"]
 
@@ -267,6 +271,40 @@ class SurfacePreset:
         return cls.from_mapping(_preset_template())
 
 
+_NATIVE_TYPES = (
+    "SurfaceExecutionContext", "PreparedSurface", "SurfaceResult",
+    "SurfaceDeliveryError", "SurfaceOutput", "SurfaceOutputInspection",
+    "SurfacePublishedBundle", "SurfaceFacts",
+)
+
+
+def _surface_native():
+    native = import_module("._interchange", __package__)
+    if not hasattr(native, "_surface_prepare"):
+        raise RuntimeError("the Surface Python interface is not enabled in this build")
+    return native
+
+
+def __getattr__(name):
+    if name in _NATIVE_TYPES:
+        return getattr(_surface_native(), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def prepare_surface(options, *, preset, execution=None, cancellation=None,
+                    publication=None):
+    """Prepare one native operation with a reachable result before source capture.
+
+    The preset is required explicitly. Native preparation owns closed validation,
+    charged workspace admission and any finished preparation refusal. The returned
+    operation's synchronous run method owns single-use admission before input
+    argument inspection; this wrapper neither captures a mesh nor frames results.
+    """
+    return _surface_native()._surface_prepare(
+        options, preset, execution, cancellation, publication)
+
+
 __all__ = ["SurfaceChannel", "SurfaceUv", "SurfaceMaterial", "SurfaceCatalogUv",
            "SurfaceOptions", "SurfaceResource", "SurfaceCatalog",
-           "SurfacePublication", "SurfacePreset"]
+           "SurfacePublication", "SurfacePreset", "prepare_surface",
+           *_NATIVE_TYPES]

@@ -10,14 +10,13 @@
 
 #include <array>
 #include <cstddef>
-#include <filesystem>
 #include <optional>
 #include <span>
 #include <stop_token>
-#include <string_view>
 
 #include "surface_python_delivery.h"
 #include "surface_python_options.h"
+#include "surface_python_publication.h"
 #include "surface_record_capture.h"
 
 namespace meshvale::interchange::surface_python_detail {
@@ -41,11 +40,6 @@ struct SurfaceCatalogInput {
   std::span<const std::byte> json;
   std::span<const SuppliedGltfResource> resources;
 };
-struct SurfacePublicationInput {
-  const std::filesystem::path& destination;
-  std::string_view receipt_path;
-};
-
 // The enclosing charged operation precreates this reachable holder. Every
 // optional contains only an actually returned native result; nothing later is
 // synthesized on refusal/exception. Delivery work is separate from inspection.

@@ -256,6 +256,18 @@ if(MESHVALE_INTERCHANGE_PYTHON)
     target_link_libraries(_interchange PRIVATE meshvale::stl_files)
     target_compile_definitions(_interchange PRIVATE MESHVALE_INTERCHANGE_STL_FILES_PYTHON=1)
   endif()
+  if(MESHVALE_INTERCHANGE_SURFACE_OUTPUT AND MESHVALE_INTERCHANGE_SURFACE_FILES)
+    target_sources(_interchange PRIVATE
+      python/surface_record_capture.cpp
+      python/surface_python_options.cpp
+      python/surface_python_delivery.cpp
+      python/surface_python_pipeline.cpp
+      python/surface_python_publication.cpp
+      python/surface_python_views.cpp
+      python/surface_files_bindings.cpp)
+    target_link_libraries(_interchange PRIVATE meshvale::surface_files)
+    target_compile_definitions(_interchange PRIVATE MESHVALE_INTERCHANGE_SURFACE_FILES_PYTHON=1)
+  endif()
   meshvale_warnings(_interchange)
   install(TARGETS _interchange LIBRARY DESTINATION meshvale_interchange COMPONENT python)
 endif()
