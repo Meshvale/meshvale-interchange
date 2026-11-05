@@ -12,8 +12,12 @@ specify required behavior rather than completed platform qualification.
 
 ## Scope and interface
 
-The single operation is `PublishSurfaceBundle(proof, destination,
-options, limits, work, stop)`. The input is a genuine, retained
+The single operation has two entries: `PublishSurfaceBundle(proof, destination,
+options, limits, work, stop)` accepts an existing `std::filesystem::path`, and
+`PublishSurfaceBundleNative(proof, SurfaceNativeDestination{native_units},
+options, limits, work, stop)` accepts a borrowed native-character view. Both use
+the same publisher, validation order, charged plans and result contract. The
+input is a genuine, retained
 `SurfaceOutputInspection`. The operation writes its exact captured payloads;
 it does not encode again or construct a source `GltfFileAsset`. It covers admitted
 glTF JSON, GLB, ASCII STL and binary STL, for both strict bare and annotated
@@ -151,9 +155,21 @@ substitutes for actual admission.
 
 ## Paths and selected platform behavior
 
+`SurfaceNativeDestination` is an explicitly constructed wrapper around
+`std::basic_string_view<std::filesystem::path::value_type>`. Its view contains
+native UTF-16 units on Windows or native char units on POSIX, excluding any final
+terminator. The storage stays alive and unchanged through return and all joins.
+It is input, not a validated path or publication proof. The native entry creates
+no `std::filesystem::path` or uncharged conversion buffer. Its genuinely charged
+native plans have the same limits as the existing path entry. The separately
+named entry does not change implicit overload selection for existing callers.
+
 `destination` names a new directory whose parent already exists. It is borrowed
-through return/all joins; relative destination resolution is captured before
-work, without changing process cwd. Native Unicode destination paths are admitted
+through return/all joins. Relative destination resolution uses the working
+directory when this publication call reaches native path planning, after its
+configuration validation and initial stop check; no earlier caller preparation
+freezes that directory. The operation does not change process cwd, and callers
+must not concurrently change it during path planning. Native Unicode destination paths are admitted
 only by the selected platform path contract. The operation plans charged native
 strings, admits the parent, and creates a fresh sibling stage using exclusive
 creation. Only an actual name collision advances the bounded candidate sequence;

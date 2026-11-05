@@ -91,11 +91,60 @@ void Consumer(mv::SurfaceEncoding encoding,
               alias.NewRequestedBytes() != 0,
           "copy-only public published owner retains content");
 }
+void NativeConsumer(mv::SurfaceEncoding encoding,
+                    mv::SurfaceRepresentation representation,
+                    const geom::ExecutionContext& context) {
+  test::TempTree tree;
+  const auto destination =
+      tree.root / std::filesystem::path(std::u8string(u8"native-工单-🧊"));
+  const auto proof = test::MakeProof(encoding, representation,
+                                     test::Shape::kTriangle, context);
+  if (!proof.inspection) return;  // Fixture asserts actual native refusal.
+  using Char = std::filesystem::path::value_type;
+  const auto& native = destination.native();
+  std::vector<Char> caller_storage(native.begin(), native.end());
+  // The borrowed view need not include a terminator. A non-NUL sentinel proves
+  // that the publisher honors the extent instead of reading a C string.
+  caller_storage.push_back(static_cast<Char>('!'));
+  const mv::SurfaceNativeDestination view{
+      {caller_storage.data(), caller_storage.size() - 1}};
+  auto result = mv::PublishSurfaceBundleNative(*proof.inspection, view, {},
+                                               test::FileLimits(encoding),
+                                               test::FileWork(encoding));
+  test::Published(result);
+  auto owner = *result.bundle;
+  result = {};
+  std::fill(caller_storage.begin(), caller_storage.end(),
+            static_cast<Char>('?'));
+  for (const auto& member : owner.Inspection().CapturedMembers())
+    Require(
+        std::ranges::equal(test::Read(destination / member.path), member.bytes),
+        "native-view publication retains actual independently read bytes");
+  const auto receipt = owner.Receipt();
+  Require(
+      std::ranges::equal(test::Read(destination / receipt.path), receipt.bytes),
+      "native-view result owns receipt after input storage changes");
+  const auto before = test::Inventory(destination);
+  const auto duplicate = mv::PublishSurfaceBundleNative(
+      owner.Inspection(), mv::SurfaceNativeDestination{destination.native()},
+      {}, test::FileLimits(encoding), test::FileWork(encoding));
+  Require(!duplicate.bundle &&
+              duplicate.diagnostic.status ==
+                  mv::SurfaceFileStatus::kDestinationExists &&
+              test::Inventory(destination) == before,
+          "native-view no-replace preserves all original published bytes");
+}
 }  // namespace
 int main() {
   try {
     geom::ExecutionContext context({4, 1, 1024 * test::kMiB});
-    for (auto encoding : test::kEncodings) Consumer(encoding, context);
+    for (auto encoding : test::kEncodings) {
+      Consumer(encoding, context);
+      for (auto representation :
+           {mv::SurfaceRepresentation::kStrictBare,
+            mv::SurfaceRepresentation::kAnnotatedBundleV1})
+        NativeConsumer(encoding, representation, context);
+    }
     Require(context.ActiveWorkers() == 0 && context.ActiveTrackedPayload() == 0,
             "public consumer releases all root charges and workers");
     return 0;

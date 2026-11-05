@@ -14,11 +14,14 @@ def inspect(path):
             names = [member.filename for member in members if not member.is_dir()]
             notice_contents = {name: archive.read(name) for name in names if ".dist-info/licenses/" in name}
             preset = archive.read("meshvale_interchange/_stl_file_presets.json")
+            surface_preset = archive.read("meshvale_interchange/_surface_file_presets.json")
             entry_points = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
             assert len(entry_points) == 1, entry_points
             entry_point_text = archive.read(entry_points[0]).decode("utf-8")
         assert "meshvale_interchange/stl_files.py" in names
+        assert "meshvale_interchange/surface_files.py" in names
         assert preset == (Path(__file__).resolve().parents[1] / "docs/stl-file-presets.json").read_bytes()
+        assert surface_preset == (Path(__file__).resolve().parents[1] / "docs/surface-python-presets.json").read_bytes()
         entry_point_config = configparser.ConfigParser()
         entry_point_config.read_string(entry_point_text)
         assert dict(entry_point_config["console_scripts"]) == {
@@ -33,7 +36,7 @@ def inspect(path):
                 assert len(parts) == 1 or parts[0].endswith(".dist-info"), name
                 continue
             if parts[0] == "meshvale_interchange":
-                assert len(parts) == 2 and (parts[1] in {"__init__.py","_version.py","stl_files.py","_stl_file_presets.json"} or
+                assert len(parts) == 2 and (parts[1] in {"__init__.py","_version.py","stl_files.py","_stl_file_presets.json", "surface_files.py", "_surface_file_presets.json"} or
                     (parts[1].startswith("_interchange.") and parts[1].endswith((".pyd",".so")))), name
             else:
                 assert parts[1:] in [("METADATA",), ("WHEEL",), ("RECORD",), ("entry_points.txt",),
@@ -94,6 +97,18 @@ def inspect(path):
                          "python/stl_files_bindings.h", "python/stl_files_bindings.cpp",
                          "python/meshvale_interchange/stl_files.py",
                          "python/meshvale_interchange/_stl_file_presets.json",
+                         "python/meshvale_interchange/surface_files.py",
+                         "python/meshvale_interchange/_surface_file_presets.json",
+                         "python/surface_record_capture.h", "python/surface_record_capture.cpp",
+                         "python/surface_python_options.h", "python/surface_python_options.cpp",
+                         "python/surface_python_delivery.h", "python/surface_python_delivery.cpp",
+                         "python/surface_python_pipeline.h", "python/surface_python_pipeline.cpp",
+                         "python/surface_python_publication.h", "python/surface_python_publication.cpp",
+                         "python/surface_python_views.h", "python/surface_python_views.cpp",
+                         "python/surface_files_bindings.h", "python/surface_files_bindings.cpp",
+                         "tests/python/surface_files_fixture.py",
+                         "tests/python/test_surface_files_api.py",
+                         "docs/surface-python.md", "docs/surface-python-presets.json",
                          "tests/python/stl_files_fixture.py",
                          "tests/python/test_stl_files_api.py",
                          "tests/python/test_stl_files_admission.py",

@@ -31,7 +31,7 @@ cmake.define.MESHVALE_INTERCHANGE_GLTF_TOPOLOGY_WRITE = false
 cmake.define.MESHVALE_INTERCHANGE_GLTF_WORKFLOW_SUPPORT = false
 cmake.define.MESHVALE_INTERCHANGE_GLTF_FILES = false
 cmake.define.BUILD_TESTING = false
-sdist.include = [".clang-format", ".gitattributes", ".git_archival.txt", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/*.cpp", "python/*.h", "python/meshvale_interchange/*.py", "python/meshvale_interchange/_stl_file_presets.json", "docs/**", "examples/**", "tests/**", "licenses/**", "scripts/*.py"]
+sdist.include = [".clang-format", ".gitattributes", ".git_archival.txt", "CMakeLists.txt", "pyproject.toml", "vcpkg.json", "README.md", "AGENTS.md", "ENVIRONMENT.md", "environment.example.json", "LICENSE", "NOTICE", "THIRD_PARTY.md", "CHANGELOG.md", "cmake/**", "include/**", "src/**", "python/*.cpp", "python/*.h", "python/meshvale_interchange/*.py", "python/meshvale_interchange/_stl_file_presets.json", "python/meshvale_interchange/_surface_file_presets.json", "docs/**", "examples/**", "tests/**", "licenses/**", "scripts/*.py"]
 sdist.inclusion-mode = "explicit"
 sdist.exclude = ["**/__pycache__/**", "**/*.pyc", "**/.local/**", "**/.scratch/**", "**/build/**", "**/references/**"]
 

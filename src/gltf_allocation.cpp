@@ -97,6 +97,12 @@ AllocationContext& AllocationContext::operator=(
 AllocationContext& AllocationContext::operator=(
     AllocationContext&& other) noexcept = default;
 AllocationContext::~AllocationContext() noexcept = default;
+AllocationContext AllocationContext::WithStopToken(std::stop_token stop) const {
+  if (!context_) throw AdmissionFailure(AdmissionCode::kInvalidObject);
+  auto result = *this;
+  result.stop_ = stop;
+  return result;
+}
 void* AllocationContext::Allocate(std::size_t bytes,
                                   std::size_t alignment) const {
   if (!context_) throw AdmissionFailure(AdmissionCode::kInvalidObject);

@@ -744,8 +744,15 @@ def runtime_tests(args):
     with zipfile.ZipFile(args.wheel) as archive:
         names = [name for name in archive.namelist()
                  if name.startswith("meshvale_interchange/") and not name.endswith("/")]
-        if len(names) != 5:
-            raise RuntimeError("Expected exactly five installed namespace members")
+        expected = {"meshvale_interchange/" + name for name in (
+            "__init__.py", "_version.py", "stl_files.py", "_stl_file_presets.json",
+            "surface_files.py", "_surface_file_presets.json")}
+        extensions = {name for name in names
+                      if name.count("/") == 1
+                      and name.startswith("meshvale_interchange/_interchange.")
+                      and name.endswith((".pyd", ".so"))}
+        if len(extensions) != 1 or len(names) != 7 or set(names) != expected | extensions:
+            raise RuntimeError("Installed namespace differs from six Python/data members and one extension")
         for name in names:
             path = Path(installed.locate_file(name))
             data = archive.read(name)
@@ -755,8 +762,16 @@ def runtime_tests(args):
         if archive.read("meshvale_interchange/_stl_file_presets.json") != (
                 args.source / "docs/stl-file-presets.json").read_bytes():
             raise RuntimeError("Installed packaged preset differs from selected source")
+        if archive.read("meshvale_interchange/_surface_file_presets.json") != (
+                args.source / "docs/surface-python-presets.json").read_bytes():
+            raise RuntimeError("Installed Surface preset differs from selected source")
     loader = unittest.TestLoader()
-    suite = loader.discover(str(args.source / "tests/python"), pattern="test_*.py")
+    # This owner qualifies exactly the unchanged OBJ/STL methods. Other opt-in
+    # modules have their own candidate runners and must not enter this OFF lane.
+    suite = unittest.TestSuite()
+    for module in PYTHON_TEST_COUNTS:
+        suite.addTests(loader.discover(str(args.source / "tests/python"),
+                                       pattern=module + ".py"))
     if loader.errors:
         write_json(args.evidence / "unittest-load-errors.json", loader.errors)
         raise RuntimeError("Actual test-module import failed: " + "\n".join(loader.errors))
