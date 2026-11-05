@@ -78,5 +78,10 @@ struct TestOptions {
     const SurfaceFilePublicationOptions&, const SurfaceFilePublicationLimits&,
     const SurfaceFilePublicationWorkPolicy&, std::stop_token,
     const TestOptions&);
+[[nodiscard]] SurfaceFilePublicationResult PublishNativeForTest(
+    const SurfaceOutputInspection&, SurfaceNativeDestination,
+    const SurfaceFilePublicationOptions&, const SurfaceFilePublicationLimits&,
+    const SurfaceFilePublicationWorkPolicy&, std::stop_token,
+    const TestOptions&);
 }  // namespace meshvale::interchange::surface_files_detail
 #endif  // MESHVALE_INTERCHANGE_SRC_SURFACE_FILES_TEST_INTERNAL_H_

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | ID | SURFACE-PYTHON-001 |
-| Version | 0.1.2 |
+| Version | 0.1.3 |
 | Status | Unimplemented development contract; names and examples below are not available functions |
 | Owner | Proposed `meshvale_interchange.surface_files` module |
 
@@ -176,6 +176,15 @@ make an uncharged intermediate Mesh or create a fresh context per phase.
 Python interpreter object overhead/caches, caller-owned input and the caller's
 record creation are outside native requested-payload accounting; bound the
 module's admitted buffer/descriptor counts anyway. No RSS or zero-copy claim.
+`SurfacePublication` construction explicitly creates a frozen Python-native
+destination snapshot as caller input, before an operation exists. Its Python
+filesystem-codec temporary objects and retained Python str/bytes snapshot are
+outside the operation's native requested-payload ledger. This is an input
+construction allocation boundary, not an exemption for native paths: every
+native destination/receipt copy created by prepare/run uses the actual capped
+bridge, and the native publisher charges its own overlapping path plans. No
+`std::filesystem::path`, default-allocator native path buffer or guessed path
+lease is constructed by this Python operation.
 
 ## Genuine catalog and explicit source association
 
@@ -310,9 +319,9 @@ result = (operation.run(record, catalog=None)
 assert result is held_result
 print(result.complete, result.terminal_phase, result.phase_states)
 if result.encode is not None:
-    print("encode", result.encode.status)
+    print("encode", result.encode["status"])
 if result.inspection is not None:
-    print("inspection", result.inspection.status)
+    print("inspection", result.inspection["status"])
 if result.output is not None:
     for member in result.output.members:
         # Explicit caller-owned copy, outside the native payload accounting.
@@ -406,6 +415,8 @@ exception or refusal can discard the earlier genuine encoded output.
 `output` retains genuine SurfaceOutput even if a later phase fails, keeping its
 original/triangulated native owners alive. It exposes `encoding`,
 `representation`, `members`, `wire_maps`, `triangulation_maps` and `facts`.
+Its encoding and representation use the lowercase selectors from SurfaceOptions;
+other native enum observations retain native enumerator-name strings.
 Each immutable member has `path`, `kind` and read-only `bytes`.
 `wire_maps` contains `wire_triangle_faces`, `wire_triangle_sources`,
 `wire_corner_corners`, `wire_corner_sources`, `wire_vertex_sources`,
@@ -418,8 +429,9 @@ map synthesis fills these properties.
 `verified` retains genuine SurfaceOutputInspection and exposes its actual
 captured `members`, `facts` and expected `output`. `bundle` retains
 SurfacePublishedBundle and exposes its fresh physical `verified` proof and
-immutable `receipt` with `path`, `bytes`, `sha256`. Python buffer views are read-only and
-retain an exporting strong owner, so deleting the result cannot invalidate a
+immutable `receipt` with `path`, `bytes`, `sha256`. The receipt digest is exactly
+32 immutable raw bytes. Python buffer views are read-only and retain an exporting
+strong owner, so deleting the result cannot invalidate a
 live view. Optional Python copies/diagnostic framing may fail with MemoryError;
 they cannot change native facts or manufacture an accepted proof.
 Retained charged triangulation has `source_capture=None`; do not fabricate a
@@ -427,8 +439,37 @@ zero-byte completed capture. Counts and each optional native delegate/core fact
 remain unavailable until that native field was actually reached.
 
 `publication` is None or frozen `SurfacePublication(destination, receipt_path)`.
-`destination` uses os.fspath native str/bytes semantics with nonempty/no-NUL and
-native length checks. `receipt_path` is the explicit native-admitted relative
+Construction resolves `destination` with `os.fspath` exactly once and preserves
+that resolved original str/bytes in its public field. It also freezes an exact
+built-in Python str snapshot on Windows, or Python bytes on POSIX, using the
+interpreter's actual filesystem decoding/encoding and error handler. The private
+construction helper receives the already resolved value and performs no second
+path-like protocol call. This snapshot may allocate Python objects or raise a
+codec error/`MemoryError` before any operation exists; constructing publication
+requires this extension's opted-in Surface module. It creates no native path,
+execution context, filesystem query or stage. Input subclasses do not introduce
+callbacks during preparation/run, which read the frozen native snapshot only.
+
+Preparation validates actual snapshot type/content and selected native-unit
+caps, then counts and fills actual bridge-owned native storage without a full
+conversion temporary. Windows uses a terminator-inclusive wchar count and
+direct fill; POSIX copies the native bytes. Non-BMP Windows characters count as
+two UTF-16 units. Both ingress and selected publication native caps include the
+terminator, and checked byte/aggregate extents must fit. Closed destination and
+receipt syntax is validated before stop handling or source acquisition. Actual
+charged path/receipt buffers stay alive through all native readers/joins; the
+named native-view publisher uses its genuine existing planner without a
+`std::filesystem::path` conversion. Python snapshot creation does not certify
+native path admission, and no validity/proof flags are accepted from callers.
+
+Relative destinations use the working directory when native publication path
+planning is reached. Construction/preparation do not freeze or change cwd;
+callers must not concurrently change it during path planning. Existing native
+unsupported-path, encoding and alias refusals remain, including Windows UNC,
+root-relative/drive-relative destinations and dot/parent/empty components. No
+normalization turns a refused spelling into an admitted path.
+
+`receipt_path` is the explicit native-admitted relative
 path (normally `"publication.json"`); no overwrite/merge/arbitrary supplemental
 files/provider text or callback is available. Validate path/inventory caps
 before stage creation. The supplied record/catalog has no source filesystem

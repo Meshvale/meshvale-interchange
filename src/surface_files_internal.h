@@ -51,6 +51,8 @@ void Count(std::uint64_t, std::uint64_t,
 std::size_t Host(std::uint64_t);
 std::uint64_t Sum(std::uint64_t, std::uint64_t);
 void PortablePath(std::string_view, std::uint64_t);
+// Pure input admission; no allocation, stop observation or filesystem access.
+void ValidateNativeDestination(NativeView, std::uint64_t maximum);
 bool ValidNativeEncoding(NativeView) noexcept;
 std::string_view EntryPath(SurfaceEncoding);
 inline constexpr std::uint64_t kMaximumJsonEscapeBytes = 6;

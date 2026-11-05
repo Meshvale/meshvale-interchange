@@ -226,9 +226,26 @@ struct SurfaceFilePublicationResult {
   std::optional<SurfacePublishedBundle> bundle;
   SurfaceFileFacts facts;
 };
+// Borrow native code units through the synchronous call and all its joins.
+// This input is not an admitted path/proof. No terminator is required; the
+// configured native path cap includes its eventual terminating code unit.
+struct SurfaceNativeDestination {
+  explicit SurfaceNativeDestination(
+      std::basic_string_view<std::filesystem::path::value_type> value) noexcept
+      : value(value) {}
+  std::basic_string_view<std::filesystem::path::value_type> value;
+};
 [[nodiscard]] SurfaceFilePublicationResult PublishSurfaceBundle(
     const SurfaceOutputInspection& inspected,
     const std::filesystem::path& destination,
+    const SurfaceFilePublicationOptions& options,
+    const SurfaceFilePublicationLimits& limits,
+    const SurfaceFilePublicationWorkPolicy& work, std::stop_token stop = {});
+// Same genuine publisher and validation/path/stop/commit contract as the path
+// entry. No filesystem::path is constructed from this borrowed input.
+[[nodiscard]] SurfaceFilePublicationResult PublishSurfaceBundleNative(
+    const SurfaceOutputInspection& inspected,
+    SurfaceNativeDestination destination,
     const SurfaceFilePublicationOptions& options,
     const SurfaceFilePublicationLimits& limits,
     const SurfaceFilePublicationWorkPolicy& work, std::stop_token stop = {});

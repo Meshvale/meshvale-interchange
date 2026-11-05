@@ -245,6 +245,91 @@ void Configuration(const mv::SurfaceOutputInspection& input) {
           "required field validation still precedes known cap and stop");
 }
 
+void NativeViewParity(const mv::SurfaceOutputInspection& input) {
+  test::TempTree tree;
+  std::stop_source stopped;
+  stopped.request_stop();
+  const auto compare = [&](const fs::path& destination,
+                           const mv::SurfaceFilePublicationOptions& options,
+                           const mv::SurfaceFilePublicationLimits& limits,
+                           const mv::SurfaceFilePublicationWorkPolicy& work,
+                           mv::SurfaceFileStatus status,
+                           mv::SurfaceFileCode code) {
+    Observation path_observation, view_observation;
+    const auto old_result =
+        sf::PublishForTest(input, destination, options, limits, work,
+                           stopped.get_token(), path_observation.Options());
+    const auto new_result = sf::PublishNativeForTest(
+        input, mv::SurfaceNativeDestination{destination.native()}, options,
+        limits, work, stopped.get_token(), view_observation.Options());
+    const auto& old = old_result.diagnostic;
+    const auto& current = new_result.diagnostic;
+    Require(
+        old.status == status && old.code == code &&
+            current.status == old.status && current.stage == old.stage &&
+            current.code == old.code &&
+            current.member_ordinal == old.member_ordinal &&
+            current.byte_offset == old.byte_offset &&
+            current.system_error == old.system_error &&
+            new_result.outcome == old_result.outcome && !old_result.bundle &&
+            !new_result.bundle && !old_result.facts.payload_write &&
+            !new_result.facts.payload_write && !old_result.facts.commit &&
+            !new_result.facts.commit && path_observation.stage.empty() &&
+            view_observation.stage.empty() && path_observation.opened == 0 &&
+            view_observation.opened == 0,
+        "path and borrowed-native entries preserve validation/stop priority");
+  };
+  const auto destination = tree.root / "preflight-only";
+  auto limits = test::FileLimits(kEncoding);
+  const auto work = test::FileWork(kEncoding);
+  compare(destination, {}, limits, work, mv::SurfaceFileStatus::kCanceled,
+          mv::SurfaceFileCode::kStopRequested);
+  limits.files.max_payload_members = 0;
+  compare(destination, {}, limits, work,
+          mv::SurfaceFileStatus::kInvalidConfiguration,
+          mv::SurfaceFileCode::kRequiredFieldZero);
+  limits = test::FileLimits(kEncoding);
+  auto invalid_work = work;
+  invalid_work.files.io_block_bytes = 0;
+  compare(destination, {}, limits, invalid_work,
+          mv::SurfaceFileStatus::kInvalidConfiguration,
+          mv::SurfaceFileCode::kRequiredFieldZero);
+  limits.files.max_native_path_code_units = destination.native().size();
+  compare(destination, {}, limits, work, mv::SurfaceFileStatus::kLimitExceeded,
+          mv::SurfaceFileCode::kCountLimit);
+  ++limits.files.max_native_path_code_units;
+  compare(destination, {}, limits, work, mv::SurfaceFileStatus::kCanceled,
+          mv::SurfaceFileCode::kStopRequested);
+  limits = test::FileLimits(kEncoding);
+  for (auto receipt : {"../receipt.json", "CON.json", "a//b.json"}) {
+    mv::SurfaceFilePublicationOptions options;
+    options.receipt_path = receipt;
+    compare(destination, options, limits, work,
+            mv::SurfaceFileStatus::kInvalidConfiguration,
+            mv::SurfaceFileCode::kReceiptPath);
+  }
+  for (const auto& invalid : {fs::path{}, fs::path{"a/../b"}, fs::path{"a//b"}})
+    compare(invalid, {}, limits, work,
+            mv::SurfaceFileStatus::kInvalidConfiguration,
+            mv::SurfaceFileCode::kDestinationPath);
+  using Char = fs::path::value_type;
+  const std::basic_string<Char> embedded_nul{static_cast<Char>('a'), Char{},
+                                             static_cast<Char>('b')};
+  compare(fs::path(embedded_nul), {}, limits, work,
+          mv::SurfaceFileStatus::kInvalidConfiguration,
+          mv::SurfaceFileCode::kDestinationPath);
+#ifdef _WIN32
+  for (auto invalid : {L"C:relative", L"\\root-relative", L"\\\\server\\share"})
+    compare(fs::path(invalid), {}, limits, work,
+            mv::SurfaceFileStatus::kInvalidConfiguration,
+            mv::SurfaceFileCode::kDestinationPath);
+  compare(fs::path(std::wstring{static_cast<wchar_t>(0xd800)}), {}, limits,
+          work, mv::SurfaceFileStatus::kInvalidConfiguration,
+          mv::SurfaceFileCode::kDestinationPath);
+#endif
+  Require(test::Inventory(tree.root).empty(),
+          "both preflight routes perform no publication mutation");
+}
 void Paths(const mv::SurfaceOutputInspection& input) {
   test::TempTree tree;
   std::vector<std::string> paths{
@@ -1749,6 +1834,7 @@ int main() {
                                          test::Shape::kRich, context);
       if (proof.inspection) {
         Configuration(*proof.inspection);
+        NativeViewParity(*proof.inspection);
         Paths(*proof.inspection);
         LogicalCaps(*proof.inspection);
         AllocationAndFinalWindow(*proof.inspection, context);

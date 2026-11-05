@@ -77,8 +77,7 @@ bool Alias(std::string_view a, std::string_view b) {
   return a.size() == b.size() ||
          (a.size() < b.size() ? b[n] == '/' : a[n] == '/');
 }
-void DestinationSyntax(const std::filesystem::path& path) {
-  const auto& v = path.native();
+void DestinationSyntax(NativeView v) {
   if (!ValidNativeEncoding(v))
     Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
          Code::kDestinationPath);
@@ -132,8 +131,7 @@ void DestinationSyntax(const std::filesystem::path& path) {
     }
   }
 }
-void Validate(const SurfaceOutputInspection& input,
-              const std::filesystem::path& destination,
+void Validate(const SurfaceOutputInspection& input, NativeView destination,
               const SurfaceFilePublicationOptions& o,
               const SurfaceFilePublicationLimits& l,
               const SurfaceFilePublicationWorkPolicy& w) {
@@ -178,16 +176,7 @@ void Validate(const SurfaceOutputInspection& input,
   if (!o.receipt.provide && o.receipt.state)
     Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
          Code::kProviderConfiguration);
-  DestinationSyntax(destination);
-  const auto& native = destination.native();
-  if (native.empty())
-    Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
-         Code::kDestinationPath);
-  for (auto c : native)
-    if (c == 0)
-      Fail(Status::kInvalidConfiguration, Stage::kConfiguration,
-           Code::kDestinationPath);
-  Count(native.size() + 1, f.max_native_path_code_units);
+  ValidateNativeDestination(destination, f.max_native_path_code_units);
   PortablePath(o.receipt_path, f.max_path_bytes);
   auto members = input.CapturedMembers();
   Count(members.size(), f.max_payload_members);
@@ -795,6 +784,10 @@ void FinishFailure(SurfaceFileFacts& f, Status status) {
   mark(f.final_receipt_verification);
 }
 }  // namespace
+void ValidateNativeDestination(NativeView destination, std::uint64_t maximum) {
+  DestinationSyntax(destination);
+  Count(Sum(destination.size(), 1), maximum);
+}
 void PortablePath(std::string_view path, std::uint64_t maximum) {
   Count(path.size(), maximum);
   if (path.empty())
@@ -865,13 +858,14 @@ SurfacePublishedBundle Access::Make(
     std::shared_ptr<const PublishedState> s) noexcept {
   return SurfacePublishedBundle(std::move(s));
 }
-SurfaceFilePublicationResult PublishForTest(
+SurfaceFilePublicationResult PublishNativeForTest(
     const SurfaceOutputInspection& input,
-    const std::filesystem::path& destination,
+    SurfaceNativeDestination borrowed_destination,
     const SurfaceFilePublicationOptions& options,
     const SurfaceFilePublicationLimits& limits,
     const SurfaceFilePublicationWorkPolicy& work, std::stop_token stop,
     const TestOptions& testing) {
+  const NativeView destination = borrowed_destination.value;
   SurfaceFilePublicationResult result;
   std::shared_ptr<PublishedState> state;
   Stage reached = Stage::kConfiguration;
@@ -915,7 +909,7 @@ SurfaceFilePublicationResult PublishForTest(
     s.scratch.resize(std::min({Host(work.files.io_block_bytes),
                                Host(work.files.cancellation_block_bytes),
                                Host(MaximumReadBlockBytes())}));
-    s.publication.Plan(destination.native());
+    s.publication.Plan(destination);
     s.publication.AdmitParent();
     for (const auto& m : s.members)
       s.publication.CheckChildExtent(m.logical.size());
@@ -1102,6 +1096,17 @@ SurfaceFilePublicationResult PublishForTest(
   }
   return result;
 }
+SurfaceFilePublicationResult PublishForTest(
+    const SurfaceOutputInspection& input,
+    const std::filesystem::path& destination,
+    const SurfaceFilePublicationOptions& options,
+    const SurfaceFilePublicationLimits& limits,
+    const SurfaceFilePublicationWorkPolicy& work, std::stop_token stop,
+    const TestOptions& testing) {
+  return PublishNativeForTest(input,
+                              SurfaceNativeDestination{destination.native()},
+                              options, limits, work, stop, testing);
+}
 }  // namespace meshvale::interchange::surface_files_detail
 namespace meshvale::interchange {
 SurfacePublishedBundle::SurfacePublishedBundle(
@@ -1128,5 +1133,12 @@ SurfaceFilePublicationResult PublishSurfaceBundle(
     const SurfaceFilePublicationLimits& l,
     const SurfaceFilePublicationWorkPolicy& w, std::stop_token stop) {
   return surface_files_detail::PublishForTest(i, d, o, l, w, stop, {});
+}
+SurfaceFilePublicationResult PublishSurfaceBundleNative(
+    const SurfaceOutputInspection& i, SurfaceNativeDestination d,
+    const SurfaceFilePublicationOptions& o,
+    const SurfaceFilePublicationLimits& l,
+    const SurfaceFilePublicationWorkPolicy& w, std::stop_token stop) {
+  return surface_files_detail::PublishNativeForTest(i, d, o, l, w, stop, {});
 }
 }  // namespace meshvale::interchange
